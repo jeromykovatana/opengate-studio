@@ -89,4 +89,12 @@ if [[ ! -f "$CONTENTS_DIR/Info.plist" || ! -x "$MACOS_DIR/$EXECUTABLE_NAME" ]]; 
     exit 1
 fi
 
-echo "[4/4] Packaged successfully: $APP_BUNDLE"
+if command -v codesign >/dev/null 2>&1; then
+    echo "[4/4] Ad-hoc signing and verifying $APP_BUNDLE..."
+    codesign --force --deep --sign - "$APP_BUNDLE"
+    codesign --verify --deep --strict "$APP_BUNDLE"
+else
+    echo "[4/4] codesign not found; skipping ad-hoc signature."
+fi
+
+echo "Packaged successfully: $APP_BUNDLE"

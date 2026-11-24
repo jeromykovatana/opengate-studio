@@ -45,14 +45,19 @@ echo "[2/4] Verifying SHA-256 pins across kits/..."
 "$REPO_ROOT/.venv/bin/python" -B "$REPO_ROOT/cli/studio_cli.py" verify-pins --json
 
 APP_BUNDLE="$REPO_ROOT/macos/OpenGateStudio/dist/OpenGate Studio.app"
-if command -v swift >/dev/null 2>&1 && [ -x "$REPO_ROOT/macos/OpenGateStudio/bundle_app.sh" ]; then
-  echo "[3/4] Building OpenGate Studio.app..."
-  "$REPO_ROOT/macos/OpenGateStudio/bundle_app.sh" || close_prompt 1
+if [ "${OPENGATE_FORCE_REBUILD:-0}" = "1" ] || [ ! -d "$APP_BUNDLE" ]; then
+  if command -v swift >/dev/null 2>&1 && [ -x "$REPO_ROOT/macos/OpenGateStudio/bundle_app.sh" ]; then
+    echo "[3/4] Building OpenGate Studio.app..."
+    "$REPO_ROOT/macos/OpenGateStudio/bundle_app.sh" || close_prompt 1
+  else
+    echo "[3/4] Skipping Swift build (swift toolchain not found); checking prebuilt .app..."
+  fi
 else
-  echo "[3/4] Skipping Swift build (swift toolchain not found); checking prebuilt .app..."
+  echo "[3/4] Using prebuilt OpenGate Studio.app (set OPENGATE_FORCE_REBUILD=1 to rebuild)..."
 fi
 
 if [ -d "$APP_BUNDLE" ] && [ -z "${OPENGATE_NO_APP_OPEN:-}" ]; then
+  xattr -dr com.apple.quarantine "$APP_BUNDLE" 2>/dev/null || true
   echo "[4/4] Opening OpenGate Studio.app..."
   open "$APP_BUNDLE"
 else
