@@ -1,0 +1,260 @@
+{
+ "label": "s3read_v9",
+ "cp_lo": 786432,
+ "cp_hi": 34603008,
+ "avcam_phys": 17196646400,
+ "avcam_reserve": "@0x401000000",
+ "id_files": {
+  "/libmpr.so": "59ea134f5a40166379258126b7ff02c0b36b9846129b22b4cdc7faa52c927459",
+  "/libsencore.so": "80b0e79f10ef0d26474e323b1621681a411ef083e7cf99547b3ec71227f77e94",
+  "/libJiritsu.so": "cfc134190fd83bee36fe159e4fa90a65fe5ae04a803f921dce50d534ed0e1fd0"
+ },
+ "id_pages": {
+  "0x128000": "198a2fd1e89800a5720658831e3aa42ab5e5a7c1d038aeab37a867bef3a2b602",
+  "0x4a8000": "ba3f03f1eb8c5bc146c7ee04f84d0f40564a31f1919e3ed8fd2d1478109f1aea",
+  "0x86d000": "317b6072f4e400dc088744b454582e0c96e9e97189695becc50b36e114d9d091",
+  "0xb11000": "654efce68869b97478b27820ffbf5d2981b4f215b6b336968228b53f34a800e3"
+ },
+ "cp_sites": [
+  {
+   "name": "C",
+   "address": "0xc7042c",
+   "length": 4,
+   "soft": 0
+  },
+  {
+   "name": "R1+0x0",
+   "address": "0xc70ed4",
+   "length": 2,
+   "soft": 0
+  },
+  {
+   "name": "R1+0x4",
+   "address": "0xc70ed8",
+   "length": 2,
+   "soft": 0
+  },
+  {
+   "name": "R2+0x0",
+   "address": "0xc71864",
+   "length": 2,
+   "soft": 0
+  },
+  {
+   "name": "R2+0x4",
+   "address": "0xc71868",
+   "length": 2,
+   "soft": 0
+  },
+  {
+   "name": "D+0x4",
+   "address": "0xc71b78",
+   "length": 2,
+   "soft": 0
+  },
+  {
+   "name": "T.tim",
+   "address": "0xc71144",
+   "length": 24,
+   "soft": 0
+  },
+  {
+   "name": "T.tim_b",
+   "address": "0xc71504",
+   "length": 24,
+   "soft": 0
+  },
+  {
+   "name": "W+0x12",
+   "address": "0xd67dda",
+   "length": 4,
+   "soft": 0
+  },
+  {
+   "name": "W+0x1a",
+   "address": "0xd67de2",
+   "length": 2,
+   "soft": 0
+  },
+  {
+   "name": "A+0x16",
+   "address": "0xd683ce",
+   "length": 2,
+   "soft": 0
+  },
+  {
+   "name": "A+0x1a",
+   "address": "0xd683d2",
+   "length": 2,
+   "soft": 0
+  },
+  {
+   "name": "A+0x1e",
+   "address": "0xd683d6",
+   "length": 2,
+   "soft": 0
+  },
+  {
+   "name": "LC+0x8",
+   "address": "0xd68890",
+   "length": 2,
+   "soft": 0
+  },
+  {
+   "name": "LC+0xc",
+   "address": "0xd68894",
+   "length": 2,
+   "soft": 0
+  },
+  {
+   "name": "CR+0x6",
+   "address": "0xc707ba",
+   "length": 2,
+   "soft": 0
+  },
+  {
+   "name": "CR+0x12",
+   "address": "0xc707c6",
+   "length": 2,
+   "soft": 0
+  },
+  {
+   "name": "G",
+   "address": "0xc18026",
+   "length": 2,
+   "soft": 0
+  },
+  {
+   "name": "L",
+   "address": "0xd68af2",
+   "length": 8,
+   "soft": 0
+  },
+  {
+   "name": "record_left",
+   "address": "0xbcfff8",
+   "length": 3000,
+   "soft": 0
+  },
+  {
+   "name": "record_right",
+   "address": "0xbd0bb0",
+   "length": 3000,
+   "soft": 0
+  },
+  {
+   "name": "stored_record",
+   "address": "0x1fe1554",
+   "length": 348,
+   "soft": 1
+  },
+  {
+   "name": "outsize",
+   "address": "0x13ec2e4",
+   "length": 4,
+   "soft": 1
+  },
+  {
+   "name": "outsize_guard0",
+   "address": "0x13ec2dc",
+   "length": 8,
+   "soft": 1
+  },
+  {
+   "name": "outsize_guard1",
+   "address": "0x13ec2e8",
+   "length": 4,
+   "soft": 1
+  }
+ ],
+ "lm_sites": 12,
+ "av_sites": 101,
+ "mp4_hdr_offsets": [
+  "0x118634",
+  "0x223884",
+  "0x2239e0",
+  "0x223cc4",
+  "0x223d10",
+  "0x2260cc",
+  "0x2260d0",
+  "0x25411c"
+ ],
+ "av_guards": [
+  "unit_rows_0_2",
+  "clip_rows_2_7",
+  "descriptors_0_3"
+ ],
+ "dump_ranges": [
+  [
+   "shadow",
+   "0x1019000",
+   2
+  ],
+  [
+   "matrix",
+   "0xf2e000",
+   3
+  ],
+  [
+   "sizetable",
+   "0x13ec000",
+   1
+  ],
+  [
+   "records",
+   "0x1fe0000",
+   4
+  ],
+  [
+   "kprint",
+   "0xe0000",
+   32
+  ],
+  [
+   "bootlog",
+   "0xc0000",
+   8
+  ],
+  [
+   "context",
+   "0x11a3000",
+   4
+  ],
+  [
+   "resizework",
+   "0x11b5000",
+   1
+  ],
+  [
+   "resizestate",
+   "0x13ff000",
+   4
+  ],
+  [
+   "wbuf",
+   "0x119a000",
+   2
+  ],
+  [
+   "display",
+   "0x1e4000",
+   1
+  ],
+  [
+   "frametab",
+   "0xd4d000",
+   1
+  ],
+  [
+   "paneltype",
+   "0x14b9000",
+   1
+  ]
+ ],
+ "designs": {
+  "ogsq_s3_v5": "aae0e8c3c93627bb85ac5be183764474d778f28101f750a3248d006150589b00",
+  "outsz2560_s3_v1": "2617bfbc7d843cce96a9203928378ca32243611ed0cc968ab0912afcdebbe16f",
+  "ogfile2560_hs_s_s3_v1": "e5fa6b1e04b6288cbdb4b8bd97ea65d3fdf0f9b73bbd2e5899838dc0ae385afd",
+  "mp4_3x2_s3_501": "6c8b9687236b733a9d73185eea7bf80ad2a31fdfba6299c61e2cf8478fd28904"
+ }
+}

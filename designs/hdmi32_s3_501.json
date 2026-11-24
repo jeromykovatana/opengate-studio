@@ -1,0 +1,338 @@
+{
+  "schema_version": 1,
+  "design": "hdmi32_s3_501",
+  "build": "a7s3_501",
+  "version_txt": "39183_16.2026041504",
+  "camera": "ILCE-7SM3 (a7S III), firmware 5.01",
+  "title": "Clean 3:2 pillarboxed HDMI (1620x1080 / 3240x2160) & uncropped 3:2 anamorphic HDMI de-squeeze (volatile cpapp RAM)",
+  "status": "offline-verified volatile RAM patch design (never flashed; never run on camera)",
+  "target_binary": "cpapp-b.bin",
+  "mechanism": "volatile coprocessor RAM patch via libJit/CT6 (ram_address = 0x108000 + file_off); cold boot or battery pull restores stock",
+  "persistent_writes": false,
+  "compatible_with": [
+    "ogsq_s3_v5",
+    "outsz2560_s3_v1",
+    "ogfile2560_hs_s_s3_v1",
+    "mp4_3x2_s3_501",
+    "og_xavcsi_s3_501",
+    "og_highbitrate_s3_501",
+    "monitoring_assist_s3_501",
+    "lcdratio32_s3_v1",
+    "lcdcycle_s3_v3"
+  ],
+  "artifact_sha256": {
+    "cpapp-b.bin": "63122fceaeed8934258dba414bb215e4fc48631860eb6537e1b0c84cbe5d6843"
+  },
+  "cpapp_bounds": {
+    "load_base": "0x108000",
+    "file_size": "0xf627e0",
+    "ram_end": "0x106a7e0",
+    "all_patches_and_guards_in_cpapp": true
+  },
+  "patches": [
+    {
+      "id": "HDMI-pict-tramp",
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdcfda",
+      "ram_address": "0x1e4fda",
+      "length": 8,
+      "old": "0020acf804102de0",
+      "new": "080c21e00320ece7",
+      "code": true,
+      "old_asm": "movs r0, #0; strh.w r1, [ip, #4]; b #0x1e503e",
+      "new_asm": "lsrs r0, r1, #0x10; b #0x1e5022; movs r0, #3; b #0x1e4fbc",
+      "note": "picture_ratio 0x1e4f64 overflow->shared_fill trampoline (0x1e5022) and 3:2 aspect_w=3->pillarbox trampoline (0x1e4fbc)"
+    },
+    {
+      "id": "HDMI-pict-32",
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdcfe2",
+      "ram_address": "0x1e4fe2",
+      "length": 14,
+      "old": "0020acf80000acf80200080c1de0",
+      "new": "022af9d1002bf7d14ff0020ef6e7",
+      "code": true,
+      "old_asm": "movs r0, #0; strh.w r0, [ip]; strh.w r0, [ip, #2]; lsrs r0, r1, #0x10; b #0x1e502c",
+      "new_asm": "cmp r2, #2; bne #0x1e4fda; cmp r3, #0; bne #0x1e4fda; mov.w lr, #2; b #0x1e4fde",
+      "note": "picture_ratio fit!=2/3 (0x1e4fe2): when panel_type==2 (16:9 HDMI) and fit==0 (16:9 picture), force lr=2,r0=3 pillarbox (3:2: 1620x1080 / 3240x2160) leaving 4:3 LCD/EVF unchanged"
+    },
+    {
+      "id": "HDMI-hdsq-15x-beq",
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdd418",
+      "ram_address": "0x1e5418",
+      "length": 2,
+      "old": "04d0",
+      "new": "42d0",
+      "code": true,
+      "old_asm": "beq #0x1e5424",
+      "new_asm": "beq #0x1e54a0",
+      "note": "hdmi_desqueeze_ratio 0x1e5364: decouple 1.5x 16:9 branch from shared 2.0x default to 4/9 trampoline at 0x1e54a0"
+    },
+    {
+      "id": "HDMI-hdsq-20x",
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdd424",
+      "ram_address": "0x1e5424",
+      "length": 4,
+      "old": "03250824",
+      "new": "01250324",
+      "code": true,
+      "old_asm": "movs r5, #3; movs r4, #8",
+      "new_asm": "movs r5, #1; movs r4, #3",
+      "note": "hdmi_desqueeze_ratio 0x1e5364: 2.0x default 3/8 -> 1/3 (3:1 uncropped whole 3:2 frame)"
+    },
+    {
+      "id": "HDMI-hdsq-tail-1",
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdd48e",
+      "ram_address": "0x1e548e",
+      "length": 14,
+      "old": "4ff6fc71a9f806000840c0eb1840",
+      "new": "a9f80600c0eb184000ebd0704008",
+      "code": true,
+      "old_asm": "movw r1, #0xfffc; strh.w r0, [sb, #6]; ands r0, r1; rsb r0, r0, r8, lsr #16",
+      "new_asm": "strh.w r0, [sb, #6]; rsb r0, r0, r8, lsr #16; add.w r0, r0, r0, lsr #31; lsrs r0, r0, #1",
+      "note": "hdmi_desqueeze_ratio epilogue compaction (drop redundant movw/ands 0xfffc since both paths already cleared bits [1:0])"
+    },
+    {
+      "id": "HDMI-hdsq-tail-2",
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdd49c",
+      "ram_address": "0x1e549c",
+      "length": 10,
+      "old": "00ebd0704008a9f80200",
+      "new": "a9f8020004250924cfe7",
+      "code": true,
+      "old_asm": "add.w r0, r0, r0, lsr #31; lsrs r0, r0, #1; strh.w r0, [sb, #2]",
+      "new_asm": "strh.w r0, [sb, #2]; movs r5, #4; movs r4, #9; b #0x1e5446",
+      "note": "hdmi_desqueeze_ratio 1.5x 16:9 trampoline at 0x1e54a0: 4/9 (2.25:1) -> b 0x1e5446"
+    },
+    {
+      "id": "HDMI-hdsq-13x",
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdd4ac",
+      "ram_address": "0x1e54ac",
+      "length": 4,
+      "old": "2d256824",
+      "new": "14252724",
+      "code": true,
+      "old_asm": "movs r5, #0x2d; movs r4, #0x68",
+      "new_asm": "movs r5, #0x14; movs r4, #0x27",
+      "note": "hdmi_desqueeze_ratio 1.3x 16:9: 45/104 -> 20/39 (1.95:1)"
+    },
+    {
+      "id": "HDMI-hdsq-18x",
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdd4b2",
+      "ram_address": "0x1e54b2",
+      "length": 4,
+      "old": "05251024",
+      "new": "0a251b24",
+      "code": true,
+      "old_asm": "movs r5, #5; movs r4, #0x10",
+      "new_asm": "movs r5, #0xa; movs r4, #0x1b",
+      "note": "hdmi_desqueeze_ratio 1.8x 16:9: 5/16 -> 10/27 (2.70:1)"
+    },
+    {
+      "id": "HDMI-dsq-20x",
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdce78",
+      "ram_address": "0x1e4e78",
+      "length": 6,
+      "old": "4ff0030a0825",
+      "new": "4ff0010a0325",
+      "code": true,
+      "old_asm": "mov.w sl, #3; movs r5, #8",
+      "new_asm": "mov.w sl, #1; movs r5, #3",
+      "note": "desqueeze_ratio 0x1e4e50 (auto HDMI & LCD layout): 2.0x default 3/8 -> 1/3 (3:1 whole frame)"
+    },
+    {
+      "id": "HDMI-dsq-13x",
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdced0",
+      "ram_address": "0x1e4ed0",
+      "length": 6,
+      "old": "4ff02d0a6825",
+      "new": "4ff0140a2725",
+      "code": true,
+      "old_asm": "mov.w sl, #0x2d; movs r5, #0x68",
+      "new_asm": "mov.w sl, #0x14; movs r5, #0x27",
+      "note": "desqueeze_ratio 0x1e4e50: 1.3x 16:9 45/104 -> 20/39 (1.95:1)"
+    },
+    {
+      "id": "HDMI-dsq-15x",
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdced8",
+      "ram_address": "0x1e4ed8",
+      "length": 6,
+      "old": "4ff0030a0825",
+      "new": "4ff0040a0925",
+      "code": true,
+      "old_asm": "mov.w sl, #3; movs r5, #8",
+      "new_asm": "mov.w sl, #4; movs r5, #9",
+      "note": "desqueeze_ratio 0x1e4e50: 1.5x 16:9 3/8 -> 4/9 (2.25:1)"
+    },
+    {
+      "id": "HDMI-dsq-18x",
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdcee0",
+      "ram_address": "0x1e4ee0",
+      "length": 6,
+      "old": "4ff0050a1025",
+      "new": "4ff00a0a1b25",
+      "code": true,
+      "old_asm": "mov.w sl, #5; movs r5, #0x10",
+      "new_asm": "mov.w sl, #0xa; movs r5, #0x1b",
+      "note": "desqueeze_ratio 0x1e4e50: 1.8x 16:9 5/16 -> 10/27 (2.70:1)"
+    },
+    {
+      "id": "HDMI-crop-path1",
+      "binary": "cpapp-b.bin",
+      "file_off": "0x50a2ee",
+      "ram_address": "0x6122ee",
+      "length": 2,
+      "old": "0428",
+      "new": "0528",
+      "code": true,
+      "old_asm": "cmp r0, #4",
+      "new_asm": "cmp r0, #5",
+      "note": "desqueeze 2.0x 4:3 centre crop 0x6122b8 path 1: cmp r0,#4 -> #5 (disabled since VdfInputCmdSetDeSqueeze 0x60be72 enforces <5)"
+    },
+    {
+      "id": "HDMI-crop-path2",
+      "binary": "cpapp-b.bin",
+      "file_off": "0x50a322",
+      "ram_address": "0x612322",
+      "length": 2,
+      "old": "0428",
+      "new": "0528",
+      "code": true,
+      "old_asm": "cmp r0, #4",
+      "new_asm": "cmp r0, #5",
+      "note": "desqueeze 2.0x 4:3 centre crop 0x6122b8 path 2: cmp r0,#4 -> #5 (disabled)"
+    }
+  ],
+  "guards": [
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdce50",
+      "ram_address": "0x1e4e50",
+      "length": 16,
+      "bytes": "f0b503af2de90007d7f814900c461e46",
+      "note": "desqueeze_ratio prologue (outside lcdratio32 guards)"
+    },
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdce60",
+      "ram_address": "0x1e4e60",
+      "length": 16,
+      "bytes": "d9f80000d0f89817484688470078d7f8",
+      "note": "desqueeze_ratio code lookup"
+    },
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdceb0",
+      "ram_address": "0x1e4eb0",
+      "length": 16,
+      "bytes": "4ff04b0a4ff4807515e00020a8f80000",
+      "note": "desqueeze_ratio 1.8x 17:9 case"
+    },
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdcef0",
+      "ram_address": "0x1e4ef0",
+      "length": 16,
+      "bytes": "d9f80000d0f8c81648468847082811d1",
+      "note": "desqueeze_ratio vtable stride check"
+    },
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdcfb0",
+      "ram_address": "0x1e4fb0",
+      "length": 16,
+      "bytes": "8070bb68032b1bd0022b12d10b0c80b2",
+      "note": "picture_ratio before HDMI fill hook (outside lcdratio32 guards)"
+    },
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdcfc0",
+      "ram_address": "0x1e4fc0",
+      "length": 16,
+      "bytes": "1a02b2fbfef250434ff6fe7202ea1020",
+      "note": "picture_ratio pillarbox width calculation"
+    },
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdcff0",
+      "ram_address": "0x1e4ff0",
+      "length": 16,
+      "bytes": "8ab2bef1020f134608bf13fa80f30328",
+      "note": "picture_ratio letterbox entry (untouched)"
+    },
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdd380",
+      "ram_address": "0x1e5380",
+      "length": 16,
+      "bytes": "032800f29080dfe800f00211204d3068",
+      "note": "hdmi_desqueeze_ratio outer jump table"
+    },
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdd3f0",
+      "ram_address": "0x1e53f0",
+      "length": 16,
+      "bytes": "501430468847022858d0052853d140f2",
+      "note": "hdmi_desqueeze_ratio 1.3x 17:9 case"
+    },
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdd430",
+      "ram_address": "0x1e5430",
+      "length": 16,
+      "bytes": "d0f850143046884702283ad0052832d1",
+      "note": "hdmi_desqueeze_ratio 1.8x vtable check"
+    },
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0xdd470",
+      "ram_address": "0x1e5470",
+      "length": 16,
+      "bytes": "010101ea40000ae0a8b24843610010fa",
+      "note": "hdmi_desqueeze_ratio interlaced/progressive arithmetic"
+    },
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0x50a2b0",
+      "ram_address": "0x6122b0",
+      "length": 16,
+      "bytes": "2b20a4f86000b0bdf0b503af2de9000b",
+      "note": "desqueeze 2.0x crop prologue alignment block"
+    },
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0x50a2d0",
+      "ram_address": "0x6122d0",
+      "length": 16,
+      "bytes": "40f08d8015f051ff15f0d3ff06462868",
+      "note": "desqueeze 2.0x crop active flag test"
+    },
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0x50a300",
+      "ram_address": "0x612300",
+      "length": 16,
+      "bytes": "b8f8080000295bd0b8f8102001eb4101",
+      "note": "desqueeze 2.0x crop path 1 scaling"
+    },
+    {
+      "binary": "cpapp-b.bin",
+      "file_off": "0x50a330",
+      "ram_address": "0x612330",
+      "length": 16,
+      "bytes": "c81628468847082814d1b8f812004ff6",
+      "note": "desqueeze 2.0x crop path 2 output check"
+    }
+  ]
+}

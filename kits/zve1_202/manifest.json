@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "body_id": "zve1_202",
+  "camera": "ZV-E1",
+  "firmware": "2.02",
+  "version_txt": "32000_08.2025101101",
+  "toolchain": "ziglang 0.13.0 (clang 18.1.6)",
+  "persistent_writes": false,
+  "device_info": {
+    "file": "DeviceInfo.xml",
+    "sha256": "e44713178fad970870ead845c93abdfcf150c418de11b306da91f2d09d67c1b7",
+    "size": 517
+  },
+  "readonly": {
+    "check": {
+      "file": "libJit_zv_check.so",
+      "sha256": "fd78700bec66c78cd13e421adfc52ea1b5d3c418711c69571cf0a1d9ad9cf627",
+      "size": 54096,
+      "level": 101,
+      "summary": "Coherent read-only preflight check (zvread_v4: 31 cp + 12 lm + 101 av sites)"
+    },
+    "dump": {
+      "file": "libJit_zv_dump.so",
+      "sha256": "2b676263ccb09969cd2f8fce985578593fd0756f11198e25faef840e88733cfe",
+      "size": 57784,
+      "level": 102,
+      "summary": "Coherent read-only diagnostic dump + coprocessor pages (zvread_v4)"
+    }
+  },
+  "packs": {
+    "core_open_gate": {
+      "label": "Core 3:2 Open Gate (Sensor + DMM + Output Size)",
+      "required": true,
+      "apply_steps": [
+        "L13",
+        "L5",
+        "L16"
+      ],
+      "putback_steps": [
+        "L17",
+        "L6",
+        "L14"
+      ],
+      "summary": "Enables 3840x2560 sensor readout, raw write buffer resize, and output size class"
+    },
+    "mp4_3x2": {
+      "label": "Native 3:2 MP4 Container & Playback",
+      "required": false,
+      "apply_steps": [
+        "V19"
+      ],
+      "putback_steps": [
+        "V20"
+      ],
+      "fallback_apply_steps": [
+        "L19"
+      ],
+      "fallback_putback_steps": [
+        "L20"
+      ],
+      "summary": "Patches encoder tables + 8 libmpr.so sites for native 3:2 MP4/NRT/playback (falls back to L19/L20)"
+    },
+    "screen_3x2": {
+      "label": "3:2 Rear LCD Fill & C2 Aspect Cycling",
+      "required": false,
+      "apply_steps": [
+        "S16",
+        "C19"
+      ],
+      "putback_steps": [
+        "C20",
+        "S17"
+      ],
+      "summary": "Full-height 3:2 rear LCD live view with focus frames and C2 aspect cycling"
+    },
+    "hdmi32": {
+      "label": "Clean 3:2 Pillarboxed HDMI & De-Squeeze",
+      "required": false,
+      "apply_steps": [
+        "H16"
+      ],
+      "putback_steps": [
+        "H17"
+      ],
+      "summary": "Clean 3:2 pillarboxed HDMI output and uncropped 3:2 anamorphic de-squeeze"
+    },
+    "high_bitrate": {
+      "label": "High-Bitrate Long-GOP (200M/300M)",
+      "required": false,
+      "apply_steps": [
+        "B19"
+      ],
+      "putback_steps": [
+        "B20"
+      ],
+      "summary": "Upgrades 27 XAVC HS/S Long-GOP 23.98p/25p profiles to 200M/300M"
+    },
+    "xavc_si": {
+      "label": "XAVC S-I All-Intra 3840x2560",
+      "required": false,
+      "apply_steps": [
+        "I19"
+      ],
+      "putback_steps": [
+        "I20"
+      ],
+      "summary": "Orthogonal delta unlocking XAVC S-I 4K All-Intra 3840x2560 recording"
+    }
+  },
+  "steps": {
+    "L13": {
+      "file": "libJit_zv_L13.so",
+      "sha256": "5f2d902a11d8b0030d3557a3235dd436deadedc1d6c214b87f9ac86ce86c1a8c",
+      "size": 19032,
+      "level": 13,
+      "summary": "Apply DMM raw write buffer size dmmwb_zv_v1 (10.3MB -> 26.2MB, 1 word)"
+    },
+    "L14": {
+      "file": "libJit_zv_L14.so",
+      "sha256": "af27650a021bdbdb3ae0270663c8cee21f0b8c302450ea8b87c041ea74bd28c9",
+      "size": 19048,
+      "level": 14,
+      "summary": "Put back DMM raw write buffer size dmmwb_zv_v1"
+    },
+    "L5": {
+      "file": "libJit_zv_L5.so",
+      "sha256": "5d419a3222f413b01a05c3dcf27f85c3cd2de16354f44d4feae79a084edfae47",
+      "size": 32736,
+      "level": 5,
+      "summary": "Apply sensor-side open-gate ogsq_zv_v2 (21 sensor/record sites + stored record)"
+    },
+    "L6": {
+      "file": "libJit_zv_L6.so",
+      "sha256": "0850515ead1d11214509974f30edc22889db23a6fa81cc4a67b236883f6dc9e6",
+      "size": 32736,
+      "level": 6,
+      "summary": "Put back sensor-side open-gate ogsq_zv_v2"
+    },
+    "L16": {
+      "file": "libJit_zv_L16.so",
+      "sha256": "4261077b9c3b3b0534534d4926e4e38efdd05707b0b1a80959e18defc3d1e264",
+      "size": 16232,
+      "level": 16,
+      "summary": "Apply coprocessor output size outsz2560_zv_v1 (3840x2160 -> 3840x2560)"
+    },
+    "L17": {
+      "file": "libJit_zv_L17.so",
+      "sha256": "8dbe4247edf49fbc3fdbc51a8bfdc6795212c83980469b5a8b9a8ec15de03c27",
+      "size": 16232,
+      "level": 17,
+      "summary": "Put back coprocessor output size outsz2560_zv_v1"
+    },
+    "L19": {
+      "file": "libJit_zv_L19.so",
+      "sha256": "4341773dcfb1cb922379075ed2760f75e9443e7a9127f9ae80ddd5ebff895c26",
+      "size": 25552,
+      "level": 19,
+      "summary": "Apply baseline encoder tables ogfile2560_hs_s_zv_v1 (101 av-cam + 4 libmpr)"
+    },
+    "L20": {
+      "file": "libJit_zv_L20.so",
+      "sha256": "f54bb2855db9fe4e7d48c7eec06f67b9b9c218ebe8fb839ad4e219406df9a987",
+      "size": 25528,
+      "level": 20,
+      "summary": "Put back baseline encoder tables ogfile2560_hs_s_zv_v1"
+    },
+    "V19": {
+      "file": "libJit_zv_V19.so",
+      "sha256": "657ea733c8574c6a2d9ab6961f09c513c219a4a588375f34348e0e284da69f01",
+      "size": 26536,
+      "level": 19,
+      "summary": "Apply encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_zv_v3 (101 av-cam + 12 libmpr)"
+    },
+    "V20": {
+      "file": "libJit_zv_V20.so",
+      "sha256": "e77f71adfd1850944aeff91c5ba210f7cfeddadcb5582cc931bbd5c2e8ba98c3",
+      "size": 26536,
+      "level": 20,
+      "summary": "Put back encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_zv_v3"
+    },
+    "S16": {
+      "file": "libJit_zv_S16.so",
+      "sha256": "a82430f73be411ce2ea84ba53653d8460ad1855bf153eda83373adab82741683",
+      "size": 16632,
+      "level": 16,
+      "summary": "Apply rear LCD 3:2 fill & AF/tracking frame tables lcdfill_zv_v2 (5 words)"
+    },
+    "S17": {
+      "file": "libJit_zv_S17.so",
+      "sha256": "86087137ad4e513bd3eb0fdf2a787f794f75ba2df7031c3ec53637927454876c",
+      "size": 16632,
+      "level": 17,
+      "summary": "Put back rear LCD 3:2 fill & AF/tracking frame tables lcdfill_zv_v2"
+    },
+    "C19": {
+      "file": "libJit_zv_C19.so",
+      "sha256": "431c8b87cbf5ffaa8a769c1881765eac52af17e471c1e7c6f50cea96ba6fba7e",
+      "size": 24368,
+      "level": 19,
+      "summary": "Apply C2 preview aspect cycling routine lcdcycle_zv_v1 (appFw.so)"
+    },
+    "C20": {
+      "file": "libJit_zv_C20.so",
+      "sha256": "d6d96e8a72f86375d3a27bf7bccfe05276b0c340edd4da11d1265c8b0791a35c",
+      "size": 24392,
+      "level": 20,
+      "summary": "Put back C2 preview aspect cycling routine lcdcycle_zv_v1"
+    },
+    "H16": {
+      "file": "libJit_zv_H16.so",
+      "sha256": "001ecd26d0f63365cb4a072693a47bc8f5ae2d4860dc2b746e625ae48a0d2fe6",
+      "size": 16856,
+      "level": 16,
+      "summary": "Apply 3:2 pillarboxed HDMI & anamorphic de-squeeze hdmi32_zv_202 (16 cpapp words)"
+    },
+    "H17": {
+      "file": "libJit_zv_H17.so",
+      "sha256": "4993539bbab698425b2b183ef0d202f9bcf9185f6ab58a12e275a18bfb5ab169",
+      "size": 16872,
+      "level": 17,
+      "summary": "Put back 3:2 pillarboxed HDMI & anamorphic de-squeeze hdmi32_zv_202"
+    },
+    "B19": {
+      "file": "libJit_zv_B19.so",
+      "sha256": "974e2624d0cf34862deb2585606715893af026fc0201c2e47d5f65083a3637a6",
+      "size": 26496,
+      "level": 19,
+      "summary": "Apply 200M/300M high-bitrate Long-GOP overlay og_highbitrate_zv_202 (108 av-cam sites)"
+    },
+    "B20": {
+      "file": "libJit_zv_B20.so",
+      "sha256": "7d1bfb6eaaa6d08438522fbf56138f572a49f431cea5b87dbf0599749837da72",
+      "size": 26496,
+      "level": 20,
+      "summary": "Put back 200M/300M high-bitrate Long-GOP overlay og_highbitrate_zv_202"
+    },
+    "I19": {
+      "file": "libJit_zv_I19.so",
+      "sha256": "1a1824afaf10af30a49bbccdb19cced71533d9a7cc22c7f2d19dabcb1c9013e8",
+      "size": 21648,
+      "level": 19,
+      "summary": "Apply orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_zv_202 (16 av-cam + 2 libmpr)"
+    },
+    "I20": {
+      "file": "libJit_zv_I20.so",
+      "sha256": "4105222082b8349183d07010dfaf749c0350ed7cac473e586739f310832b8ec8",
+      "size": 21664,
+      "level": 20,
+      "summary": "Put back orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_zv_202"
+    }
+  }
+}

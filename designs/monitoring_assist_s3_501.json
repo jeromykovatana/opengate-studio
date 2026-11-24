@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "design": "monitoring_assist_s3_501",
+  "build": "a7s3_501",
+  "version_txt": "39183_16.2026041504",
+  "camera": "ILCE-7SM3 (a7S III), firmware 5.01",
+  "title": "Unlock Focus Magnifier during Bright Monitoring and remove Digital Zoom AF/monitoring exclusions (volatile RAM)",
+  "status": "offline-verified volatile RAM patch design (never flashed; never run on camera)",
+  "target_process_library": "/usr/lib/appFw.so",
+  "mechanism": "volatile /proc/self/mem via libJit.so (L19/L20); cold boot or battery pull restores stock",
+  "persistent_writes": false,
+  "compatible_with": [
+    "ogsq_s3_v5",
+    "outsz2560_s3_v1",
+    "ogfile2560_hs_s_s3_v1",
+    "mp4_3x2_s3_501",
+    "og_xavcsi_s3_501",
+    "og_highbitrate_s3_501"
+  ],
+  "artifact_sha256": {
+    "appFw.so": "eba89299273542e9de89d64f3bd380114b2b9df67a246a6927cd7a83f2043781"
+  },
+  "elf_segment_check": {
+    "pt_load0_file_offset": "0x0",
+    "pt_load0_vaddr": "0x0",
+    "pt_load0_filesz": "0x502835f",
+    "pt_load0_memsz": "0x502835f",
+    "all_appfw_patches_and_guards_in_pt_load0": true
+  },
+  "patches": [
+    {
+      "id": "FM-bright-mag",
+      "binary": "appFw.so",
+      "kind": "FM-rodata",
+      "function": "feature_manager::exclusive_focus_mag_during_bright_monitoring (PRODUCT_MODEL_OT_UUD idx 6)",
+      "getter_va": "0x17f88e8",
+      "caller_sites": [
+        "0x1b603bc"
+      ],
+      "file_off": "0x3720ae0",
+      "va": "0x3720ae0",
+      "length": 4,
+      "old": "01000000",
+      "new": "00000000",
+      "code": false,
+      "note": "TYPE_EXCLUSION (1) -> TYPE_NO_EXCLUSION (0): sole caller 0x1b603bc skips 0x18ed290 Bright Monitoring gate and invokes Focus Magnifier (0x1b5f758) directly."
+    },
+    {
+      "id": "FM-digzoom-excl",
+      "binary": "appFw.so",
+      "kind": "FM-rodata",
+      "function": "feature_manager::exclusive_during_digital_zoom (PRODUCT_MODEL_OT_UUD idx 6)",
+      "getter_va": "0x17f8888",
+      "caller_sites": [
+        "0x181193c",
+        "0x1876690"
+      ],
+      "file_off": "0x3720290",
+      "va": "0x3720290",
+      "length": 4,
+      "old": "00000000",
+      "new": "01000000",
+      "code": false,
+      "note": "TYPE_EXCLUSION (0) -> TYPE_NO_EXCLUSION (1, matching retail ZV-E1 2.02): lifts digital/Clear-Image zoom restrictions in mp_remote_send_decider::monitoring_delivering_status_update (0x181193c) and view_mp_af_window::send_to_mp_distributor (0x1876690)."
+    }
+  ],
+  "guards": [
+    {
+      "binary": "appFw.so",
+      "file_off": "0x0",
+      "va": "0x0",
+      "length": 16,
+      "bytes": "7f454c46020101030000000000000000",
+      "note": "ELF64 header magic guard (untouched stock)"
+    },
+    {
+      "binary": "appFw.so",
+      "file_off": "0x17f88e0",
+      "va": "0x17f88e0",
+      "length": 16,
+      "bytes": "007861b8c0035fd6600d029001288fb9",
+      "note": "Untouched AArch64 prologue guard at getter 0x17f88e8"
+    },
+    {
+      "binary": "appFw.so",
+      "file_off": "0x17f8880",
+      "va": "0x17f8880",
+      "length": 16,
+      "bytes": "007861b8c0035fd6600d029001288fb9",
+      "note": "Untouched AArch64 prologue guard at getter 0x17f8888"
+    },
+    {
+      "binary": "appFw.so",
+      "file_off": "0x3720ad0",
+      "va": "0x3720ad0",
+      "length": 16,
+      "bytes": "01000000010000000100000001000000",
+      "note": "pre-site 16B untouched stock guard near FM-bright-mag (0x3720ae0)"
+    },
+    {
+      "binary": "appFw.so",
+      "file_off": "0x3720af0",
+      "va": "0x3720af0",
+      "length": 16,
+      "bytes": "00000000000000000000000000000000",
+      "note": "post-site 16B untouched stock guard near FM-bright-mag (0x3720ae0)"
+    },
+    {
+      "binary": "appFw.so",
+      "file_off": "0x3720280",
+      "va": "0x3720280",
+      "length": 16,
+      "bytes": "01000000010000000100000001000000",
+      "note": "pre-site 16B untouched stock guard near FM-digzoom-excl (0x3720290)"
+    },
+    {
+      "binary": "appFw.so",
+      "file_off": "0x37202a0",
+      "va": "0x37202a0",
+      "length": 16,
+      "bytes": "01000000000000000000000000000000",
+      "note": "post-site 16B untouched stock guard near FM-digzoom-excl (0x3720290)"
+    }
+  ]
+}

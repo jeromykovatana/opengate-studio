@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "design": "mp4_3x2_s3_501",
+  "camera": "ILCE-7SM3 (a7S III)",
+  "build": "a7s3_501",
+  "version_txt": "39183_16.2026041504",
+  "title": "Native 3:2 (3840x2560) XAVC MP4 container, codec level, NRT XML & in-camera playback patch (ILCE-7SM3 (a7S III) a7s3_501)",
+  "target_process_library": "/usr/lib/libmpr.so",
+  "mechanism": "volatile /proc/self/mem via libJit.so (L19/L20)",
+  "persistent_writes": false,
+  "requires": "ogsq_s3_v5 + outsz2560_s3_v1 + ogfile2560_hs_s_s3_v1 (+ lcdratio32_s3_v1 / lcdcycle_s3_v3 for 3:2 monitor)",
+  "artifact_sha256": {
+    "libmpr.so": "59ea134f5a40166379258126b7ff02c0b36b9846129b22b4cdc7faa52c927459"
+  },
+  "elf_segment_check": {
+    "pt_load0_p_offset": 0,
+    "pt_load0_p_vaddr": 0,
+    "pt_load0_p_filesz": 3059620,
+    "max_site_end": 2441504
+  },
+  "rtmd_gyro_preservation": {
+    "rtmd_track_builder": "FUN_00227394",
+    "xavcsMovieMeta_Init": "0x109b24",
+    "xavcsMovieMeta_WriteMetaInfo": "0x10a9b4",
+    "note": "cdsc timed-metadata track (rtmd) has zero dependency on video width, height, or NRT aspectRatio; gyro/IBIS stabilization stays intact off-card."
+  },
+  "patches": [
+    {
+      "binary": "libmpr.so",
+      "kind": "L2-mp4-avc",
+      "function": "FUN_00223c4c",
+      "file_off": "0x223cc4",
+      "va": "0x223cc4",
+      "old": "060e8152",
+      "new": "06408152",
+      "old_asm": "mov w6, #0x870",
+      "new_asm": "mov w6, #0xa00",
+      "code": true,
+      "note": "RecAttribute.height 2160 -> 2560 for 4K AVC profiles (vpc 0,2,9)"
+    },
+    {
+      "binary": "libmpr.so",
+      "kind": "L2-mp4-hevc",
+      "function": "FUN_00223c4c",
+      "file_off": "0x223d10",
+      "va": "0x223d10",
+      "old": "060e8152",
+      "new": "06408152",
+      "old_asm": "mov w6, #0x870",
+      "new_asm": "mov w6, #0xa00",
+      "code": true,
+      "note": "RecAttribute.height 2160 -> 2560 for 4K HEVC profiles (vpc 5,7)"
+    },
+    {
+      "binary": "libmpr.so",
+      "kind": "L2-lvl-avc",
+      "function": "FUN_00223848",
+      "file_off": "0x223884",
+      "va": "0x223884",
+      "old": "20040054",
+      "new": "22040054",
+      "old_asm": "b.eq #0x223908",
+      "new_asm": "b.hs #0x223908",
+      "code": true,
+      "note": "AVC level calculator after cmp w0, #0x870: b.eq -> b.hs (+0x84) so 2560 keeps Level 5.1/5.2 instead of 4.0"
+    },
+    {
+      "binary": "libmpr.so",
+      "kind": "L2-lvl-hevc",
+      "function": "FUN_00223848",
+      "file_off": "0x2239e0",
+      "va": "0x2239e0",
+      "old": "c0030054",
+      "new": "c2030054",
+      "old_asm": "b.eq #0x223a58",
+      "new_asm": "b.hs #0x223a58",
+      "code": true,
+      "note": "HEVC level calculator after cmp w0, #0x870: b.eq -> b.hs (+0x78) so 2560 keeps Level 5.0/5.1/5.2 instead of 4.1"
+    },
+    {
+      "binary": "libmpr.so",
+      "kind": "L3-nrt-vline",
+      "function": "FUN_001181cc",
+      "file_off": "0x118634",
+      "va": "0x118634",
+      "old": "000e8152",
+      "new": "00408152",
+      "old_asm": "mov w0, #0x870",
+      "new_asm": "mov w0, #0xa00",
+      "code": true,
+      "note": "NonRealTimeMeta <VideoLayout numOfVerticalLine>: 2160 -> 2560"
+    },
+    {
+      "binary": "libmpr.so",
+      "kind": "L3-nrt-noasp",
+      "function": "FUN_00253f64 (NrtMetaWrapper::Init)",
+      "file_off": "0x25411c",
+      "va": "0x25411c",
+      "old": "20008052",
+      "new": "00008052",
+      "old_asm": "mov w0, #1",
+      "new_asm": "mov w0, #0",
+      "code": true,
+      "note": "Clears b_aspectValid flag passed to SetVideoLayout (0x234fb8) because XML enum table lacks 3:2"
+    },
+    {
+      "binary": "libmpr.so",
+      "kind": "L4-play-w",
+      "function": "FUN_00225fd8",
+      "file_off": "0x2260cc",
+      "va": "0x2260cc",
+      "old": "01c08352",
+      "new": "01e08152",
+      "old_asm": "mov w1, #0x1e00",
+      "new_asm": "mov w1, #0xf00",
+      "code": true,
+      "note": "Playback validator: repurposes unused 8K width (7680) to 3840 while preserving 3840x2160 playback"
+    },
+    {
+      "binary": "libmpr.so",
+      "kind": "L4-play-h",
+      "function": "FUN_00225fd8",
+      "file_off": "0x2260d0",
+      "va": "0x2260d0",
+      "old": "011ca272",
+      "new": "0140a172",
+      "old_asm": "movk w1, #0x10e0, lsl #16",
+      "new_asm": "movk w1, #0xa00, lsl #16",
+      "code": true,
+      "note": "Playback validator: repurposes unused 8K height (4320) to 2560 paired with L4-play-w"
+    }
+  ],
+  "optional_sites": [
+    {
+      "binary": "libmpr.so",
+      "kind": "Opt-vprf-si",
+      "function": "FUN_00224c24",
+      "file_off": "0x224cfc",
+      "va": "0x224cfc",
+      "old": "01f29e52",
+      "new": "01c09e52",
+      "old_asm": "mov w1, #0xf790",
+      "new_asm": "mov w1, #0xf600",
+      "code": true,
+      "note": "Optional (XAVC S-I Intra vpc 9 only): maps VPRF videoParamId 0xf790 -> 0xf600; unused by ogfile2560_hs_s"
+    }
+  ],
+  "guards": [
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x0",
+      "va": "0x0",
+      "bytes": "7f454c46020101030000000000000000",
+      "note": "ELF64 header magic guard"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x118620",
+      "va": "0x118620",
+      "bytes": "e01700547f4a00b9be00001400008252",
+      "note": "pre-site 16B guard before 0x118634"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x118640",
+      "va": "0x118640",
+      "bytes": "fcffff1700a08052607a0079005a8052",
+      "note": "post-site 16B guard after 0x118638"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x223870",
+      "va": "0x223870",
+      "bytes": "c0035fd6205040791fe01071a0000054",
+      "note": "pre-site 16B guard before 0x223884"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x223890",
+      "va": "0x223890",
+      "bytes": "c2149e52202040b96207a0721f00026b",
+      "note": "post-site 16B guard after 0x223888"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x2239d0",
+      "va": "0x2239d0",
+      "bytes": "00cc0011c0035fd6205040791fc02171",
+      "note": "pre-site 16B guard before 0x2239e0"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x2239f0",
+      "va": "0x2239f0",
+      "bytes": "1fe0107161060054202040b91f004671",
+      "note": "post-site 16B guard after 0x2239e4"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x223cb0",
+      "va": "0x223cb0",
+      "bytes": "1c000014220080520300805244018052",
+      "note": "pre-site 16B guard before 0x223cc4"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x223cd0",
+      "va": "0x223cd0",
+      "bytes": "22008052030080524401805245008052",
+      "note": "post-site 16B guard after 0x223cc8"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x223d00",
+      "va": "0x223d00",
+      "bytes": "2200805203008052e503022a44018052",
+      "note": "pre-site 16B guard before 0x223d10"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x223d20",
+      "va": "0x223d20",
+      "bytes": "024400b9221040b9034c00b903008052",
+      "note": "post-site 16B guard after 0x223d14"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x224ce0",
+      "va": "0x224ce0",
+      "bytes": "01068052a0530139a0770139a07b0139",
+      "note": "pre-site 16B guard before 0x224cfc"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x224d00",
+      "va": "0x224d00",
+      "bytes": "a09f0139e11fbe72602840b9a24b0139",
+      "note": "post-site 16B guard after 0x224d00"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x2260b0",
+      "va": "0x2260b0",
+      "bytes": "f8ffff1701008252010ea1721f00016b",
+      "note": "pre-site 16B guard before 0x2260cc"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x2260e0",
+      "va": "0x2260e0",
+      "bytes": "5f0000b9c0035fd6232c407920284079",
+      "note": "post-site 16B guard after 0x2260d4"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x254100",
+      "va": "0x254100",
+      "bytes": "80ba407901008012bf630239a07300b9",
+      "note": "pre-site 16B guard before 0x25411c"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x254120",
+      "va": "0x254120",
+      "bytes": "bfa30239a0e30139804a40b9bfaf00b9",
+      "note": "post-site 16B guard after 0x254120"
+    }
+  ]
+}

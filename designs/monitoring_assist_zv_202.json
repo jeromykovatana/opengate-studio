@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "design": "monitoring_assist_zv_202",
+  "build": "zve1_202",
+  "version_txt": "32000_08.2025101101",
+  "camera": "ZV-E1, firmware 2.02",
+  "title": "Unlock Focus Magnifier during Bright Monitoring (volatile RAM)",
+  "status": "offline-verified volatile RAM patch design (never flashed; never run on camera)",
+  "target_process_library": "/usr/lib/appFw.so",
+  "mechanism": "volatile /proc/self/mem via libJit.so (L19/L20); cold boot or battery pull restores stock",
+  "persistent_writes": false,
+  "compatible_with": [
+    "dmmwb_zv_v1",
+    "ogsq_zv_v2",
+    "outsz2560_zv_v1",
+    "ogfile2560_hs_s_zv_v1",
+    "mp4_3x2_zv_202",
+    "og_xavcsi_zv_202",
+    "og_highbitrate_zv_202"
+  ],
+  "artifact_sha256": {
+    "appFw.so": "88146fa5f5844b45de9f20ab5f1750aa6e821e10658af37f88ce7d4d76a833f8"
+  },
+  "elf_segment_check": {
+    "pt_load0_file_offset": "0x0",
+    "pt_load0_vaddr": "0x0",
+    "pt_load0_filesz": "0x4afa87d",
+    "pt_load0_memsz": "0x4afa87d",
+    "all_appfw_patches_and_guards_in_pt_load0": true
+  },
+  "patches": [
+    {
+      "id": "FM-bright-mag",
+      "binary": "appFw.so",
+      "kind": "FM-rodata",
+      "function": "feature_manager::exclusive_focus_mag_during_bright_monitoring (PRODUCT_MODEL_SA idx 19)",
+      "getter_va": "0x1915174",
+      "caller_sites": [
+        "0x1c404d8"
+      ],
+      "file_off": "0x3574404",
+      "va": "0x3574404",
+      "length": 4,
+      "old": "01000000",
+      "new": "00000000",
+      "code": false,
+      "note": "TYPE_EXCLUSION (1) -> TYPE_NO_EXCLUSION (0): sole caller 0x1c404d8 skips 0x19f88fc Bright Monitoring gate and invokes Focus Magnifier (0x1c3f898) directly."
+    }
+  ],
+  "guards": [
+    {
+      "binary": "appFw.so",
+      "file_off": "0x0",
+      "va": "0x0",
+      "length": 16,
+      "bytes": "7f454c46020101030000000000000000",
+      "note": "ELF64 header magic guard (untouched stock)"
+    },
+    {
+      "binary": "appFw.so",
+      "file_off": "0x1915170",
+      "va": "0x1915170",
+      "length": 16,
+      "bytes": "c0035fd640eb01d0018084b9e0e200f0",
+      "note": "Untouched AArch64 prologue guard at getter 0x1915174"
+    },
+    {
+      "binary": "appFw.so",
+      "file_off": "0x35743f0",
+      "va": "0x35743f0",
+      "length": 16,
+      "bytes": "00000000000000000000000000000000",
+      "note": "pre-site 16B untouched stock guard near FM-bright-mag (0x3574404)"
+    },
+    {
+      "binary": "appFw.so",
+      "file_off": "0x3574410",
+      "va": "0x3574410",
+      "length": 16,
+      "bytes": "00000000000000000000000000000000",
+      "note": "post-site 16B untouched stock guard near FM-bright-mag (0x3574404)"
+    }
+  ]
+}

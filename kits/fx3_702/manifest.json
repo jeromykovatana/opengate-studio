@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "body_id": "fx3_702",
+  "camera": "ILME-FX3 (FX3)",
+  "firmware": "7.02",
+  "version_txt": "39180_21.2025122503",
+  "toolchain": "ziglang 0.13.0 (clang 18.1.6)",
+  "persistent_writes": false,
+  "device_info": {
+    "file": "DeviceInfo.xml",
+    "sha256": "e44713178fad970870ead845c93abdfcf150c418de11b306da91f2d09d67c1b7",
+    "size": 517
+  },
+  "readonly": {
+    "check": {
+      "file": "libJit_fx3_check.so",
+      "sha256": "ab4bdee0c1aaa38b4635a9c500680e66ebef5dffe2f7a6a9ee55119e3f041e47",
+      "size": 56816,
+      "level": 101,
+      "summary": "Coherent read-only preflight check (fx3read_v2: 55 cp + 12 lm + 101 av sites)"
+    },
+    "dump": {
+      "file": "libJit_fx3_dump.so",
+      "sha256": "15e35b234e17a06a1ee72f51e20ab40fbcf8feabc6ccfa87c24834de7b0818b2",
+      "size": 60376,
+      "level": 102,
+      "summary": "Coherent read-only diagnostic dump + coprocessor pages (fx3read_v2)"
+    }
+  },
+  "packs": {
+    "core_open_gate": {
+      "label": "Core 3:2 Open Gate (Sensor + Output Size)",
+      "required": true,
+      "apply_steps": [
+        "L5",
+        "L16"
+      ],
+      "putback_steps": [
+        "L17",
+        "L6"
+      ],
+      "summary": "Enables 3840x2560 sensor readout and coprocessor output size class"
+    },
+    "mp4_3x2": {
+      "label": "Native 3:2 MP4 Container & Playback",
+      "required": false,
+      "apply_steps": [
+        "V19"
+      ],
+      "putback_steps": [
+        "V20"
+      ],
+      "fallback_apply_steps": [
+        "L19"
+      ],
+      "fallback_putback_steps": [
+        "L20"
+      ],
+      "summary": "Patches encoder tables + 8 libmpr.so sites for native 3:2 MP4/NRT/playback (falls back to L19/L20)"
+    },
+    "screen_3x2": {
+      "label": "3:2 Rear LCD Ratio & De-Squeeze Display",
+      "required": false,
+      "apply_steps": [
+        "S16"
+      ],
+      "putback_steps": [
+        "S17"
+      ],
+      "summary": "3:2 rear LCD picture ratio, focus frames, and FX3 De-Squeeze Display ratios"
+    },
+    "hdmi32": {
+      "label": "Clean 3:2 Pillarboxed HDMI & De-Squeeze",
+      "required": false,
+      "apply_steps": [
+        "H16"
+      ],
+      "putback_steps": [
+        "H17"
+      ],
+      "summary": "Clean 3:2 pillarboxed HDMI output and uncropped 3:2 anamorphic de-squeeze"
+    },
+    "high_bitrate": {
+      "label": "High-Bitrate Long-GOP (200M/300M)",
+      "required": false,
+      "apply_steps": [
+        "B19"
+      ],
+      "putback_steps": [
+        "B20"
+      ],
+      "summary": "Upgrades 27 XAVC HS/S Long-GOP 23.98p/25p profiles to 200M/300M"
+    },
+    "xavc_si": {
+      "label": "XAVC S-I All-Intra 3840x2560",
+      "required": false,
+      "apply_steps": [
+        "I19"
+      ],
+      "putback_steps": [
+        "I20"
+      ],
+      "summary": "Orthogonal delta unlocking XAVC S-I 4K All-Intra 3840x2560 recording"
+    }
+  },
+  "steps": {
+    "L5": {
+      "file": "libJit_fx3_L5.so",
+      "sha256": "9fd94c179f8c7b721600313a1e7a7f2a173a1a3dae24319fe4411cba4dac5946",
+      "size": 32704,
+      "level": 5,
+      "summary": "Apply sensor-side open-gate ogsq_fx3_v1 (21 sensor/record sites + stored record)"
+    },
+    "L6": {
+      "file": "libJit_fx3_L6.so",
+      "sha256": "6c8544fb91879ba4c1b8ce9351826253b61557d797466f836e4e8e65b0acf3b6",
+      "size": 32720,
+      "level": 6,
+      "summary": "Put back sensor-side open-gate ogsq_fx3_v1"
+    },
+    "L16": {
+      "file": "libJit_fx3_L16.so",
+      "sha256": "cf644fb3d893c54ed80bffdde74fc51d7a4aab90bd74486f240ae23aaf3f636f",
+      "size": 16232,
+      "level": 16,
+      "summary": "Apply coprocessor output size outsz2560_fx3_v1 (3840x2160 -> 3840x2560)"
+    },
+    "L17": {
+      "file": "libJit_fx3_L17.so",
+      "sha256": "5a3c16bf88a3f7f817df12ea0e9aea8dc8e694755af69ac86f6e8339c6eba0d4",
+      "size": 16232,
+      "level": 17,
+      "summary": "Put back coprocessor output size outsz2560_fx3_v1"
+    },
+    "L19": {
+      "file": "libJit_fx3_L19.so",
+      "sha256": "47400649ac29ac03fd77b4805e0a41c60b4a3cfa1ae5e3f384f0d33a0b503050",
+      "size": 25536,
+      "level": 19,
+      "summary": "Apply baseline encoder tables ogfile2560_hs_s_fx3_v1 (101 av-cam + 4 libmpr)"
+    },
+    "L20": {
+      "file": "libJit_fx3_L20.so",
+      "sha256": "6ca3ee7df282bda70bc50bb4f9284ccc622c2c20e6ab64b964a949148a33d836",
+      "size": 25512,
+      "level": 20,
+      "summary": "Put back baseline encoder tables ogfile2560_hs_s_fx3_v1"
+    },
+    "V19": {
+      "file": "libJit_fx3_V19.so",
+      "sha256": "f134ab54bdd485eff7643df63b9f59d4d1d7ce9040273183788c2fdd687063b5",
+      "size": 26520,
+      "level": 19,
+      "summary": "Apply encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_fx3_v3 (101 av-cam + 12 libmpr)"
+    },
+    "V20": {
+      "file": "libJit_fx3_V20.so",
+      "sha256": "cf215b6115089b9d860b5fc6b09f9e4d69919f6c90f60ae7f24fe9b33afd853e",
+      "size": 26520,
+      "level": 20,
+      "summary": "Put back encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_fx3_v3"
+    },
+    "S16": {
+      "file": "libJit_fx3_S16.so",
+      "sha256": "bc40334bb9bd44b69f6f6eb268b90f37696e1126c773dfe483acb0f9b369beef",
+      "size": 17480,
+      "level": 16,
+      "summary": "Apply 3:2 LCD ratio, focus frames & FX3 De-Squeeze Display lcd32dsq_fx3_v1 (30 words)"
+    },
+    "S17": {
+      "file": "libJit_fx3_S17.so",
+      "sha256": "50a962685412467e2c9fb3f60440c2a8de5cf6d26ec71f1e4d7c305c4b396f0e",
+      "size": 17496,
+      "level": 17,
+      "summary": "Put back 3:2 LCD ratio, focus frames & FX3 De-Squeeze Display lcd32dsq_fx3_v1"
+    },
+    "H16": {
+      "file": "libJit_fx3_H16.so",
+      "sha256": "8000d194233c372ea7ac48c8c921199b9429cb92aca40850d68a505386926764",
+      "size": 16744,
+      "level": 16,
+      "summary": "Apply 3:2 pillarboxed HDMI & anamorphic de-squeeze hdmi32_fx3_702 (18 cpapp words)"
+    },
+    "H17": {
+      "file": "libJit_fx3_H17.so",
+      "sha256": "60de7b1265ed4fbf2884f66fff344d1d06dc5f80a64868ada5affed89f827ba9",
+      "size": 16744,
+      "level": 17,
+      "summary": "Put back 3:2 pillarboxed HDMI & anamorphic de-squeeze hdmi32_fx3_702"
+    },
+    "B19": {
+      "file": "libJit_fx3_B19.so",
+      "sha256": "616d24d147dbf646deb0df3257ceeab39790e03bc301645b69852917c8e9813e",
+      "size": 26504,
+      "level": 19,
+      "summary": "Apply 200M/300M high-bitrate Long-GOP overlay og_highbitrate_fx3_702 (108 av-cam sites)"
+    },
+    "B20": {
+      "file": "libJit_fx3_B20.so",
+      "sha256": "040341f109d2b1ba956558cdaa665a839faef81dc53c8f3e4ba125949903e26d",
+      "size": 26504,
+      "level": 20,
+      "summary": "Put back 200M/300M high-bitrate Long-GOP overlay og_highbitrate_fx3_702"
+    },
+    "I19": {
+      "file": "libJit_fx3_I19.so",
+      "sha256": "64d9419235eb40fb3bce8a347386d2e17aaa15cfd73864bab9272902f00c545c",
+      "size": 22944,
+      "level": 19,
+      "summary": "Apply orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_fx3_702 (32 av-cam + 2 libmpr)"
+    },
+    "I20": {
+      "file": "libJit_fx3_I20.so",
+      "sha256": "12deb0f4827b944e7c9f7a6c7b5f3d919592bd909e502205a93c5e6657f5f55a",
+      "size": 22968,
+      "level": 20,
+      "summary": "Put back orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_fx3_702"
+    }
+  }
+}

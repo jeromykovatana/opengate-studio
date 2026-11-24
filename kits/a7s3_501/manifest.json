@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "body_id": "a7s3_501",
+  "camera": "ILCE-7SM3 (a7S III)",
+  "firmware": "5.01",
+  "version_txt": "39183_16.2026041504",
+  "toolchain": "ziglang 0.13.0 (clang 18.1.6)",
+  "persistent_writes": false,
+  "device_info": {
+    "file": "DeviceInfo.xml",
+    "sha256": "e44713178fad970870ead845c93abdfcf150c418de11b306da91f2d09d67c1b7",
+    "size": 517
+  },
+  "readonly": {
+    "check": {
+      "file": "libJit_s3_check.so",
+      "sha256": "d80e4e951c33b9a3bdddc99a4996a666951eed9a276fe842534f57346328480a",
+      "size": 52752,
+      "level": 101,
+      "summary": "Coherent read-only preflight check (s3read_v9: 25 cp + 12 lm + 101 av sites)"
+    },
+    "dump": {
+      "file": "libJit_s3_dump.so",
+      "sha256": "68790cda22525c1f54b270403c8aa611599e927518454416b4d7fb4f0e1e808f",
+      "size": 56216,
+      "level": 102,
+      "summary": "Coherent read-only diagnostic dump + coprocessor pages (s3read_v9)"
+    }
+  },
+  "packs": {
+    "core_open_gate": {
+      "label": "Core 3:2 Open Gate (Sensor + Output Size)",
+      "required": true,
+      "apply_steps": [
+        "L5",
+        "L16"
+      ],
+      "putback_steps": [
+        "L17",
+        "L6"
+      ],
+      "summary": "Enables 3840x2560 sensor readout and coprocessor output size class"
+    },
+    "mp4_3x2": {
+      "label": "Native 3:2 MP4 Container & Playback",
+      "required": false,
+      "apply_steps": [
+        "V19"
+      ],
+      "putback_steps": [
+        "V20"
+      ],
+      "fallback_apply_steps": [
+        "L19"
+      ],
+      "fallback_putback_steps": [
+        "L20"
+      ],
+      "summary": "Patches encoder tables + 8 libmpr.so sites for native 3:2 MP4/NRT/playback (falls back to L19/L20)"
+    },
+    "screen_3x2": {
+      "label": "3:2 Rear LCD/EVF Ratio & C3 Aspect Cycling",
+      "required": false,
+      "apply_steps": [
+        "S16",
+        "C19"
+      ],
+      "putback_steps": [
+        "C20",
+        "S17"
+      ],
+      "summary": "3:2 live-view picture ratio, focus frames, and C3 aspect cycling"
+    },
+    "hdmi32": {
+      "label": "Clean 3:2 Pillarboxed HDMI & De-Squeeze",
+      "required": false,
+      "apply_steps": [
+        "H16"
+      ],
+      "putback_steps": [
+        "H17"
+      ],
+      "summary": "Clean 3:2 pillarboxed HDMI output and uncropped 3:2 anamorphic de-squeeze"
+    },
+    "high_bitrate": {
+      "label": "High-Bitrate Long-GOP (200M/300M)",
+      "required": false,
+      "apply_steps": [
+        "B19"
+      ],
+      "putback_steps": [
+        "B20"
+      ],
+      "summary": "Upgrades 27 XAVC HS/S Long-GOP 23.98p/25p profiles to 200M/300M"
+    },
+    "xavc_si": {
+      "label": "XAVC S-I All-Intra 3840x2560",
+      "required": false,
+      "apply_steps": [
+        "I19"
+      ],
+      "putback_steps": [
+        "I20"
+      ],
+      "summary": "Orthogonal delta unlocking XAVC S-I 4K All-Intra 3840x2560 recording"
+    }
+  },
+  "steps": {
+    "L5": {
+      "file": "libJit_s3_L5.so",
+      "sha256": "5bc1bdcee924e1bd30e405fc29c269440b2c36548ede357d8e34c5d21cc4efa3",
+      "size": 32704,
+      "level": 5,
+      "summary": "Apply sensor-side open-gate ogsq_s3_v5 (21 sensor/record sites + stored record)"
+    },
+    "L6": {
+      "file": "libJit_s3_L6.so",
+      "sha256": "5ea7f7cac2a2bda8628a3dda9012532c7c508f6ea5ce9603021474ee5249f69c",
+      "size": 32720,
+      "level": 6,
+      "summary": "Put back sensor-side open-gate ogsq_s3_v5"
+    },
+    "L16": {
+      "file": "libJit_s3_L16.so",
+      "sha256": "ff206663b7df61ef6e20d182bbefba3e5341f2ddf1df588ffb38123f70eadc67",
+      "size": 16232,
+      "level": 16,
+      "summary": "Apply coprocessor output size outsz2560_s3_v1 (3840x2160 -> 3840x2560)"
+    },
+    "L17": {
+      "file": "libJit_s3_L17.so",
+      "sha256": "b56744396d5035c3862b276c4e9a85e950c0bbe890accd849bb8102fee0533ba",
+      "size": 16232,
+      "level": 17,
+      "summary": "Put back coprocessor output size outsz2560_s3_v1"
+    },
+    "L19": {
+      "file": "libJit_s3_L19.so",
+      "sha256": "85b5882d0fd2f2525a6eab109ed7ee8ea2f53be42351b56af52e2e7f7f47d588",
+      "size": 25536,
+      "level": 19,
+      "summary": "Apply baseline encoder tables ogfile2560_hs_s_s3_v1 (101 av-cam + 4 libmpr)"
+    },
+    "L20": {
+      "file": "libJit_s3_L20.so",
+      "sha256": "3683c64f54784cfb7fde5af0c4b4096cb6cd3d58cc9c3d988c92abd1c9358f86",
+      "size": 25512,
+      "level": 20,
+      "summary": "Put back baseline encoder tables ogfile2560_hs_s_s3_v1"
+    },
+    "V19": {
+      "file": "libJit_s3_V19.so",
+      "sha256": "3ef580f51952b458f3191fb08190311544f5fdc188b0151c5c0a57737bfc52c3",
+      "size": 26520,
+      "level": 19,
+      "summary": "Apply encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_s3_v3 (101 av-cam + 12 libmpr)"
+    },
+    "V20": {
+      "file": "libJit_s3_V20.so",
+      "sha256": "145af3e92df71648b15cd6fabd569963d3d990f1bd5f32df822a0a0688791653",
+      "size": 26520,
+      "level": 20,
+      "summary": "Put back encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_s3_v3"
+    },
+    "S16": {
+      "file": "libJit_s3_S16.so",
+      "sha256": "ffd20cf41d5bf2bc2376ef97f1d78dd1c9e4e307c4f1f4949d8af60e2de46333",
+      "size": 16936,
+      "level": 16,
+      "summary": "Apply 3:2 LCD/EVF ratio & focus frames lcdratio32_s3_v1 (14 words)"
+    },
+    "S17": {
+      "file": "libJit_s3_S17.so",
+      "sha256": "1f3afee9fd04b0fa90a6455a8b8c65f108c348c6c4336339da9409a586d317fc",
+      "size": 16936,
+      "level": 17,
+      "summary": "Put back 3:2 LCD/EVF ratio & focus frames lcdratio32_s3_v1"
+    },
+    "C19": {
+      "file": "libJit_s3_C19.so",
+      "sha256": "3a90cc6e280826c7f3aa70eb4aedef40aca63eb7c5b59957d9b6a6cfd88bde0f",
+      "size": 24368,
+      "level": 19,
+      "summary": "Apply C3 preview aspect cycling routine lcdcycle_s3_v3 (appFw.so)"
+    },
+    "C20": {
+      "file": "libJit_s3_C20.so",
+      "sha256": "9de9a4924d4bfc8a2c253168e13c121732dc9868f9a2f350c9eb97b4816ae069",
+      "size": 24392,
+      "level": 20,
+      "summary": "Put back C3 preview aspect cycling routine lcdcycle_s3_v3"
+    },
+    "H16": {
+      "file": "libJit_s3_H16.so",
+      "sha256": "7803f8dc4ada404cbb3a4ebf60ea20e10eedf87f12b7c0b5cfa5cf44b7030a11",
+      "size": 17048,
+      "level": 16,
+      "summary": "Apply 3:2 pillarboxed HDMI & anamorphic de-squeeze hdmi32_s3_501 (28 cpapp words)"
+    },
+    "H17": {
+      "file": "libJit_s3_H17.so",
+      "sha256": "39533ce5e9d20fff7040723e96d4ad7c973c8b962363ea7b6b46d268e9cf893e",
+      "size": 17064,
+      "level": 17,
+      "summary": "Put back 3:2 pillarboxed HDMI & anamorphic de-squeeze hdmi32_s3_501"
+    },
+    "B19": {
+      "file": "libJit_s3_B19.so",
+      "sha256": "07afc62ff0fcfe6f3f207d90ed88e4b84e0edb1fd7c6a2ae02e9a4bc8c5888ba",
+      "size": 26504,
+      "level": 19,
+      "summary": "Apply 200M/300M high-bitrate Long-GOP overlay og_highbitrate_s3_501 (108 av-cam sites)"
+    },
+    "B20": {
+      "file": "libJit_s3_B20.so",
+      "sha256": "f1d6a368322019d19411948e74edba6ced6cf4f56dc95a2ebec1f825b72f218f",
+      "size": 26504,
+      "level": 20,
+      "summary": "Put back 200M/300M high-bitrate Long-GOP overlay og_highbitrate_s3_501"
+    },
+    "I19": {
+      "file": "libJit_s3_I19.so",
+      "sha256": "072ae9bbe7b2bfe43980de916c3fe3a25c71a10abe2f0a6175e9dfd6dad8df38",
+      "size": 22984,
+      "level": 19,
+      "summary": "Apply orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_s3_501 (32 av-cam + 2 libmpr)"
+    },
+    "I20": {
+      "file": "libJit_s3_I20.so",
+      "sha256": "6b179c7e4c58d99893096287039b83c191fed56d300947a315705f09db364c82",
+      "size": 23000,
+      "level": 20,
+      "summary": "Put back orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_s3_501"
+    }
+  }
+}

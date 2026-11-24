@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "design": "mp4_3x2_fx3_702",
+  "camera": "ILME-FX3 (FX3)",
+  "build": "fx3_702",
+  "version_txt": "39180_21.2025122503",
+  "title": "Native 3:2 (3840x2560) XAVC MP4 container, codec level, NRT XML & in-camera playback patch (ILME-FX3 (FX3) fx3_702)",
+  "target_process_library": "/usr/lib/libmpr.so",
+  "mechanism": "volatile /proc/self/mem via libJit.so (L19/L20)",
+  "persistent_writes": false,
+  "requires": "ogsq_fx3_v1 + outsz2560_fx3_v1 + ogfile2560_hs_s_fx3_v1 (+ lcd32dsq_fx3_v1 for 3:2 monitor)",
+  "artifact_sha256": {
+    "libmpr.so": "9aeef3b9edb3d011c0c90cd2387b3a47bd3b506ebfa57be39ad1a9729771b57c"
+  },
+  "elf_segment_check": {
+    "pt_load0_p_offset": 0,
+    "pt_load0_p_vaddr": 0,
+    "pt_load0_p_filesz": 3021100,
+    "max_site_end": 2425484
+  },
+  "rtmd_gyro_preservation": {
+    "rtmd_track_builder": "FUN_002235b8",
+    "xavcsMovieMeta_Init": "0x1078ac",
+    "xavcsMovieMeta_WriteMetaInfo": "0x108730",
+    "note": "cdsc timed-metadata track (rtmd) has zero dependency on video width, height, or NRT aspectRatio; gyro/IBIS stabilization stays intact off-card."
+  },
+  "patches": [
+    {
+      "binary": "libmpr.so",
+      "kind": "L2-mp4-avc",
+      "function": "FUN_0021fec4",
+      "file_off": "0x21ff3c",
+      "va": "0x21ff3c",
+      "old": "060e8152",
+      "new": "06408152",
+      "old_asm": "mov w6, #0x870",
+      "new_asm": "mov w6, #0xa00",
+      "code": true,
+      "note": "RecAttribute.height 2160 -> 2560 for 4K AVC profiles (vpc 0,2,9)"
+    },
+    {
+      "binary": "libmpr.so",
+      "kind": "L2-mp4-hevc",
+      "function": "FUN_0021fec4",
+      "file_off": "0x220074",
+      "va": "0x220074",
+      "old": "060e8152",
+      "new": "06408152",
+      "old_asm": "mov w6, #0x870",
+      "new_asm": "mov w6, #0xa00",
+      "code": true,
+      "note": "RecAttribute.height 2160 -> 2560 for 4K HEVC profiles (vpc 5,7)"
+    },
+    {
+      "binary": "libmpr.so",
+      "kind": "L2-lvl-avc",
+      "function": "FUN_0021fad0",
+      "file_off": "0x21fb0c",
+      "va": "0x21fb0c",
+      "old": "20040054",
+      "new": "22040054",
+      "old_asm": "b.eq #0x21fb90",
+      "new_asm": "b.hs #0x21fb90",
+      "code": true,
+      "note": "AVC level calculator after cmp w0, #0x870: b.eq -> b.hs (+0x84)"
+    },
+    {
+      "binary": "libmpr.so",
+      "kind": "L2-lvl-hevc",
+      "function": "FUN_0021fad0",
+      "file_off": "0x21fc68",
+      "va": "0x21fc68",
+      "old": "80030054",
+      "new": "82030054",
+      "old_asm": "b.eq #0x21fcd8",
+      "new_asm": "b.hs #0x21fcd8",
+      "code": true,
+      "note": "HEVC level calculator after cmp w0, #0x870: b.eq -> b.hs (+0x70)"
+    },
+    {
+      "binary": "libmpr.so",
+      "kind": "L3-nrt-vline",
+      "function": "FUN_00115fec",
+      "file_off": "0x1164b0",
+      "va": "0x1164b0",
+      "old": "000e8152",
+      "new": "00408152",
+      "old_asm": "mov w0, #0x870",
+      "new_asm": "mov w0, #0xa00",
+      "code": true,
+      "note": "NonRealTimeMeta <VideoLayout numOfVerticalLine>: 2160 -> 2560"
+    },
+    {
+      "binary": "libmpr.so",
+      "kind": "L3-nrt-noasp",
+      "function": "FUN_002500d0 (NrtMetaWrapper::Init)",
+      "file_off": "0x250288",
+      "va": "0x250288",
+      "old": "20008052",
+      "new": "00008052",
+      "old_asm": "mov w0, #1",
+      "new_asm": "mov w0, #0",
+      "code": true,
+      "note": "Clears b_aspectValid flag passed to SetVideoLayout (0x2311c0) because XML enum table lacks 3:2"
+    },
+    {
+      "binary": "libmpr.so",
+      "kind": "L4-play-w",
+      "function": "FUN_0022223c",
+      "file_off": "0x222330",
+      "va": "0x222330",
+      "old": "01c08352",
+      "new": "01e08152",
+      "old_asm": "mov w1, #0x1e00",
+      "new_asm": "mov w1, #0xf00",
+      "code": true,
+      "note": "Playback validator: repurposes unused 8K width (7680) to 3840 while preserving 3840x2160 playback"
+    },
+    {
+      "binary": "libmpr.so",
+      "kind": "L4-play-h",
+      "function": "FUN_0022223c",
+      "file_off": "0x222334",
+      "va": "0x222334",
+      "old": "011ca272",
+      "new": "0140a172",
+      "old_asm": "movk w1, #0x10e0, lsl #16",
+      "new_asm": "movk w1, #0xa00, lsl #16",
+      "code": true,
+      "note": "Playback validator: repurposes unused 8K height (4320) to 2560 paired with L4-play-w"
+    }
+  ],
+  "optional_sites": [
+    {
+      "binary": "libmpr.so",
+      "kind": "Opt-vprf-si",
+      "function": "FUN_00220e88",
+      "file_off": "0x220f60",
+      "va": "0x220f60",
+      "old": "01f29e52",
+      "new": "01c09e52",
+      "old_asm": "mov w1, #0xf790",
+      "new_asm": "mov w1, #0xf600",
+      "code": true,
+      "note": "Optional (XAVC S-I Intra vpc 9 only): maps VPRF videoParamId 0xf790 -> 0xf600; unused by ogfile2560_hs_s"
+    }
+  ],
+  "guards": [
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x0",
+      "va": "0x0",
+      "bytes": "7f454c46020101030000000000000000",
+      "note": "ELF64 header magic guard"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x1164a0",
+      "va": "0x1164a0",
+      "bytes": "20a8208b00001fd600008252607a0079",
+      "note": "pre-site 16B guard before 0x1164b0"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x1164c0",
+      "va": "0x1164c0",
+      "bytes": "00a08052607a0079005a8052d2ffff17",
+      "note": "post-site 16B guard after 0x1164b4"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x21faf0",
+      "va": "0x21faf0",
+      "bytes": "2007005420058052c0035fd620504079",
+      "note": "pre-site 16B guard before 0x21fb0c"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x21fb10",
+      "va": "0x21fb10",
+      "bytes": "00058052c0035fd6c2149e52202040b9",
+      "note": "post-site 16B guard after 0x21fb10"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x21fc50",
+      "va": "0x21fc50",
+      "bytes": "1f044071e0179f1a00cc0011c0035fd6",
+      "note": "pre-site 16B guard before 0x21fc68"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x21fc70",
+      "va": "0x21fc70",
+      "bytes": "1f00026b200200541fe01071e1050054",
+      "note": "post-site 16B guard after 0x21fc6c"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x21ff20",
+      "va": "0x21ff20",
+      "bytes": "28668c52c82eac721500001422008052",
+      "note": "pre-site 16B guard before 0x21ff3c"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x21ff40",
+      "va": "0x21ff40",
+      "bytes": "07e08152f7ffff172200805203008052",
+      "note": "post-site 16B guard after 0x21ff40"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x220060",
+      "va": "0x220060",
+      "bytes": "3e0000142200805203008052e503022a",
+      "note": "pre-site 16B guard before 0x220074"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x220080",
+      "va": "0x220080",
+      "bytes": "2200805203008052e503022a44018052",
+      "note": "post-site 16B guard after 0x220078"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x220f50",
+      "va": "0x220f50",
+      "bytes": "a07b0139a0870139a0930139a19b0139",
+      "note": "pre-site 16B guard before 0x220f60"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x220f70",
+      "va": "0x220f70",
+      "bytes": "a24b01390000010ba24f01391f780772",
+      "note": "post-site 16B guard after 0x220f64"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x222320",
+      "va": "0x222320",
+      "bytes": "1f00016b6100005480008052f2ffff17",
+      "note": "pre-site 16B guard before 0x222330"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x222340",
+      "va": "0x222340",
+      "bytes": "c0035fd65f0000b9c0035fd6232c4079",
+      "note": "post-site 16B guard after 0x222338"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x250270",
+      "va": "0x250270",
+      "bytes": "01008012bf630239a07300b980be4079",
+      "note": "pre-site 16B guard before 0x250288"
+    },
+    {
+      "binary": "libmpr.so",
+      "file_off": "0x250290",
+      "va": "0x250290",
+      "bytes": "a0e30139804a40b9bfaf00b9a07f00b9",
+      "note": "post-site 16B guard after 0x25028c"
+    }
+  ]
+}

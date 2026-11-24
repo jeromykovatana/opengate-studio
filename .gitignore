@@ -1,0 +1,23 @@
+# Sony firmware images, decrypted partitions, and extracted binaries (NEVER commit)
+*.DAT
+BODYDATA*
+nflasha*
+*cpapp*
+*av-cam*
+*appFw*
+*libmpr*
+*libsencore*
+*libJiritsu*
+*DmmCfg*
+fx30_fw/
+firmwares/
+camera_private/
+sessions/
+
+# Build, packaging, and Python artifacts
+.DS_Store
+.build/
+macos/OpenGateStudio/dist/
+__pycache__/
+*.pyc
+.venv/

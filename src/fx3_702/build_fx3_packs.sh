@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Build the new FX3 7.02 write packs (V19/V20, H16/H17, B19/B20, I19/I20)
+# and coherent read-only helpers (libJit_fx3_check.so, libJit_fx3_dump.so).
+set -euo pipefail
+
+SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
+STUDIO_ROOT="$(cd "$SRC_DIR/../.." && pwd)"
+WORKSPACE_ROOT="$(cd "$STUDIO_ROOT/.." && pwd)"
+KIT_DIR="$STUDIO_ROOT/kits/fx3_702"
+FW_DIR="${SONY_FW_DIR:-$WORKSPACE_ROOT/firmwares/fx3/ghidra_targets}"
+SEN="$FW_DIR/libsencore.so"
+READCHECK_C="$STUDIO_ROOT/src/common/readcheck.c"
+ZIG_PY="${ZIG_PY:-/Users/jeromykovatana/.gemini/antigravity/brain/13cce10e-a1ea-410d-afca-6a164b92a773/scratch/venv_zig/bin/python}"
+
+mkdir -p "$KIT_DIR"
+python3 -B "$SRC_DIR/gen_fx3_packs.py"
+
+CC=(
+  "$ZIG_PY" -m ziglang cc
+  -target aarch64-linux-gnu -std=gnu11 -O1 -Wall -Wextra -Werror
+  -fPIC -shared -nostdlib -ffreestanding
+  -fno-stack-protector -fno-builtin -fno-asynchronous-unwind-tables
+  -Wl,-soname,libJit.so -Wl,--no-undefined -Wl,-z,now -g0 -s -Wl,-z,max-page-size=4096
+)
+
+# V19/V20: MP4 3:2 + encoder union (12 libmpr + 101 av-cam = 113 sites)
+for L in 19 20; do
+  N="V$L"
+  "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DMP_H="expected_mp_ogfile2560_hs_s_fx3_v3.h"' -DAVCAM_PHYS=0x401000000UL \
+    "$READCHECK_C" -o "$KIT_DIR/libJit_fx3_${N}.so"
+done
+
+# H16/H17: Clean 3:2 HDMI + anamorphic de-squeeze (18 words in cpapp-b.bin)
+for L in 16 17; do
+  N="H$L"
+  "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DWORDS_H="expected_words_hdmi32_fx3_702.h"' \
+    "$READCHECK_C" "$SEN" -o "$KIT_DIR/libJit_fx3_${N}.so"
+done
+
+# B19/B20: High-bitrate 200M/300M Long-GOP (108 av-cam sites)
+for L in 19 20; do
+  N="B$L"
+  "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DMP_H="expected_mp_og_highbitrate_fx3_702.h"' -DAVCAM_PHYS=0x401000000UL \
+    "$READCHECK_C" -o "$KIT_DIR/libJit_fx3_${N}.so"
+done
+
+# I19/I20: Orthogonal XAVC S-I All-Intra delta (34 sites)
+for L in 19 20; do
+  N="I$L"
+  "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DMP_H="expected_mp_og_xavcsi_addon_fx3_702.h"' -DAVCAM_PHYS=0x401000000UL \
+    "$READCHECK_C" -o "$KIT_DIR/libJit_fx3_${N}.so"
+done
+
+# Coherent read-only helpers (fx3read_v2)
+"${CC[@]}" -I "$SRC_DIR" -DDUMP=0 "$SRC_DIR/fx3read.c" "$SEN" -o "$KIT_DIR/libJit_fx3_check.so"
+"${CC[@]}" -I "$SRC_DIR" -DDUMP=1 "$SRC_DIR/fx3read.c" "$SEN" -o "$KIT_DIR/libJit_fx3_dump.so"
+
+echo "Built FX3 7.02 artifacts in $KIT_DIR:"
+for f in "$KIT_DIR"/libJit_fx3_{V19,V20,H16,H17,B19,B20,I19,I20,check,dump}.so; do
+  printf "  %s  %s  %d bytes\n" "$(shasum -a 256 "$f" | awk '{print $1}')" "$(basename "$f")" "$(wc -c < "$f")"
+done
