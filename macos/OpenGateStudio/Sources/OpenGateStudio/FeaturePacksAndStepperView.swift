@@ -214,6 +214,10 @@ public struct FeaturePacksAndStepperView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if !appState.offlineMockCamera {
+                liveTerminalBanner
+            }
+
             if let err = appState.stepperError {
                 HStack(spacing: 8) {
                     Image(systemName: "xmark.octagon.fill")
@@ -271,6 +275,23 @@ public struct FeaturePacksAndStepperView: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(!appState.isChecklistComplete || appState.isRunningPreflight)
 
+                        if !appState.offlineMockCamera {
+                            Button {
+                                Task { await appState.syncLatestCameraSession() }
+                            } label: {
+                                HStack(spacing: 5) {
+                                    if appState.isSyncingSession {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Image(systemName: "arrow.triangle.2.circlepath")
+                                    }
+                                    Text("Sync Latest Camera Session")
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(appState.isSyncingSession)
+                        }
+
                         if !appState.isChecklistComplete {
                             Text("Complete Gate 1 checklist first")
                                 .font(.caption)
@@ -285,6 +306,8 @@ public struct FeaturePacksAndStepperView: View {
                                     .foregroundStyle(preflight.ready ? .green : .red)
                                 Text(preflight.verdict)
                                     .font(.callout.weight(.semibold))
+                                Spacer()
+                                resultSourceBadge
                             }
                             Text("State: \(preflight.state)  •  Session: \(preflight.sessionId)")
                                 .font(.caption.monospaced())
@@ -347,7 +370,11 @@ public struct FeaturePacksAndStepperView: View {
                         .disabled(!appState.isApplyUnlocked || appState.isApplying)
 
                         if !appState.isApplyUnlocked {
-                            Text("Requires Gate 2 preflight ready == true")
+                            Text(
+                                appState.offlineMockCamera
+                                    ? "Requires Gate 2 preflight ready == true"
+                                    : "Requires Gate 1 + synced Live Preflight (ready == true)"
+                            )
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -355,9 +382,13 @@ public struct FeaturePacksAndStepperView: View {
 
                     if let apply = appState.applyResult {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Ordered .so Steps Executed:")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                            HStack {
+                                Text("Ordered .so Steps Executed:")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                resultSourceBadge
+                            }
 
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 6) {
@@ -425,8 +456,12 @@ public struct FeaturePacksAndStepperView: View {
 
                     if let putback = appState.putbackResult {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("State: \(putback.state)  •  Steps: \(putback.stepsRun.map(\.step).joined(separator: " -> "))")
-                                .font(.caption.monospaced())
+                            HStack {
+                                Text("State: \(putback.state)  •  Steps: \(putback.stepsRun.map(\.step).joined(separator: " -> "))")
+                                    .font(.caption.monospaced())
+                                Spacer()
+                                resultSourceBadge
+                            }
                         }
                         .padding(8)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -507,6 +542,100 @@ public struct FeaturePacksAndStepperView: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
         )
+    }
+
+    private var liveTerminalBanner: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "terminal.fill")
+                    .font(.title3)
+                    .foregroundStyle(.orange)
+                    .frame(width: 24, height: 24)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Live Camera USB Mode — Interactive Terminal.app")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Button {
+                            Task { await appState.syncLatestCameraSession() }
+                        } label: {
+                            HStack(spacing: 5) {
+                                if appState.isSyncingSession {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                }
+                                Text("Sync Latest Camera Session")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(appState.isSyncingSession)
+                    }
+
+                    Text("macOS USB camera takeover launches interactively in Terminal.app: it prompts once for your admin password to detach the macOS USB storage driver, asks for firmware confirmation, and guides you through USB unplug/replug prompts between steps. When Terminal finishes, return to OpenGate Studio or click Sync Latest Camera Session.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if appState.liveStatusBanner != nil || appState.preparedLiveCommandPath != nil {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let status = appState.liveStatusBanner {
+                        Text(status)
+                            .font(.caption.weight(.medium))
+                    }
+                    if let cmdPath = appState.preparedLiveCommandPath {
+                        HStack(spacing: 8) {
+                            Text(cmdPath)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .lineLimit(2)
+                            Spacer()
+                            Button("Open in Terminal") {
+                                appState.openPreparedLiveCommand()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.mini)
+                        }
+                    }
+                    if let preview = appState.preparedLiveCommandPreview, !preview.isEmpty {
+                        Text(preview)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.7))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.orange.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private var resultSourceBadge: some View {
+        let source = appState.lastResultSource ?? (appState.offlineMockCamera ? .mock : .liveTerminal)
+        let isLive = source == .liveTerminal
+        Text(source.rawValue)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(isLive ? Color.orange.opacity(0.18) : Color.blue.opacity(0.14))
+            .foregroundStyle(isLive ? Color.orange : Color.blue)
+            .clipShape(Capsule())
     }
 
     private var preflightStatusColor: Color {

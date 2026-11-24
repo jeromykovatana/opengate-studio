@@ -233,6 +233,101 @@ struct OpenGateStudioTests {
         }
     }
 
+    @Test("latestSession reports empty before any run and tracks latest session afterwards")
+    func testLatestSession() async throws {
+        let sessionDir = try makeTempDir(prefix: "ogs-latest-session")
+        defer { try? FileManager.default.removeItem(at: sessionDir) }
+        let bridge = try makeBridge(sessionDir: sessionDir)
+
+        let (emptyRes, emptyTrace) = try await bridge.latestSession(bodyId: "zve1_202", sessionDir: sessionDir)
+        #expect(emptyTrace.exitCode == 0)
+        #expect(emptyRes.ok == true)
+        #expect(emptyRes.found == false)
+        #expect(emptyRes.bodyId == "zve1_202")
+        #expect(emptyRes.sessionId == nil)
+
+        let (pre, _) = try await bridge.preflight(
+            bodyId: "zve1_202",
+            mockCamera: true,
+            mockState: .stock,
+            sessionDir: sessionDir
+        )
+        #expect(pre.ready == true)
+
+        let (afterPre, afterPreTrace) = try await bridge.latestSession(bodyId: "zve1_202", sessionDir: sessionDir)
+        #expect(afterPreTrace.exitCode == 0)
+        #expect(afterPre.ok == true)
+        #expect(afterPre.found == true)
+        #expect(afterPre.bodyId == "zve1_202")
+        #expect(afterPre.ready == true)
+        #expect(afterPre.state == "stock")
+        #expect(afterPre.verdict.contains("READY"))
+
+        let (app, _) = try await bridge.apply(
+            bodyId: "zve1_202",
+            packs: ["mp4_3x2", "screen_3x2"],
+            mockCamera: true,
+            sessionDir: sessionDir
+        )
+        #expect(app.ok == true)
+
+        let (afterApply, _) = try await bridge.latestSession(bodyId: "zve1_202", sessionDir: sessionDir)
+        #expect(afterApply.ok == true)
+        #expect(afterApply.found == true)
+        #expect(afterApply.ready == true)
+        #expect(afterApply.state == "applied")
+        #expect(afterApply.activePacks.contains("mp4_3x2"))
+    }
+
+    @Test("prepareLiveCommand creates executable .command scripts without opening Terminal when suppressed")
+    func testPrepareLiveCommand() async throws {
+        setenv("OPENGATE_NO_TERMINAL_OPEN", "1", 1)
+        let sessionDir = try makeTempDir(prefix: "ogs-live-cmd")
+        defer { try? FileManager.default.removeItem(at: sessionDir) }
+        let bridge = try makeBridge(sessionDir: sessionDir)
+
+        let (preCmd, preTrace) = try await bridge.prepareLiveCommand(
+            action: .preflight,
+            bodyId: "zve1_202",
+            packs: nil,
+            sessionDir: sessionDir
+        )
+        #expect(preTrace.exitCode == 0)
+        #expect(preCmd.ok == true)
+        #expect(preCmd.action == "preflight")
+        #expect(preCmd.bodyId == "zve1_202")
+        #expect(preCmd.commandFile.hasSuffix(".command"))
+        #expect(!preCmd.preview.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: preCmd.commandFile))
+        #expect(FileManager.default.isExecutableFile(atPath: preCmd.commandFile))
+
+        let (applyCmd, applyTrace) = try await bridge.prepareLiveCommand(
+            action: .apply,
+            bodyId: "fx3_702",
+            packs: ["mp4_3x2", "hdmi32"],
+            sessionDir: sessionDir
+        )
+        #expect(applyTrace.exitCode == 0)
+        #expect(applyCmd.ok == true)
+        #expect(applyCmd.action == "apply")
+        #expect(applyCmd.bodyId == "fx3_702")
+        #expect(FileManager.default.isExecutableFile(atPath: applyCmd.commandFile))
+        let applyScript = try String(contentsOfFile: applyCmd.commandFile, encoding: .utf8)
+        #expect(applyScript.contains("fx3_702"))
+        #expect(applyScript.contains("mp4_3x2"))
+
+        let (putCmd, putTrace) = try await bridge.prepareLiveCommand(
+            action: .putback,
+            bodyId: "a7s3_501",
+            packs: nil,
+            sessionDir: sessionDir
+        )
+        #expect(putTrace.exitCode == 0)
+        #expect(putCmd.ok == true)
+        #expect(putCmd.action == "putback")
+        #expect(FileManager.default.isExecutableFile(atPath: putCmd.commandFile))
+    }
+
     /// Generates a minimal valid ISO BMFF MP4 + M01.XML + rtmd fixture using cli/bionz_clip_check.py helpers.
     private func generateValid3x2ClipFixture(repoRoot: URL, mp4URL: URL, xmlURL: URL) throws {
         let script = """

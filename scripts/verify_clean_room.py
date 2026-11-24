@@ -130,14 +130,20 @@ def verify_clean_room(root: Path = REPO_ROOT) -> dict[str, Any]:
     checked_code_files = 0
     checked_manifests = 0
 
+    checked_pmca_files = 0
     for path in sorted(root.rglob("*")):
         rel = path.relative_to(root)
         parts_lower = {p.lower() for p in rel.parts}
-        if ".git" in parts_lower or ".build" in parts_lower:
+        if ".git" in parts_lower or ".build" in parts_lower or ".venv" in parts_lower:
             continue
 
         if path.is_dir():
-            if path.name.lower() in FORBIDDEN_DIR_NAMES:
+            is_runtime_session_private = (
+                len(rel.parts) >= 2
+                and rel.parts[0].lower() == "sessions"
+                and path.name.lower() == "camera_private"
+            )
+            if path.name.lower() in FORBIDDEN_DIR_NAMES and not is_runtime_session_private:
                 errors.append(f"Forbidden directory present: {rel}")
             continue
 
@@ -153,6 +159,33 @@ def verify_clean_room(root: Path = REPO_ROOT) -> dict[str, Any]:
             for label, pat in FORBIDDEN_CODE_PATTERNS:
                 if pat.search(text):
                     errors.append(f"{rel}: forbidden clean-room pattern ({label})")
+
+    pmca_root = root / "transport" / "third_party" / "sony-pmca-re"
+    if not pmca_root.is_dir():
+        errors.append("Missing vendored MIT sony-pmca-re directory: transport/third_party/sony-pmca-re")
+    else:
+        lic_path = pmca_root / "LICENSE.txt"
+        pinned_path = pmca_root / "PINNED.json"
+        if not lic_path.is_file() or "MIT License" not in lic_path.read_text(encoding="utf8", errors="replace"):
+            errors.append("transport/third_party/sony-pmca-re/LICENSE.txt missing or not MIT")
+        if not pinned_path.is_file():
+            errors.append("transport/third_party/sony-pmca-re/PINNED.json missing")
+        else:
+            pinned = json.loads(pinned_path.read_text(encoding="utf8"))
+            pinned_files = pinned.get("files", {})
+            for rel_str, want_sha in sorted(pinned_files.items()):
+                fp = pmca_root / rel_str
+                checked_pmca_files += 1
+                if not fp.is_file():
+                    errors.append(f"transport/third_party/sony-pmca-re/{rel_str}: missing")
+                elif sha256_file(fp) != want_sha:
+                    errors.append(f"transport/third_party/sony-pmca-re/{rel_str}: SHA-256 mismatch")
+            pmca_pkg = pmca_root / "pmca"
+            if pmca_pkg.is_dir():
+                for py_file in sorted(pmca_pkg.rglob("*.py")):
+                    rel_str = py_file.relative_to(pmca_root).as_posix()
+                    if rel_str not in pinned_files:
+                        errors.append(f"transport/third_party/sony-pmca-re/{rel_str}: unpinned python file")
 
     kits_dir = root / "kits"
     if not kits_dir.is_dir():
@@ -213,6 +246,7 @@ def verify_clean_room(root: Path = REPO_ROOT) -> dict[str, Any]:
         "checked_manifests": checked_manifests,
         "checked_so": checked_so,
         "checked_code_files": checked_code_files,
+        "checked_pmca_files": checked_pmca_files,
         "errors": errors,
     }
 
@@ -229,6 +263,7 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"CLEAN-ROOM PASS: {res['checked_manifests']} manifests, "
                 f"{res['checked_so']} .so helpers (clang 18.1.6, zero unexpected symbols), "
+                f"{res['checked_pmca_files']} pinned MIT pmca files, "
                 f"{res['checked_code_files']} code files checked, 0 violations."
             )
         else:

@@ -1,3 +1,4 @@
+import AppKit
 import OpenGateStudioCore
 import SwiftUI
 
@@ -16,6 +17,11 @@ public struct ContentView: View {
             mainBody
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task {
+                await appState.handleAppDidBecomeActive()
+            }
+        }
     }
 
     private var topBar: some View {
@@ -135,12 +141,14 @@ public struct ContentView: View {
     @ViewBuilder
     private var safetyStatusSummaryBadge: some View {
         HStack(spacing: 6) {
-            Image(systemName: appState.offlineMockCamera ? "desktopcomputer" : "cable.connector")
+            Image(systemName: appState.offlineMockCamera ? "desktopcomputer" : "terminal.fill")
                 .foregroundStyle(appState.offlineMockCamera ? .blue : .orange)
             Text(
                 appState.offlineMockCamera
-                    ? "Sandbox Simulation (\(appState.mockState.displayName)) — Volatile RAM Only"
-                    : "Live USB Mode (Requires Explicit Approval)"
+                    ? "Mock Simulation (\(appState.mockState.displayName)) — Volatile RAM Only"
+                    : (appState.lastResultSource == .liveTerminal
+                        ? "Live USB Mode — Synced from Terminal.app"
+                        : "Live USB Mode — Interactive Terminal.app")
             )
             .font(.caption)
             .foregroundStyle(.secondary)

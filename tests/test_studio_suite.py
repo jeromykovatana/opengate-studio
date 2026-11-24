@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -12,7 +14,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CLI_DIR = REPO_ROOT / "cli"
 SCRIPTS_DIR = REPO_ROOT / "scripts"
-for p in (CLI_DIR, SCRIPTS_DIR):
+CT1_DIR = REPO_ROOT / "transport" / "camera_tests" / "CT1_usb_first_contact"
+for p in (CLI_DIR, SCRIPTS_DIR, CT1_DIR):
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
@@ -20,6 +23,30 @@ import bionz_clip_check as bcc  # noqa: E402
 import verify_clean_room as vcr  # noqa: E402
 
 STUDIO_CLI = CLI_DIR / "studio_cli.py"
+STEP_RUN = CLI_DIR / "studio_step_run.py"
+LIVE_APPLY = CLI_DIR / "studio_live_apply.py"
+RUN_LIVE_SH = REPO_ROOT / "macos" / "run_live_terminal.sh"
+SETUP_CMD = REPO_ROOT / "setup_and_open_mac.command"
+
+
+def _find_transport_python() -> str:
+    for cand in (
+        Path(sys.executable),
+        REPO_ROOT / ".venv" / "bin" / "python",
+        REPO_ROOT.parent / ".venv" / "bin" / "python",
+    ):
+        if cand.is_file():
+            chk = subprocess.run(
+                [str(cand), "-B", "-c", "import Cryptodome"],
+                capture_output=True,
+                text=True,
+            )
+            if chk.returncode == 0:
+                return str(cand)
+    return sys.executable
+
+
+TRANSPORT_PYTHON = _find_transport_python()
 
 
 def run_cli(*args: str) -> tuple[int, dict]:
@@ -174,12 +201,251 @@ class StudioCliTests(unittest.TestCase):
         self.assertNotEqual(rc, 0)
         self.assertFalse(res["ok"])
 
+    def test_latest_session_and_prepare_live_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # 1. Empty session dir returns ok=True, found=False, exit 0
+            rc_empty, empty = run_cli("latest-session", "--body", "zve1_202", "--session-dir", tmp, "--json")
+            self.assertEqual(rc_empty, 0)
+            self.assertTrue(empty["ok"])
+            self.assertFalse(empty["found"])
+            self.assertIsNone(empty["session_id"])
+            self.assertIsNone(empty["kind"])
+            self.assertFalse(empty["ready"])
+            self.assertEqual(empty["state"], "unknown")
+            self.assertEqual(empty["active_packs"], [])
+            self.assertEqual(empty["steps_run"], [])
+
+            # 2. After preflight -> latest-session reflects stock ready
+            rc_pre, pre = run_cli(
+                "preflight", "--body", "zve1_202", "--mock-camera", "--mock-state", "stock",
+                "--session-dir", tmp, "--json",
+            )
+            self.assertEqual(rc_pre, 0)
+            rc_ls1, ls1 = run_cli("latest-session", "--body", "zve1_202", "--session-dir", tmp, "--json")
+            self.assertEqual(rc_ls1, 0)
+            self.assertTrue(ls1["found"])
+            self.assertEqual(ls1["session_id"], pre["session_id"])
+            self.assertEqual(ls1["kind"], "preflight")
+            self.assertTrue(ls1["ready"])
+            self.assertEqual(ls1["state"], "stock")
+
+            # 3. After apply -> latest-session reflects closing_dump applied + active_packs + steps_run
+            rc_app, app = run_cli(
+                "apply", "--body", "zve1_202", "--packs", "mp4_3x2,hdmi32",
+                "--mock-camera", "--session-dir", tmp, "--json",
+            )
+            self.assertEqual(rc_app, 0)
+            rc_ls2, ls2 = run_cli("latest-session", "--body", "zve1_202", "--session-dir", tmp, "--json")
+            self.assertEqual(rc_ls2, 0)
+            self.assertTrue(ls2["found"])
+            self.assertEqual(ls2["kind"], "closing_dump")
+            self.assertTrue(ls2["ready"])
+            self.assertEqual(ls2["state"], "applied")
+            self.assertEqual(ls2["active_packs"], app["active_packs"])
+            self.assertEqual(ls2["steps_run"], app["steps_run"])
+
+            # 4. After putback -> latest-session reflects putback stock
+            rc_put, put = run_cli("putback", "--body", "zve1_202", "--mock-camera", "--session-dir", tmp, "--json")
+            self.assertEqual(rc_put, 0)
+            rc_ls3, ls3 = run_cli("latest-session", "--body", "zve1_202", "--session-dir", tmp, "--json")
+            self.assertEqual(rc_ls3, 0)
+            self.assertEqual(ls3["kind"], "putback")
+            self.assertEqual(ls3["state"], "stock")
+            self.assertEqual(ls3["steps_run"], put["steps_run"])
+
+            # 5. prepare-live-command generates executable .command scripts without touching USB
+            for action in ("preflight", "dump", "apply", "putback"):
+                args = ["prepare-live-command", "--action", action, "--body", "a7s3_501", "--session-dir", tmp, "--json"]
+                if action == "apply":
+                    args.extend(["--packs", "mp4_3x2,screen_3x2,hdmi32"])
+                rc_prep, prep = run_cli(*args)
+                self.assertEqual(rc_prep, 0)
+                self.assertTrue(prep["ok"])
+                self.assertEqual(prep["action"], action)
+                self.assertEqual(prep["body_id"], "a7s3_501")
+                cmd_file = Path(prep["command_file"])
+                self.assertTrue(cmd_file.is_file())
+                self.assertTrue(bool(cmd_file.stat().st_mode & stat.S_IXUSR))
+                self.assertIn("run_live_terminal.sh", prep["preview"])
+                chk_sh = subprocess.run(["bash", "-n", str(cmd_file)], capture_output=True, text=True)
+                self.assertEqual(chk_sh.returncode, 0, chk_sh.stderr)
+
+
+class UsbTransportAndLiveOrchestratorTests(unittest.TestCase):
+    @staticmethod
+    def _build_synthetic_readonly_report(body_id: str, which: str, mode: str = "stock") -> bytes:
+        import studio_step_run as ssr
+
+        cfg = ssr.BODY_CONFIG[body_id]
+        spec = ssr.load_body_expected(body_id)
+        fw = cfg["firmware"]
+        lines = [
+            f"{cfg['reader']} {spec['label']} {which} for {cfg['header_model']} {fw}; read-only",
+            "== file /proc/version",
+            "Linux version 4.14.0",
+            "== end 20 bytes",
+            "== file /proc/cmdline",
+            f"mem={spec['avcam_reserve']}",
+            "== end 15 bytes",
+            "== identity: files of this process",
+        ]
+        for fname, sha in spec["id_files"].items():
+            lines.append(f"file {fname} path /usr/lib{fname} mapped 0x7f00000000")
+            lines.append(f"  bytes 1024 sha256 {sha}  SAME as the {fw} update")
+        lines.append("== identity: coprocessor code pages")
+        for addr, sha in spec["id_pages"].items():
+            lines.append(f"page {addr} sha256 {sha}  SAME as the {fw} update")
+        lines.append("== coprocessor sites")
+        for site in spec["cp_sites"]:
+            name = site["name"]
+            addr = site["address"]
+            length = site["length"]
+            if mode == "stock":
+                state = "STOCK"
+            elif site["soft"] and name in ("outsize_guard0", "outsize_guard1"):
+                state = "STOCK"
+            elif site["soft"] and name == "stored_record":
+                state = "TARGET"
+            elif body_id == "zve1_202" and name == "screen0":
+                state = "STOCK"
+            else:
+                state = "TARGET"
+            if length <= 16:
+                lines.append(f"site {name} {addr} len {length} bytes {'00' * length}  {state}")
+            else:
+                lines.append(f"site {name} {addr} len {length} bytes differing from stock 0  {state}")
+        lines.append("== main-processor sites: libmpr.so in this process")
+        mp_state = "STOCK" if mode == "stock" else "TARGET"
+        for i in range(spec["lm_sites"]):
+            lines.append(f"lm {0x100000 + i * 4:#x} at {0x7f10000000 + i * 4:#x} bytes 00000000  {mp_state}")
+        lines.append("== main-processor sites: av-cam.bin in kernel memory")
+        for i, g in enumerate(spec["av_guards"]):
+            lines.append(f"guard {g} {0x380000 + i * 0x100:#x} len 48  SAME")
+        for i in range(spec["av_sites"]):
+            lines.append(f"av {0x200000 + i * 4:#x} bytes 00000000  {mp_state}")
+        lines.append("== summary")
+        lines.append(
+            "VERDICT READY (stock preflight)"
+            if mode == "stock"
+            else "VERDICT READY (open gate applied)"
+        )
+        lines.append("== done")
+        lines.append("")
+        return "\n".join(lines).encode("utf8")
+
+    def test_ct1_common_resolves_pmca_from_any_cwd(self) -> None:
+        env = dict(os.environ)
+        env.pop("OPENGATE_CAMERA_PRIVATE", None)
+        proc = subprocess.run(
+            [
+                TRANSPORT_PYTHON,
+                "-B",
+                "-c",
+                (
+                    f"import sys; sys.path.insert(0, {str(CT1_DIR)!r}); "
+                    "import ct1_common as c; "
+                    "assert c.check_pmca() == c.PMCA_COMMIT; "
+                    "assert c.PMCA_ROOT.is_dir(); "
+                    "assert c.PRIVATE_ROOT.name == 'camera_private' and c.PRIVATE_ROOT.parent.name == 'sessions'; "
+                    "print('PMCA_OK')"
+                ),
+            ],
+            cwd="/tmp",
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        self.assertIn("PMCA_OK", proc.stdout)
+
+    def test_step_run_selftests_all_bodies_and_steps(self) -> None:
+        import studio_step_run as ssr
+
+        self.assertEqual(ssr.step_level("check"), 101)
+        self.assertEqual(ssr.step_level("dump"), 102)
+        self.assertEqual(ssr.step_level("V19"), 619)
+        self.assertEqual(ssr.step_level("H16"), 716)
+        self.assertEqual(ssr.step_level("B19"), 819)
+        self.assertEqual(ssr.step_level("I19"), 919)
+
+        for body_id in ("zve1_202", "a7s3_501", "fx3_702"):
+            for which in ("check", "dump", "V19", "H16", "B19", "I19"):
+                proc = subprocess.run(
+                    [TRANSPORT_PYTHON, "-B", str(STEP_RUN), "--body", body_id, which, "--selftest"],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(proc.returncode, 0, f"{body_id} {which} failed:\n{proc.stderr}\n{proc.stdout}")
+                self.assertIn("guard refuses all 15 forbidden packet classes", proc.stdout)
+
+    def test_readonly_report_parser_validates_and_rejects_tampering(self) -> None:
+        import studio_step_run as ssr
+
+        for body_id in ("zve1_202", "a7s3_501", "fx3_702"):
+            stock_rep = self._build_synthetic_readonly_report(body_id, "check", mode="stock")
+            parsed_stk = ssr.parse_readonly_result(body_id, "check", stock_rep)
+            self.assertTrue(parsed_stk["header_ok"])
+            self.assertTrue(parsed_stk["complete"])
+            self.assertTrue(parsed_stk["s3"]["ready"])
+            self.assertEqual(parsed_stk["s3"]["state"], "stock")
+            self.assertEqual(parsed_stk["s3"]["verdict"], "VERDICT READY (stock preflight)")
+
+            app_rep = self._build_synthetic_readonly_report(body_id, "dump", mode="applied")
+            parsed_app = ssr.parse_readonly_result(body_id, "dump", app_rep)
+            self.assertTrue(parsed_app["s3"]["ready"])
+            self.assertEqual(parsed_app["s3"]["state"], "applied")
+            self.assertEqual(parsed_app["s3"]["verdict"], "VERDICT READY (open gate applied)")
+
+            # Reject if identity differs or !! appears or guard differs
+            bad_diff = stock_rep.replace(b"  SAME as the", b"  DIFFERS from the", 1)
+            res_diff = ssr.parse_readonly_result(body_id, "check", bad_diff)
+            self.assertFalse(res_diff["s3"]["ready"])
+            self.assertEqual(res_diff["s3"]["verdict"], "VERDICT NOT READY")
+
+            bad_guard = stock_rep.replace(b"len 48  SAME", b"len 48  DIFFERS", 1)
+            res_guard = ssr.parse_readonly_result(body_id, "check", bad_guard)
+            self.assertFalse(res_guard["s3"]["ready"])
+            self.assertEqual(res_guard["s3"]["verdict"], "VERDICT NOT READY")
+
+            bad_bang = stock_rep.replace(b"== summary", b"!! error injected\n== summary")
+            res_bang = ssr.parse_readonly_result(body_id, "check", bad_bang)
+            self.assertFalse(res_bang["s3"]["ready"])
+            self.assertEqual(res_bang["s3"]["verdict"], "VERDICT NOT READY")
+
+    def test_live_apply_dry_run_and_shell_scripts(self) -> None:
+        for script in (RUN_LIVE_SH, SETUP_CMD):
+            self.assertTrue(script.is_file())
+            self.assertTrue(bool(script.stat().st_mode & stat.S_IXUSR), f"{script.name} not executable")
+            chk = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+            self.assertEqual(chk.returncode, 0, chk.stderr)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for body_id in ("zve1_202", "a7s3_501", "fx3_702"):
+                for action in ("preflight", "dump", "apply", "putback"):
+                    args = [TRANSPORT_PYTHON, "-B", str(LIVE_APPLY), action, "--body", body_id, "--session-dir", tmp, "--dry-run"]
+                    if action in ("apply", "putback"):
+                        args.extend(["--packs", "mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si"])
+                    proc = subprocess.run(args, capture_output=True, text=True)
+                    self.assertEqual(proc.returncode, 0, f"{body_id} {action} dry-run failed:\n{proc.stderr}\n{proc.stdout}")
+                    self.assertIn("Dry run only: nothing was sent to any device.", proc.stdout)
+
+            # run_live_terminal.sh --dry-run bypasses sudo cleanly
+            if TRANSPORT_PYTHON == str(REPO_ROOT / ".venv" / "bin" / "python") or (REPO_ROOT.parent / ".venv" / "bin" / "python").is_file():
+                proc_sh = subprocess.run(
+                    ["/bin/bash", str(RUN_LIVE_SH), "apply", "--body", "zve1_202", "--packs", "mp4_3x2", "--session-dir", tmp, "--dry-run"],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(proc_sh.returncode, 0, proc_sh.stderr + proc_sh.stdout)
+                self.assertIn("Dry run only: nothing was sent to any device.", proc_sh.stdout)
+
 
 class CleanRoomTests(unittest.TestCase):
     def test_clean_room_passes(self) -> None:
         res = vcr.verify_clean_room(REPO_ROOT)
         self.assertTrue(res["ok"], f"Clean-room errors: {res['errors']}")
         self.assertEqual(res["checked_manifests"], 3)
+        self.assertGreaterEqual(res["checked_pmca_files"], 15)
 
 
 if __name__ == "__main__":

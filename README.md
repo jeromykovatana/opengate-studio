@@ -68,21 +68,33 @@ python3 scripts/verify_clean_room.py
 python3 -B -m unittest discover -s tests -v
 ```
 
-### 2. macOS SwiftUI App (`OpenGate Studio.app`)
+### 2. macOS One-Click Setup, Live USB Terminal & SwiftUI App (`OpenGate Studio.app`)
 
-Requires macOS 14+ and Swift 5.10+ (Apple Silicon `arm64`):
+Requires macOS 14+ and Python 3.9+ (Swift 5.10+ on Apple Silicon `arm64` to rebuild `OpenGate Studio.app`):
 
 ```bash
-cd macos/OpenGateStudio
-swift build
-swift test
-./bundle_app.sh   # Builds dist/OpenGate Studio.app
+# 1. One-time laptop setup: creates .venv, installs requirements.txt (pyusb, pycryptodomex, libusb-package),
+#    verifies kit pins, builds OpenGate Studio.app (if swift is installed), and launches it:
+./setup_and_open_mac.command
+
+# 2. Preview any live USB flow safely offline (--dry-run sends nothing and skips sudo):
+./macos/run_live_terminal.sh preflight --body zve1_202 --dry-run
+./macos/run_live_terminal.sh apply --body a7s3_501 --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si --dry-run
+
+# 3. Live USB runs (prompts once for sudo to detach iousbmassstorage, then restores folder ownership):
+./macos/run_live_terminal.sh preflight --body zve1_202
+./macos/run_live_terminal.sh apply --body zve1_202 --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si
+./macos/run_live_terminal.sh putback --body zve1_202
 ```
+
+> [!NOTE]
+> Live USB transport is vendored cleanly in `transport/` (`sony-pmca-re` MIT + `CT1`/`CT6` GPL-3.0) with `cli/studio_step_run.py` and `cli/studio_live_apply.py`. In **Live Camera USB Mode** inside `OpenGate Studio.app`, clicking Preflight / Apply / Put Back prepares an executable `.command` wrapper (`studio_cli.py prepare-live-command`) and opens it in `Terminal.app`, then syncs the result back into the UI via `studio_cli.py latest-session`.
 
 ---
 
 ## Documentation
 
+- [Office Camera Test Guide (ZV-E1 2.02 / a7S III 5.01 / FX3 7.02)](docs/OFFICE_CAMERA_TEST_GUIDE.md)
 - [Safety & Clean-Room Architecture](docs/SAFETY_AND_CLEANROOM.md)
 - [BIONZ XR 12.1MP Offset Audit & MP4 3:2 Muxer](docs/OFFSET_AUDIT.md)
 - [Feature Unlock Ranking & Verified Designs](docs/FEATURE_UNLOCK_RANKING.md)

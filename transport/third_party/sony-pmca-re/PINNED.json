@@ -1,0 +1,23 @@
+{
+ "commit": "a82f5baaa8e9c3d9f28f94699e860fb2e48cc8e0",
+ "files": {
+  "pmca/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "pmca/usb/__init__.py": "f4c856b505a6c62bf841bb6f662990ba1ea12b46e7984430463bea4dca60eae6",
+  "pmca/usb/constants.py": "345f0184fe0127b61cd8ef6f861c513e43468b6f8f926304eda960450870a912",
+  "pmca/usb/crypto.py": "4cae5195d85d20142f674c7073c7c5ae34c10b39fb834a6851f0b77fc55236b5",
+  "pmca/usb/driver/__init__.py": "bd855bc35a812e56e2ce9810390e75d5444890a47825d11ae6a51090b97bdbec",
+  "pmca/usb/driver/generic/__init__.py": "4a521b34a320e2dc062977e81811b5f277faf87f5f4a928532ecc370a1ba167a",
+  "pmca/usb/driver/generic/libusb.py": "ed9dc95d5ae76e579f74e44d3ee29c77f822a890a21dfff4533dd47545a88ea3",
+  "pmca/usb/driver/generic/qemu.py": "d92c06961e3548877004f2394787beecf454bb1efabe1f8c465b3075a19c9ed6",
+  "pmca/usb/driver/osx.py": "d970eb9ab76f0af64078d068376f06f6fc5d95be9391330dab347acd0966a5c2",
+  "pmca/usb/driver/windows/__init__.py": "6b1a46f814c2c8ede7d79217781e6a1c25ac311191038ff4ef4bc21cf1ca43c7",
+  "pmca/usb/driver/windows/driverless.py": "5021554f430019bb2073fd7c335fc25f46c4b67031839373a1c7e49cc92ffdfc",
+  "pmca/usb/driver/windows/msc.py": "5d4f114eff7fd87d8017f001a15dffb136414f0ee29493be66cc6ce134735b98",
+  "pmca/usb/driver/windows/setupapi.py": "553e0a9694cdaff6fa3e94ee82931e1ecf32bc39c7fb6e469619e293bff906e4",
+  "pmca/usb/driver/windows/wpd.py": "c94aaf7aed158729581c2365052ab15d1c5855ce815ad1955a22e0dce36ee801",
+  "pmca/usb/sony.py": "4ac3abcd796f5ca6bcf18179065bddef1cc0e2d7201fc6a458fc6c53bdaf541c",
+  "pmca/util/__init__.py": "26b5d9bfb2155197edb949ec25f39fc62a87c6318f6a0057ad159331480ca493",
+  "pmca/util/http.py": "e4a2ea7f6b2aba30213f9b80292a65c99a0c9558a48a86923a60d9bfea7bc6da"
+ },
+ "source": "https://github.com/ma1co/Sony-PMCA-RE"
+}

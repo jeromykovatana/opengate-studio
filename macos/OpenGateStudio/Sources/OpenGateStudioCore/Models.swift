@@ -389,3 +389,106 @@ public struct ClipCheckResult: Codable, Equatable, Sendable {
         self.issues = issues
     }
 }
+
+public enum LiveCommandAction: String, CaseIterable, Codable, Identifiable, Sendable {
+    case preflight
+    case dump
+    case apply
+    case putback
+
+    public var id: String { rawValue }
+}
+
+public struct LatestSessionResult: Codable, Equatable, Sendable {
+    public let ok: Bool
+    public let found: Bool
+    public let bodyId: String
+    public let sessionId: String?
+    public let kind: String?
+    public let ready: Bool
+    public let state: String
+    public let verdict: String
+    public let activePacks: [String]
+    public let stepsRun: [ExecutedStep]
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case found
+        case bodyId = "body_id"
+        case sessionId = "session_id"
+        case kind
+        case ready
+        case state
+        case verdict
+        case activePacks = "active_packs"
+        case stepsRun = "steps_run"
+    }
+
+    public init(
+        ok: Bool,
+        found: Bool,
+        bodyId: String,
+        sessionId: String? = nil,
+        kind: String? = nil,
+        ready: Bool,
+        state: String,
+        verdict: String,
+        activePacks: [String] = [],
+        stepsRun: [ExecutedStep] = []
+    ) {
+        self.ok = ok
+        self.found = found
+        self.bodyId = bodyId
+        self.sessionId = sessionId
+        self.kind = kind
+        self.ready = ready
+        self.state = state
+        self.verdict = verdict
+        self.activePacks = activePacks
+        self.stepsRun = stepsRun
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.ok = try c.decodeIfPresent(Bool.self, forKey: .ok) ?? false
+        self.found = try c.decodeIfPresent(Bool.self, forKey: .found) ?? false
+        self.bodyId = try c.decodeIfPresent(String.self, forKey: .bodyId) ?? ""
+        self.sessionId = try c.decodeIfPresent(String.self, forKey: .sessionId)
+        self.kind = try c.decodeIfPresent(String.self, forKey: .kind)
+        self.ready = try c.decodeIfPresent(Bool.self, forKey: .ready) ?? false
+        self.state = try c.decodeIfPresent(String.self, forKey: .state) ?? "unknown"
+        self.verdict = try c.decodeIfPresent(String.self, forKey: .verdict) ?? ""
+        self.activePacks = try c.decodeIfPresent([String].self, forKey: .activePacks) ?? []
+        self.stepsRun = try c.decodeIfPresent([ExecutedStep].self, forKey: .stepsRun) ?? []
+    }
+}
+
+public struct PrepareLiveCommandResult: Codable, Equatable, Sendable {
+    public let ok: Bool
+    public let action: String
+    public let bodyId: String
+    public let commandFile: String
+    public let preview: String
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case action
+        case bodyId = "body_id"
+        case commandFile = "command_file"
+        case preview
+    }
+
+    public init(
+        ok: Bool,
+        action: String,
+        bodyId: String,
+        commandFile: String,
+        preview: String
+    ) {
+        self.ok = ok
+        self.action = action
+        self.bodyId = bodyId
+        self.commandFile = commandFile
+        self.preview = preview
+    }
+}

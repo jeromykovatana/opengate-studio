@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import shlex
 import sys
 import tempfile
 import time
@@ -179,17 +181,90 @@ def _write_session(session_dir: Path, payload: dict[str, Any]) -> str:
     return sid
 
 
-def _latest_preflight_session(session_dir: Path, body_id: str) -> dict[str, Any] | None:
+def _latest_session_record(session_dir: Path, body_id: str) -> dict[str, Any] | None:
     if not session_dir.is_dir():
         return None
-    for p in sorted(session_dir.glob("session_*.json"), reverse=True):
+    matches: list[tuple[float, str, dict[str, Any]]] = []
+    for p in session_dir.glob("session_*.json"):
         try:
             rec = json.loads(p.read_text(encoding="utf8"))
         except (OSError, ValueError):
             continue
-        if rec.get("body_id") == body_id and rec.get("kind") in ("preflight", "closing_dump"):
+        if rec.get("body_id") == body_id:
+            matches.append((float(rec.get("timestamp") or 0.0), p.name, rec))
+    if not matches:
+        return None
+    matches.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return matches[0][2]
+
+
+def _latest_preflight_session(session_dir: Path, body_id: str) -> dict[str, Any] | None:
+    if not session_dir.is_dir():
+        return None
+    matches: list[tuple[float, str, dict[str, Any]]] = []
+    for p in session_dir.glob("session_*.json"):
+        try:
+            rec = json.loads(p.read_text(encoding="utf8"))
+        except (OSError, ValueError):
+            continue
+        if rec.get("body_id") == body_id:
+            matches.append((float(rec.get("timestamp") or 0.0), p.name, rec))
+    matches.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    for _, _, rec in matches:
+        if rec.get("kind") == "putback":
+            return None
+        if rec.get("kind") in ("preflight", "dump", "closing_dump"):
             return rec
     return None
+
+
+def resolve_pack_plan(
+    manifest: dict[str, Any],
+    action: str,
+    packs_arg: str | None,
+    saved_active_packs: list[str] | None = None,
+) -> tuple[list[str], list[str]]:
+    """Resolve ordered steps and active_packs for apply or putback."""
+    packs = manifest.get("packs", {})
+    if action == "apply":
+        selected = _parse_packs(packs_arg, packs)
+        steps_run: list[str] = list(packs["core_open_gate"]["apply_steps"])
+        active_packs = ["core_open_gate"]
+
+        if "mp4_3x2" in selected:
+            steps_run.extend(packs["mp4_3x2"]["apply_steps"])
+            active_packs.append("mp4_3x2")
+        else:
+            steps_run.extend(packs["mp4_3x2"]["fallback_apply_steps"])
+
+        for p in ("hdmi32", "high_bitrate", "xavc_si", "screen_3x2"):
+            if p in selected and p in packs:
+                steps_run.extend(packs[p]["apply_steps"])
+                active_packs.append(p)
+        return steps_run, active_packs
+
+    if action == "putback":
+        if packs_arg is not None:
+            selected = _parse_packs(packs_arg, packs)
+        else:
+            saved = saved_active_packs or []
+            selected = [p for p in saved if p != "core_open_gate" and p in packs] or [
+                p for p in OPTIONAL_PACK_ORDER if p in packs
+            ]
+        steps_run = []
+        for p in ("screen_3x2", "xavc_si", "high_bitrate", "hdmi32"):
+            if p in selected and p in packs:
+                steps_run.extend(packs[p]["putback_steps"])
+
+        if "mp4_3x2" in selected:
+            steps_run.extend(packs["mp4_3x2"]["putback_steps"])
+        else:
+            steps_run.extend(packs["mp4_3x2"].get("fallback_putback_steps", ["L20"]))
+
+        steps_run.extend(packs["core_open_gate"]["putback_steps"])
+        return steps_run, []
+
+    raise ValueError(f"Unsupported pack-plan action: {action!r}")
 
 
 def _require_offline_mode(live_usb: bool) -> dict[str, Any] | None:
@@ -289,25 +364,10 @@ def cmd_apply(body_id: str, packs_arg: str | None, session_dir: Path, live_usb: 
         reason = "no preflight session found" if last is None else f"last preflight session ({last.get('session_id')}) is not ready: {last.get('verdict')}"
         return 1, {"ok": False, "error": f"Refusing apply: {reason}"}
 
-    packs = man.get("packs", {})
     try:
-        selected = _parse_packs(packs_arg, packs)
+        steps_run, active_packs = resolve_pack_plan(man, "apply", packs_arg)
     except ValueError as err:
         return 1, {"ok": False, "error": str(err)}
-
-    steps_run: list[str] = list(packs["core_open_gate"]["apply_steps"])
-    active_packs = ["core_open_gate"]
-
-    if "mp4_3x2" in selected:
-        steps_run.extend(packs["mp4_3x2"]["apply_steps"])
-        active_packs.append("mp4_3x2")
-    else:
-        steps_run.extend(packs["mp4_3x2"]["fallback_apply_steps"])
-
-    for p in ("hdmi32", "high_bitrate", "xavc_si", "screen_3x2"):
-        if p in selected and p in packs:
-            steps_run.extend(packs[p]["apply_steps"])
-            active_packs.append(p)
 
     # Confirm every step in steps_run is pinned in manifest
     steps_map = man.get("steps", {})
@@ -324,6 +384,7 @@ def cmd_apply(body_id: str, packs_arg: str | None, session_dir: Path, live_usb: 
         "state": "applied",
         "verdict": closing_verdict,
         "active_packs": active_packs,
+        "steps_run": steps_run,
         "pins_ok": True,
     })
 
@@ -350,27 +411,11 @@ def cmd_putback(body_id: str, packs_arg: str | None, session_dir: Path, live_usb
     if not pin_res["ok"]:
         return 1, {"ok": False, "error": "Pin verification failed", "mismatches": pin_res["mismatches"]}
 
-    packs = man.get("packs", {})
-    if packs_arg is not None:
-        try:
-            selected = _parse_packs(packs_arg, packs)
-        except ValueError as err:
-            return 1, {"ok": False, "error": str(err)}
-    else:
+    try:
         saved = _read_mock_state(session_dir, body_id).get("active_packs", [])
-        selected = [p for p in saved if p != "core_open_gate"] or [p for p in OPTIONAL_PACK_ORDER if p in packs]
-
-    steps_run: list[str] = []
-    for p in ("screen_3x2", "xavc_si", "high_bitrate", "hdmi32"):
-        if p in selected and p in packs:
-            steps_run.extend(packs[p]["putback_steps"])
-
-    if "mp4_3x2" in selected:
-        steps_run.extend(packs["mp4_3x2"]["putback_steps"])
-    else:
-        steps_run.extend(packs["mp4_3x2"].get("fallback_putback_steps", ["L20"]))
-
-    steps_run.extend(packs["core_open_gate"]["putback_steps"])
+        steps_run, _ = resolve_pack_plan(man, "putback", packs_arg, saved_active_packs=saved)
+    except ValueError as err:
+        return 1, {"ok": False, "error": str(err)}
 
     steps_map = man.get("steps", {})
     missing = [s for s in steps_run if s not in steps_map]
@@ -379,11 +424,13 @@ def cmd_putback(body_id: str, packs_arg: str | None, session_dir: Path, live_usb
 
     _write_mock_state(session_dir, body_id, "stock", [])
     _write_session(session_dir, {
-        "kind": "preflight",
+        "kind": "putback",
         "body_id": body_id,
         "ready": True,
         "state": "stock",
         "verdict": "VERDICT READY (stock preflight)",
+        "active_packs": [],
+        "steps_run": steps_run,
         "pins_ok": True,
     })
 
@@ -392,6 +439,88 @@ def cmd_putback(body_id: str, packs_arg: str | None, session_dir: Path, live_usb
         "body_id": body_id,
         "steps_run": steps_run,
         "state": "stock",
+    }
+
+
+def cmd_latest_session(body_id: str, session_dir: Path) -> tuple[int, dict[str, Any]]:
+    manifests = _load_manifests()
+    if body_id not in manifests:
+        return 1, {"ok": False, "error": f"Unknown body {body_id!r}"}
+
+    rec = _latest_session_record(session_dir, body_id)
+    if rec is None:
+        return 0, {
+            "ok": True,
+            "found": False,
+            "body_id": body_id,
+            "session_id": None,
+            "kind": None,
+            "ready": False,
+            "state": "unknown",
+            "verdict": "",
+            "active_packs": [],
+            "steps_run": [],
+        }
+
+    return 0, {
+        "ok": True,
+        "found": True,
+        "body_id": body_id,
+        "session_id": rec.get("session_id"),
+        "kind": rec.get("kind"),
+        "ready": bool(rec.get("ready", False)),
+        "state": str(rec.get("state") or "unknown"),
+        "verdict": str(rec.get("verdict") or ""),
+        "active_packs": list(rec.get("active_packs") or []),
+        "steps_run": list(rec.get("steps_run") or []),
+    }
+
+
+def cmd_prepare_live_command(
+    action: str,
+    body_id: str,
+    packs_arg: str | None,
+    session_dir: Path,
+) -> tuple[int, dict[str, Any]]:
+    manifests = _load_manifests()
+    if body_id not in manifests:
+        return 1, {"ok": False, "error": f"Unknown body {body_id!r}"}
+
+    _, man = manifests[body_id]
+    if packs_arg is not None:
+        try:
+            _parse_packs(packs_arg, man.get("packs", {}))
+        except ValueError as err:
+            return 1, {"ok": False, "error": str(err)}
+
+    session_dir_abs = session_dir.resolve()
+    session_dir_abs.mkdir(parents=True, exist_ok=True)
+
+    runner_sh = (REPO_ROOT / "macos" / "run_live_terminal.sh").resolve()
+    cmd_parts = ["/bin/bash", str(runner_sh), action, "--body", body_id]
+    if packs_arg is not None and packs_arg.strip():
+        normalized = ",".join(p.strip() for p in packs_arg.split(",") if p.strip())
+        if normalized:
+            cmd_parts.extend(["--packs", normalized])
+    cmd_parts.extend(["--session-dir", str(session_dir_abs)])
+
+    preview = " ".join(shlex.quote(part) for part in cmd_parts)
+    cmd_file = (session_dir_abs / f"run_live_{action}_{body_id}.command").resolve()
+    script_body = (
+        "#!/bin/bash\n"
+        "set -euo pipefail\n"
+        f"cd {shlex.quote(str(REPO_ROOT.resolve()))}\n"
+        f"exec {preview}\n"
+    )
+    cmd_file.write_bytes(script_body.encode("utf8"))
+    os.chmod(cmd_file, 0o755)
+
+    return 0, {
+        "ok": True,
+        "action": action,
+        "body_id": body_id,
+        "command_file": str(cmd_file),
+        "preview": preview,
     }
 
 
@@ -441,6 +570,18 @@ def main(argv: list[str] | None = None) -> int:
     p_put.add_argument("--live-usb", action="store_true")
     p_put.add_argument("--json", action="store_true")
 
+    p_latest = sub.add_parser("latest-session", help="Read newest session state for a body")
+    p_latest.add_argument("--body", required=True)
+    p_latest.add_argument("--session-dir", type=Path, default=DEFAULT_SESSION_DIR)
+    p_latest.add_argument("--json", action="store_true")
+
+    p_prep = sub.add_parser("prepare-live-command", help="Write executable Terminal .command wrapper without touching USB")
+    p_prep.add_argument("--action", required=True, choices=("preflight", "dump", "apply", "putback"))
+    p_prep.add_argument("--body", required=True)
+    p_prep.add_argument("--packs", default=None)
+    p_prep.add_argument("--session-dir", type=Path, default=DEFAULT_SESSION_DIR)
+    p_prep.add_argument("--json", action="store_true")
+
     p_clip = sub.add_parser("check-clip", help="Inspect MP4 + XML + rtmd clip via bionz_clip_check")
     p_clip.add_argument("mp4_path", type=Path)
     p_clip.add_argument("--xml", type=Path, default=None)
@@ -459,6 +600,10 @@ def main(argv: list[str] | None = None) -> int:
         rc, payload = cmd_apply(args.body, args.packs, args.session_dir, args.live_usb)
     elif args.cmd == "putback":
         rc, payload = cmd_putback(args.body, args.packs, args.session_dir, args.live_usb)
+    elif args.cmd == "latest-session":
+        rc, payload = cmd_latest_session(args.body, args.session_dir)
+    elif args.cmd == "prepare-live-command":
+        rc, payload = cmd_prepare_live_command(args.action, args.body, args.packs, args.session_dir)
     elif args.cmd == "check-clip":
         rc, payload = cmd_check_clip(args.mp4_path, args.xml, args.body, args.expect)
     else:

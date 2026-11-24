@@ -242,6 +242,43 @@ public final class StudioBridge: @unchecked Sendable {
         return try await runAndDecode(ClipCheckResult.self, context: "check-clip", args: args)
     }
 
+    public func latestSession(
+        bodyId: String,
+        sessionDir: URL? = nil
+    ) async throws -> (result: LatestSessionResult, trace: CommandTrace) {
+        let effectiveSessionDir = sessionDir ?? sessionDirectory
+        try FileManager.default.createDirectory(at: effectiveSessionDir, withIntermediateDirectories: true)
+
+        let args = [
+            "latest-session",
+            "--body", bodyId,
+            "--session-dir", effectiveSessionDir.path,
+            "--json"
+        ]
+        return try await runAndDecode(LatestSessionResult.self, context: "latest-session", args: args)
+    }
+
+    public func prepareLiveCommand(
+        action: LiveCommandAction,
+        bodyId: String,
+        packs: [String]? = nil,
+        sessionDir: URL? = nil
+    ) async throws -> (result: PrepareLiveCommandResult, trace: CommandTrace) {
+        let effectiveSessionDir = sessionDir ?? sessionDirectory
+        try FileManager.default.createDirectory(at: effectiveSessionDir, withIntermediateDirectories: true)
+
+        var args = [
+            "prepare-live-command",
+            "--action", action.rawValue,
+            "--body", bodyId
+        ]
+        if let packs, !packs.isEmpty {
+            args.append(contentsOf: ["--packs", packs.joined(separator: ",")])
+        }
+        args.append(contentsOf: ["--session-dir", effectiveSessionDir.path, "--json"])
+        return try await runAndDecode(PrepareLiveCommandResult.self, context: "prepare-live-command", args: args)
+    }
+
     /// Auto-detects a matching Sony sidecar XML next to an MP4 clip (e.g., C0001.MP4 -> C0001M01.XML).
     public static func autoDetectSidecarXML(for mp4URL: URL) -> URL? {
         let fm = FileManager.default
