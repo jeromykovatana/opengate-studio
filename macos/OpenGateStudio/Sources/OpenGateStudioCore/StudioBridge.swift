@@ -53,7 +53,7 @@ public enum StudioBridgeError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .repoRootNotFound(let searched):
-            return "Could not locate sony-opengate-studio repository root (expected cli/studio_cli.py and kits/). Searched: \(searched.joined(separator: ", "))"
+            return "Could not locate opengate-studio repository root (expected cli/studio_cli.py and kits/). Searched: \(searched.joined(separator: ", "))"
         case .processLaunchFailed(let detail):
             return "Failed to launch python3 process: \(detail)"
         case .cliFailed(let exitCode, let message, _):

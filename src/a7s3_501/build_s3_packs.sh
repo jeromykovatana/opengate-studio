@@ -10,7 +10,7 @@ KIT_DIR="$STUDIO_ROOT/kits/a7s3_501"
 FW_DIR="${SONY_FW_DIR:-$WORKSPACE_ROOT/firmwares/a7siii/ghidra_targets}"
 SEN="$FW_DIR/libsencore.so"
 READCHECK_C="$STUDIO_ROOT/src/common/readcheck.c"
-ZIG_PY="${ZIG_PY:-/Users/jeromykovatana/.gemini/antigravity/brain/13cce10e-a1ea-410d-afca-6a164b92a773/scratch/venv_zig/bin/python}"
+ZIG_PY="${ZIG_PY:-python3}"
 
 mkdir -p "$KIT_DIR"
 python3 -B "$SRC_DIR/gen_s3_packs.py"

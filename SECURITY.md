@@ -2,7 +2,7 @@
 
 ## Volatile RAM Boundary
 
-**Sony OpenGate Studio** is designed strictly for **volatile RAM modification only** (`persistent_writes: false`):
+**OpenGate Studio** is designed strictly for **volatile RAM modification only** (`persistent_writes: false`):
 
 - No patch writes to eMMC flash (`nflasha*`), bootloaders (`boot0`/`boot1`), or persistent settings (`BK4` / `BACKUP.BIN`).
 - Every write helper verifies 16-byte aligned stock guard windows before patching and checks for cross-pack byte collisions.

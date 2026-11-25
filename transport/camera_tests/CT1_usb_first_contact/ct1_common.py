@@ -22,7 +22,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 MAP_ROOT = HERE.parent.parent                 # .../transport
-REPO = MAP_ROOT.parent                        # .../sony-opengate-studio
+REPO = MAP_ROOT.parent                        # .../opengate-studio
 CAMERA_RE = MAP_ROOT / "third_party"
 PMCA_ROOT = CAMERA_RE / "sony-pmca-re"
 PMCA_COMMIT = "a82f5baaa8e9c3d9f28f94699e860fb2e48cc8e0"

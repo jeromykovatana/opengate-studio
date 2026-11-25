@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Live USB Terminal wrapper for Sony OpenGate Studio.
+# Live USB Terminal wrapper for OpenGate Studio.
 # macOS keeps its own iousbmassstorage driver bound to Sony cameras in MSC mode;
 # only root may detach it, so live runs execute under sudo and restore ownership
 # of both --session-dir and OPENGATE_CAMERA_PRIVATE afterwards.

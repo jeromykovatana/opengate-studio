@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# One-click macOS setup for Sony OpenGate Studio:
+# One-click macOS setup for OpenGate Studio:
 #   1. Creates .venv and installs pyusb, pycryptodomex, and libusb-package (no Homebrew libusb needed).
 #   2. Verifies kit SHA-256 pins.
 #   3. Builds OpenGate Studio.app via macos/OpenGateStudio/bundle_app.sh if swift is available and opens it.
@@ -67,7 +67,7 @@ fi
 cat <<'EOF'
 
 ==============================================================================
-Sony OpenGate Studio — Ready for Office Camera Testing
+OpenGate Studio — Ready for Office Camera Testing
 ==============================================================================
 No Zadig or Homebrew libusb driver is required on macOS: live USB commands
 automatically prompt once for your macOS password to detach iousbmassstorage.

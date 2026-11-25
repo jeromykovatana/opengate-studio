@@ -1,6 +1,6 @@
-# Contributing to Sony OpenGate Studio
+# Contributing to OpenGate Studio
 
-Thank you for helping improve **Sony OpenGate Studio**!
+Thank you for helping improve **OpenGate Studio**!
 
 ## Hard Clean-Room & Safety Rules
 

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
-  <title id="title">Sony OpenGate Studio — GitHub Social Preview</title>
-  <desc id="desc">Social preview card for Sony OpenGate Studio supporting Sony FX3, a7S III, and ZV-E1 in volatile RAM.</desc>
+  <title id="title">OpenGate Studio — GitHub Social Preview</title>
+  <desc id="desc">Social preview card for OpenGate Studio supporting Sony FX3, a7S III, and ZV-E1 in volatile RAM.</desc>
   <defs>
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#090e1a"/>
@@ -24,7 +24,7 @@
     <text x="104" y="87" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="13.5" font-weight="700" letter-spacing="0.8" fill="#6ee7b7">VOLATILE RAM ONLY · GPL-3.0 OPEN SOURCE</text>
 
     <!-- Title -->
-    <text x="64" y="176" font-size="54" font-weight="800" letter-spacing="-1" fill="#f8fafc">Sony OpenGate Studio</text>
+    <text x="64" y="176" font-size="54" font-weight="800" letter-spacing="-1" fill="#f8fafc">OpenGate Studio</text>
 
     <!-- Subtitle -->
     <text x="64" y="232" font-size="25" font-weight="500" fill="#cbd5e1">3:2 Open Gate (3840×2560) Upgrade Studio for</text>
@@ -53,7 +53,7 @@
 
     <!-- Bottom Reassurance Strip -->
     <text x="64" y="544" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="15" font-weight="700" fill="#6ee7b7">Zero Flash Writes · Battery Pull Restores 100% Stock</text>
-    <text x="64" y="572" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="13.5" fill="#94a3b8">github.com/jeromykovatana/sony-opengate-studio</text>
+    <text x="64" y="572" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="13.5" fill="#94a3b8">Independent Open-Source Utility · Not Affiliated with Sony</text>
   </g>
 
   <!-- Right Sensor Card -->

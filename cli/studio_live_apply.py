@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Interactive live USB orchestrator for Sony OpenGate Studio (preflight, dump, apply, putback)."""
+"""Interactive live USB orchestrator for OpenGate Studio (preflight, dump, apply, putback)."""
 from __future__ import annotations
 
 import argparse

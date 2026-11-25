@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="520" viewBox="0 0 1600 520" role="img" aria-labelledby="title desc">
-  <title id="title">Sony OpenGate Studio — 3:2 Open Gate (3840x2560) for Sony FX3, a7S III, and ZV-E1</title>
-  <desc id="desc">Hero banner showing Sony OpenGate Studio volatile RAM patch capabilities and 3:2 vs 16:9 sensor framing.</desc>
+  <title id="title">OpenGate Studio — 3:2 Open Gate (3840x2560) for Sony FX3, a7S III, and ZV-E1</title>
+  <desc id="desc">Hero banner showing OpenGate Studio volatile RAM patch capabilities and 3:2 vs 16:9 sensor framing.</desc>
   <defs>
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#090e1a"/>
@@ -34,11 +34,11 @@
     <text x="102" y="74" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="13.5" font-weight="700" letter-spacing="0.9" fill="#6ee7b7">VOLATILE RAM ONLY · ZERO FLASH WRITES · GPL-3.0</text>
 
     <!-- Main Headline -->
-    <text x="64" y="162" font-size="64" font-weight="800" letter-spacing="-1.2" fill="#f8fafc">Sony OpenGate Studio</text>
+    <text x="64" y="162" font-size="64" font-weight="800" letter-spacing="-1.2" fill="#f8fafc">OpenGate Studio</text>
 
     <!-- Subtitle -->
     <text x="64" y="216" font-size="24" font-weight="500" fill="#cbd5e1">Unlock 3:2 Open Gate (3840×2560), Native MP4 + Gyroflow Metadata,</text>
-    <text x="64" y="250" font-size="24" font-weight="500" fill="#cbd5e1">Clean 3:2 HDMI &amp; XAVC S-I All-Intra on 12.1MP BIONZ XR Cameras</text>
+    <text x="64" y="250" font-size="24" font-weight="500" fill="#cbd5e1">Clean 3:2 HDMI &amp; All-Intra for Sony FX3, a7S III &amp; ZV-E1</text>
 
     <!-- Accent Rule -->
     <rect x="64" y="284" width="220" height="4" rx="2" fill="url(#accentGrad)"/>

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Clean-room, toolchain, SHA-256 pin, and ELF symbol verifier for sony-opengate-studio."""
+"""Clean-room, toolchain, SHA-256 pin, and ELF symbol verifier for opengate-studio."""
 from __future__ import annotations
 
 import argparse

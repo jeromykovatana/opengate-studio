@@ -9,7 +9,7 @@ STUDIO="$(cd "$SRC/../.." && pwd)"
 WS="$(cd "$STUDIO/.." && pwd)"
 KIT="$STUDIO/kits/zve1_202"
 
-ZIG_PYTHON="${ZIG_PYTHON:-/Users/jeromykovatana/.gemini/antigravity/brain/13cce10e-a1ea-410d-afca-6a164b92a773/scratch/venv_zig/bin/python}"
+ZIG_PYTHON="${ZIG_PYTHON:-python3}"
 SONY_FW_DIR="${SONY_FW_DIR:-$WS/firmwares/zve1/ghidra_targets}"
 SEN="$SONY_FW_DIR/libsencore.so"
 

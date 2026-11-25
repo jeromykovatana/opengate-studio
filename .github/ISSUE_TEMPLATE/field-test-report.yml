@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for helping validate **Sony OpenGate Studio** on camera hardware!
+        Thank you for helping validate **OpenGate Studio** on camera hardware!
         **Reminder:** Never upload Sony firmware binaries (`.DAT`, `.bin`, `.so` from the camera) or full private dump archives containing proprietary strings if unsure—stick to verdict output, `bionz_clip_check.py` JSON, and observed camera behavior.
 
   - type: dropdown

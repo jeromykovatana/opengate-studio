@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Questions & Community Q&A (GitHub Discussions)
-    url: https://github.com/jeromykovatana/sony-opengate-studio/discussions
+    url: https://github.com/jeromykovatana/opengate-studio/discussions
     about: Ask setup questions, share 3:2 Open Gate rigs, or discuss workflows
   - name: Office Camera Test Guide
-    url: https://github.com/jeromykovatana/sony-opengate-studio/blob/main/docs/OFFICE_CAMERA_TEST_GUIDE.md
+    url: https://github.com/jeromykovatana/opengate-studio/blob/main/docs/OFFICE_CAMERA_TEST_GUIDE.md
     about: Read exact camera menu settings and the 5-gate safety checklist first

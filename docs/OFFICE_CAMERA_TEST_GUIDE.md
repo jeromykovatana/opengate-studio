@@ -16,7 +16,7 @@
 Double-click **`setup_and_open_mac.command`** (or run from Terminal):
 
 ```bash
-cd "/path/to/sony-opengate-studio"
+cd "/path/to/opengate-studio"
 chmod +x setup_and_open_mac.command macos/run_live_terminal.sh
 ./setup_and_open_mac.command
 ```

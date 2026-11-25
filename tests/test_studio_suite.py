@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit and integration test suite for sony-opengate-studio."""
+"""Unit and integration test suite for opengate-studio."""
 from __future__ import annotations
 
 import json

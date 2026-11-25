@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Multi-body CT6 volatile RAM step runner for Sony OpenGate Studio (zve1_202, a7s3_501, fx3_702)."""
+"""Multi-body CT6 volatile RAM step runner for OpenGate Studio (zve1_202, a7s3_501, fx3_702)."""
 from __future__ import annotations
 
 import argparse

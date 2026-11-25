@@ -1,16 +1,16 @@
 <div align="center">
 
-<a href="https://github.com/jeromykovatana/sony-opengate-studio">
-  <img src="assets/hero-banner.png" alt="Sony OpenGate Studio — 3:2 Open Gate 3840x2560 for Sony FX3, a7S III, and ZV-E1" width="100%">
+<a href="https://github.com/jeromykovatana/opengate-studio">
+  <img src="assets/hero-banner.png" alt="OpenGate Studio — 3:2 Open Gate 3840x2560 for Sony FX3, a7S III, and ZV-E1" width="100%">
 </a>
 
-<h1>Sony OpenGate Studio</h1>
+<h1>OpenGate Studio</h1>
 
-<p><strong>Unlock 3:2 Open Gate (3840×2560), native 3:2 MP4 + Gyroflow telemetry, clean 3:2 HDMI, and XAVC S-I All-Intra on Sony FX3, a7S III, and ZV-E1 — 100% in volatile RAM.</strong></p>
+<p><strong>Unlock 3:2 Open Gate (3840×2560), native 3:2 MP4 + Gyroflow telemetry, clean 3:2 HDMI, and XAVC S-I All-Intra for Sony FX3, a7S III, and ZV-E1 — 100% in volatile RAM.</strong></p>
 
 <p>
-  <a href="https://github.com/jeromykovatana/sony-opengate-studio/releases"><img src="https://img.shields.io/github/v/release/jeromykovatana/sony-opengate-studio?include_prereleases&label=release&color=0ea5e9" alt="Latest Release"></a>
-  <a href="https://github.com/jeromykovatana/sony-opengate-studio/actions/workflows/ci.yml"><img src="https://github.com/jeromykovatana/sony-opengate-studio/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
+  <a href="https://github.com/jeromykovatana/opengate-studio/releases"><img src="https://img.shields.io/github/v/release/jeromykovatana/opengate-studio?include_prereleases&label=release&color=0ea5e9" alt="Latest Release"></a>
+  <a href="https://github.com/jeromykovatana/opengate-studio/actions/workflows/ci.yml"><img src="https://github.com/jeromykovatana/opengate-studio/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
   <img src="https://img.shields.io/badge/cameras-FX3%20%7C%20a7S%20III%20%7C%20ZV--E1-f59e0b" alt="Supported Cameras">
   <img src="https://img.shields.io/badge/writes-Volatile%20RAM%20Only-10b981" alt="Volatile RAM Only">
   <img src="https://img.shields.io/badge/platform-macOS%2014%2B%20%7C%20Python%203-6366f1" alt="Platform">
@@ -18,8 +18,8 @@
 </p>
 
 <p>
-  <a href="https://github.com/jeromykovatana/sony-opengate-studio/releases"><strong>Download macOS App</strong></a> ·
-  <a href="#why-sony-opengate-studio">Why Open Gate</a> ·
+  <a href="https://github.com/jeromykovatana/opengate-studio/releases"><strong>Download macOS App</strong></a> ·
+  <a href="#why-opengate-studio">Why Open Gate</a> ·
   <a href="#supported-cameras--firmware-pins">Supported Cameras</a> ·
   <a href="#modular-feature-packs">Feature Packs</a> ·
   <a href="#5-gate-volatile-ram-safety-architecture">Safety Architecture</a> ·
@@ -41,9 +41,9 @@
 
 ---
 
-## Why Sony OpenGate Studio?
+## Why OpenGate Studio?
 
-Sony's 12.1MP full-frame sensor (`IMX510` + `CXD90057` BIONZ XR) physically reads out 3:2 rows, yet stock firmware crops the frame vertically to 16:9 (`3840×2160`) before encoding. **Sony OpenGate Studio** unlocks the full **3:2 (`3840×2560`)** sensor height—plus native 3:2 MP4 metadata, Gyroflow/Catalyst telemetry preservation, clean 3:2 HDMI, and All-Intra/high-bitrate packs—inside a guided macOS SwiftUI utility and clean-room Python CLI.
+Sony's 12.1MP full-frame sensor (`IMX510` + `CXD90057` BIONZ XR) physically reads out 3:2 rows, yet stock firmware crops the frame vertically to 16:9 (`3840×2160`) before encoding. **OpenGate Studio** unlocks the full **3:2 (`3840×2560`)** sensor height—plus native 3:2 MP4 metadata, Gyroflow/Catalyst telemetry preservation, clean 3:2 HDMI, and All-Intra/high-bitrate packs—inside a guided macOS SwiftUI utility and clean-room Python CLI.
 
 <div align="center">
   <img src="assets/open-gate-framing.png" alt="3:2 Open Gate 3840x2560 vs Stock 16:9 3840x2160 Sensor Geometry" width="100%">
@@ -51,7 +51,7 @@ Sony's 12.1MP full-frame sensor (`IMX510` + `CXD90057` BIONZ XR) physically read
 
 ### How It Compares
 
-| Capability | Stock Sony Firmware | Basic Open-Gate Script | **Sony OpenGate Studio** |
+| Capability | Stock Sony Firmware | Basic Open-Gate Script | **OpenGate Studio** |
 |---|---|---|---|
 | **3:2 Full Sensor (`3840×2560` @ `23.98p`)** | ❌ Cropped to `3840×2160` (`16:9`) | ✅ Sensor + base Long-GOP | ✅ Modular `core_open_gate` across 3 bodies |
 | **Native 3:2 MP4 Headers (`tkhd`/`stsd`/`VPRF`)** | ❌ `16:9` only | ⚠️ Often needs `ffmpeg` re-mux | ✅ Native `3:2` directly out of camera (`mp4_3x2`) |
@@ -77,7 +77,7 @@ All 62 `.so` helper binaries across `kits/` are compiled reproducibly with `zigl
 > [!NOTE]
 > - **Exact firmware required:** Only `ZV-E1 2.02`, `a7S III 5.01`, and `FX3 7.02` (`ILME-FX3`, **not** `ILME-FX3A`) are supported. Preflight rejects any mismatched `DeviceInfo.xml` or memory identity page before touching RAM.
 > - **Sony a7 IV Clip Support:** The built-in Clip Inspector (`cli/bionz_clip_check.py`) also validates `3840×2560` and `5760×3840` clips from `a7iv-open-gate-test`.
-> - **Help validate on hardware:** This project is in active **v0.1.x-alpha** testing. If you run it on hardware, please submit a [Field Test Report](https://github.com/jeromykovatana/sony-opengate-studio/issues/new?template=field-test-report.yml).
+> - **Help validate on hardware:** This project is in active **v0.1.x-alpha** testing. If you run it on hardware, please submit a [Field Test Report](https://github.com/jeromykovatana/opengate-studio/issues/new?template=field-test-report.yml).
 
 ---
 
@@ -101,12 +101,12 @@ Pick only the capabilities you want to stack in camera RAM. Each pack is checked
 
 ### Option A — macOS App (`OpenGate Studio.app` — Recommended)
 
-Requires **macOS 14+** and **Python 3.9+** (Apple Silicon `arm64` prebuilt bundle on [Releases](https://github.com/jeromykovatana/sony-opengate-studio/releases); Xcode CLT / `swift` optional if rebuilding from source). **No Homebrew `libusb` or Windows Zadig driver needed.**
+Requires **macOS 14+** and **Python 3.9+** (Apple Silicon `arm64` prebuilt bundle on [Releases](https://github.com/jeromykovatana/opengate-studio/releases); Xcode CLT / `swift` optional if rebuilding from source). **No Homebrew `libusb` or Windows Zadig driver needed.**
 
-1. **Download & Open:** Grab the latest `.zip` from **[GitHub Releases](https://github.com/jeromykovatana/sony-opengate-studio/releases)**, or clone and run the one-click setup:
+1. **Download & Open:** Grab the latest `.zip` from **[GitHub Releases](https://github.com/jeromykovatana/opengate-studio/releases)**, or clone and run the one-click setup:
    ```bash
-   git clone https://github.com/jeromykovatana/sony-opengate-studio.git
-   cd sony-opengate-studio
+   git clone https://github.com/jeromykovatana/opengate-studio.git
+   cd opengate-studio
    ./setup_and_open_mac.command
    ```
 2. **Explore Safely Offline First:** Leave **Offline Mock Camera = ON** to walk through all three tabs with zero USB contact:
@@ -246,7 +246,7 @@ No. Leave a normal formatted SD or CFexpress card in **Slot 1** only so the came
 - [BIONZ XR 12.1MP Offset Audit & MP4 3:2 Muxer](docs/OFFSET_AUDIT.md) — cross-body memory architecture & Ghidra muxer analysis
 - [Feature Unlock Ranking & Verified Designs](docs/FEATURE_UNLOCK_RANKING.md) — offline readiness audit & hardware exclusions
 - [ZV-E1 2.02 Recording & Gyro Test Protocol](docs/ZVE1_RECORDING_TEST.md) — structured framing & Gyroflow verification protocol
-- [Contributing Guide](CONTRIBUTING.md) · [Security & Safety Policy](SECURITY.md) · [GitHub Discussions](https://github.com/jeromykovatana/sony-opengate-studio/discussions)
+- [Contributing Guide](CONTRIBUTING.md) · [Security & Safety Policy](SECURITY.md) · [GitHub Discussions](https://github.com/jeromykovatana/opengate-studio/discussions)
 
 ---
 
@@ -256,7 +256,9 @@ No. Leave a normal formatted SD or CFexpress card in **Slot 1** only so the came
 - **Sony USB Service Protocol Tooling:** [ma1co/Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE) (vendored MIT components in `transport/third_party/sony-pmca-re`)
 - **License:** GNU General Public License v3.0 or later (`GPL-3.0-or-later`) — see [LICENSE](LICENSE).
 
+<sub>*OpenGate Studio is an independent open-source project and is not affiliated with, endorsed by, or sponsored by Sony Group Corporation. Sony, Alpha, BIONZ XR, FX3, a7S III, ZV-E1, and XAVC are trademarks of their respective owners.*</sub>
+
 <div align="center">
   <br>
-  <sub>If Sony OpenGate Studio helps your filmmaking workflow, consider giving the repo a ⭐ so more Sony shooters can find it.</sub>
+  <sub>If OpenGate Studio helps your filmmaking workflow, consider giving the repo a ⭐ so more filmmakers can find it.</sub>
 </div>

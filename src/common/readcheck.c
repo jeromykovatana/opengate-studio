@@ -1,6 +1,6 @@
 /*
- * Sony OpenGate Studio — Volatile RAM Read/Write Helper (readcheck.c)
- * Copyright (C) 2026 ArcaneLantern & Sony OpenGate Studio Contributors
+ * OpenGate Studio — Volatile RAM Read/Write Helper (readcheck.c)
+ * Copyright (C) 2026 ArcaneLantern & OpenGate Studio Contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sony OpenGate Studio CLI: multi-body pin check, 5-gate mock preflight, apply/putback & clip check."""
+"""OpenGate Studio CLI: multi-body pin check, 5-gate mock preflight, apply/putback & clip check."""
 from __future__ import annotations
 
 import argparse
