@@ -3,9 +3,11 @@
 > [!CAUTION]
 > **Hard Safety Rules — Read Before Connecting Any Camera**
 > 1. **Volatile RAM Only (`persistent_writes: false`):** Every patch runs strictly in camera RAM (`/tmp/jiritsu/libJit.so`). Nothing is written to `nflasha*` flash, `boot0`/`boot1`, or `BK4` settings. **Pulling the battery for >= 10 seconds restores 100% stock state.**
-> 2. **Read-Only Gate First:** Never run `apply` until `preflight` (read-only `check`) returns **`VERDICT READY (stock preflight)`** on the exact firmware version.
-> 3. **24p (23.976p) Only While Applied:** Record **only** at `24p` (`23.98p`) in `XAVC HS 4K`, `XAVC S 4K`, or `XAVC S-I 4K` while Open Gate is applied. **`60p` distorts live view and crashes the camera** (pixel clock ceiling on `IMX510`).
-> 4. **Keep Camera Switched ON During `apply` / `putback`:** Do **not** toggle the power switch or pull the battery between steps. On `ZV-E1`, toggling the power switch without a battery pull leaves coprocessor RAM stock while main-processor RAM stays patched (`mixed_powerswitch`).
+> 2. **No Files Go on Your SD Card:** Do **not** copy any files onto your SD/CFexpress card. Keep a normal formatted card in **Slot 1** so the camera mounts as USB Mass Storage (`nothing is erased`).
+> 3. **Read-Only Gate First:** Never run `apply` until `preflight` (read-only `check`) returns **`VERDICT READY (stock preflight)`** on the exact firmware version.
+> 4. **24p (23.976p) Only While Applied:** Record **only** at `24p` (`23.98p`) in `XAVC HS 4K`, `XAVC S 4K`, or `XAVC S-I 4K` while Open Gate is applied. **`60p` distorts live view and crashes the camera** (pixel clock ceiling on `IMX510`).
+> 5. **Keep Camera Switched ON During `apply` / `putback`:** Do **not** toggle the power switch or pull the battery between steps. Both **`ZV-E1` (`2.02`)** and **`a7S III` (`5.01`)** (Issue #3) reset coprocessor RAM while retaining encoder patches on a power-switch cycle (`mixed_powerswitch`) — always **pull the battery for >= 10 seconds** to restore clean stock.
+> 6. **FX3 `7.02` Playback Freeze Warning:** On stock FX3 `7.02`, playing an open-gate clip shows `"Unable to display"` and **retrying freezes the camera until battery pull**. Do **not** play back clips on FX3 unless testing the optional **`fx3_playback` (`P29`/`P30`)** pack (untested on hardware: test 1 normal 16:9 clip first, then 1 open-gate clip, and **never retry** if it errors).
 
 ---
 
@@ -32,6 +34,7 @@ Set these **once** on each camera before starting:
 
 | Menu Setting | Required Value | Why |
 |---|---|---|
+| **SD / CFexpress Card (Slot 1)** | **Normal formatted card inserted (NO files copied to it)** | Camera needs a card in Slot 1 to mount as USB Mass Storage; nothing on the card is modified or erased |
 | **USB Connection** *(Setup > USB)* | **`Mass Storage`** *(NOT PC Remote, MTP, or Auto)* | Service-mode takeover starts on the MSC interface before switching to `054C:0336` |
 | **USB LUN Setting** *(Setup > USB)* | **`Multi`** *(or `Single`)* | `unmount_sony_disks` unmounts all whole disks cleanly before takeover |
 | **Smartphone Conn / Cnct. while Power OFF** *(Network)* | **`Off`** | Prevents background wireless/BT takeover conflicts over USB |
@@ -69,9 +72,10 @@ Set these **once** on each camera before starting:
 1. Select your desired modular packs in `OpenGate Studio.app` (recommended office test set: `mp4_3x2`, `screen_3x2`, `hdmi32`, `high_bitrate`, `xavc_si`) and click **Apply Selected Packs** (or run `./macos/run_live_terminal.sh apply --body <body_id> --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si`).
 2. Confirm exact firmware (`2.02` / `5.01` / `7.02`) and type **`YES`**.
 3. **Between every step:** When prompted, **unplug the USB cable and plug it right back in** — **do NOT power the camera off**.
+   - *macOS USB Note:* On macOS, after a step completes and sends the USB reset/stop request, the camera may re-enumerate automatically ~5 seconds later without requiring a physical cable replug — wait briefly or replug if it does not reappear.
    - **ZV-E1 (`zve1_202`):** Runs `L13` (`dmmwb_zv_v1` raw buffer resize **first**, before Movie mode!) -> `L5` -> `L16` -> `V19` -> `H16` -> `B19` -> `I19` -> `S16` -> `C19`.
    - **a7S III (`a7s3_501`):** Runs `L5` -> `L16` -> `V19` -> `H16` -> `B19` -> `I19` -> `S16` -> `C19`.
-   - **FX3 (`fx3_702`):** Runs `L5` -> `L16` -> `V19` -> `H16` -> `B19` -> `I19` -> `S16` (no `C19` — FX3 uses its native De-Squeeze Display menu).
+   - **FX3 (`fx3_702`):** Runs `L5` -> `L16` -> `V19` -> `H16` -> `B19` -> `I19` -> `S16` (plus `P29` if optional `fx3_playback` is selected; no `C19` — FX3 uses its native De-Squeeze Display menu).
 4. **Closing Movie-Mode `dump`:** When prompted after the final write step:
    - Unplug USB, switch to **Movie** mode (`24p`), observe the rear screen for 5 seconds, then replug USB so the closing `dump` runs.
    - Note: On `a7S III` (and potentially `FX3`/`ZV-E1`), entering Movie mode from Stills can show a purple/lower-black live-view glitch until either the closing `dump` completes or you start and stop a short recording.
@@ -84,11 +88,14 @@ Set these **once** on each camera before starting:
 - **a7S III (`a7s3_501`):**
   - **C3 key** in Movie mode cycles preview aspect **`3:2 -> 2:1 -> 2.25:1 -> 2.4:1 -> 3:2`** (`S16` + `C19`).
   - Also test **3:2 HDMI output** (`hdmi32`), **200M/300M Long-GOP** (`high_bitrate`), and **XAVC S-I All-Intra 3840x2560** (`xavc_si`) on a V90 SD / CFexpress Type A card.
+  - **Warm Power-Switch Partial Reset (Issue #3):** On `5.01`, flipping only the power switch resets coprocessor RAM (`ogsq` / `outsz2560`) while retaining main-processor encoder patches (`av-cam.bin` / `libmpr.so`), leaving the camera in `mixed_powerswitch` (`VERDICT NOT READY`). Always **pull the battery >= 10s** to restore clean stock.
   - Known workaround: if live view turns purple after switching Stills -> Movie, start/stop a 1-second recording to re-initialize the sensor readout cleanly.
 - **FX3 (`fx3_702`):**
+  - Verify the body is **`ILME-FX3`**, **not** `ILME-FX3A`.
   - First physical hardware validation target (`S16` patches `lcd32dsq_fx3_v1`, keeping **`MENU > Setup > Display Option > De-Squeeze Display`** at `1.3x / 1.5x / 1.6x / 2.0x` calibrated for 3:2).
   - The closing Movie-mode `dump` saves `sessions/camera_private/CT6_*/cp_*.bin` (`paneltype` page `0x1490000`) which records the FX3 rear panel aspect byte for verification.
-  - Test `mp4_3x2`, `hdmi32` (external 16:9 monitor pillarboxed 3:2), `high_bitrate`, and `xavc_si` (`avc1` 3840x2560) playback and recording stability.
+  - **Playback Freeze Warning & Optional `fx3_playback` (`P29`/`P30`):** Without `fx3_playback`, playing an open-gate clip on FX3 shows `"Unable to display"` and **retrying freezes the camera until battery pull**. Do **not** press Playback on FX3 unless explicitly testing optional `fx3_playback` (`P29`/`P30`, **untested on hardware**): if testing `P29`, play **1 normal 16:9 clip first**, then **1 open-gate clip**, and **never retry** if it errors.
+  - Test `mp4_3x2`, `hdmi32` (external 16:9 monitor pillarboxed 3:2), `high_bitrate`, and `xavc_si` (`avc1` 3840x2560) recording stability.
 
 ---
 

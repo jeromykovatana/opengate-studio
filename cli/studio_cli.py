@@ -23,7 +23,7 @@ if str(HERE) not in sys.path:
 import bionz_clip_check as bcc  # noqa: E402
 
 BODY_ORDER = ("zve1_202", "a7s3_501", "fx3_702")
-OPTIONAL_PACK_ORDER = ("mp4_3x2", "hdmi32", "high_bitrate", "xavc_si", "screen_3x2")
+OPTIONAL_PACK_ORDER = ("mp4_3x2", "hdmi32", "high_bitrate", "xavc_si", "screen_3x2", "fx3_playback")
 DEFAULT_SESSION_DIR = Path(tempfile.gettempdir()) / "opengate_studio_sessions"
 
 
@@ -237,7 +237,7 @@ def resolve_pack_plan(
         else:
             steps_run.extend(packs["mp4_3x2"]["fallback_apply_steps"])
 
-        for p in ("hdmi32", "high_bitrate", "xavc_si", "screen_3x2"):
+        for p in ("hdmi32", "high_bitrate", "xavc_si", "screen_3x2", "fx3_playback"):
             if p in selected and p in packs:
                 steps_run.extend(packs[p]["apply_steps"])
                 active_packs.append(p)
@@ -252,7 +252,7 @@ def resolve_pack_plan(
                 p for p in OPTIONAL_PACK_ORDER if p in packs
             ]
         steps_run = []
-        for p in ("screen_3x2", "xavc_si", "high_bitrate", "hdmi32"):
+        for p in ("fx3_playback", "screen_3x2", "xavc_si", "high_bitrate", "hdmi32"):
             if p in selected and p in packs:
                 steps_run.extend(packs[p]["putback_steps"])
 
@@ -337,7 +337,11 @@ def cmd_preflight(body_id: str, mock_state: str | None, session_dir: Path, live_
 
 def _parse_packs(packs_arg: str | None, available: dict[str, Any]) -> list[str]:
     if not packs_arg:
-        return [p for p in OPTIONAL_PACK_ORDER if p in available]
+        return [
+            p
+            for p in OPTIONAL_PACK_ORDER
+            if p in available and available[p].get("default_enabled", True) is not False
+        ]
     requested = [p.strip() for p in packs_arg.split(",") if p.strip()]
     unknown = [p for p in requested if p != "core_open_gate" and p not in available]
     if unknown:

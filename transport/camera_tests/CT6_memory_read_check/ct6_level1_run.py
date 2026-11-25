@@ -237,6 +237,16 @@ DESIGN_LIBS = {"fhband_v1": {5: ("libJit_level5_fhband_v1.so", "982d2ea9d8916246
                # recording needs for id 0x60c (F707, F708; the firmware's allocator: evidence/hardware/dmm_server_id_0x43f_keys_compared.json).
                "og57cp_v3": {16: ("libJit_level16_og57cp_v3.so", "eb14cbfff320dd8b23e5fd70326a115fc23350029e7dbe187b9979301dd6d599"),
                              17: ("libJit_level17_og57cp_v3.so", "5cf92e5debd2400bc9440e5859436394f8fccbc90c290a1a8e9f75a407fe8a32")},
+               # dmmslot8_v1 (2026-11-24; build/build_dmm_slot8.py): trial 3 of the 5.7K cadence trials in RAM after start-up: layout 0x8b's two units on
+               # key 0x5f2, layout 0x49's scene-0 limit 3 -> 2, and the start-up's key-to-layout lookup of keys 0x5f2 and 0x6a3 (0x94 first). Room for
+               # eight 30.8 MB output planes (four pictures) instead of six. Goes after og57cp_v3. 10 words, 20 guards. Not run on a camera.
+               "dmmslot8_v1": {16: ("libJit_level16_dmmslot8_v1.so", "40d8e5067d749ef9e73ac8a671b2b5c866415056f4ebb71227d7e72c46dfdfee"),
+                               17: ("libJit_level17_dmmslot8_v1.so", "c3269a02d8b37f35e0a8f837e830c339d0c93e12fa6e7647cf6d0f53bb6bef43")},
+               # dmmslot8_v2 (2026-11-24): v1 was refused on the camera before any write (request 57): it guarded lookup entries past a count, which
+               # start-up never writes (the camera held other bytes at 0x1ed8a64) and the memory manager never reads. v2 writes and guards only the
+               # entries below the counts: 7 words, 12 guards; the same as the trial's file in all 63 cases with those bytes random. Not run.
+               "dmmslot8_v2": {16: ("libJit_level16_dmmslot8_v2.so", "92a5607039bd5daf108e1222249f09601f7a6f09445fb3570eb6b412eb890014"),
+                               17: ("libJit_level17_dmmslot8_v2.so", "c4cff4092df28fafd93e0f28cc70012ebe1c0029e6e71d8bf733578ead56e313")},
                # ogan69cp_v1 (2026-11-20) = og57cp_v3 with the output size 6912x2880 (2.4:1) instead of 5760x3840: the same four units, id 0x43f and
                # 30.8 MB units (the plane is smaller: 24.9 MB). 7008 wide is refused by the four-unit division (multiples of 128 only).
                "ogan69cp_v1": {16: ("libJit_level16_ogan69cp_v1.so", "54f3225321135c6553fa273929502673237357fea9bf4c2c6c52103c61739eb8"),
@@ -281,6 +291,12 @@ DESIGN_LIBS = {"fhband_v1": {5: ("libJit_level5_fhband_v1.so", "982d2ea9d8916246
                "lcdcycle_v6": {18: ("libJit_level18_lcdcycle_v6.so", "05948cf1d879d264bf05edb1a626496683fb8d74b2778de293d8ba4019194da0"),
                                19: ("libJit_level19_lcdcycle_v6.so", "64a67f1f7d541e9946e1084a382884d11b11f17031cc29a746e18e0d1b58fe10"),
                                20: ("libJit_level20_lcdcycle_v6.so", "1fbc9c43ce4e8a053e01f4900bb04bf3c4aea62543ff34d5e63ebea2301fc7ee")},
+               # lcdcycle_v7 (2026-11-24, build_lcdcycle_v7.py): v6 with a fourth state 2.25:1 (1.5x; letterbox 4/9, frames (0, 80, 640, 320)) between
+               # 2:1 and 2.4:1; the De-Squeeze Display variable 0x28facdc is no longer written. Same cave and hook as v6: level 20 of one before level 19
+               # of the other, or a cold boot.
+               "lcdcycle_v7": {18: ("libJit_level18_lcdcycle_v7.so", "f3d361a68deb092e00bf60ed6f9ceb3e3419b85a6859ff565d9a36a7b901fff9"),
+                               19: ("libJit_level19_lcdcycle_v7.so", "306b255606bd39454785e40e9244ab004db6646d362f524eb6c45008fbe748ae"),
+                               20: ("libJit_level20_lcdcycle_v7.so", "873d09d93f9ceba9ac0ee6edc646b4ecaef08265128d4d82f1d2b2c104d55381")},
                "lcdcycle_v5": {18: ("libJit_level18_lcdcycle_v5.so", "3ad5810ffeb6fa954dc5517b9f54802e8029d68f92ef048862c528dc1fb546f4"),
                                19: ("libJit_level19_lcdcycle_v5.so", "590a450de873e70bce6b5a7414183aa46892e71e2afa5ac6b54055380c5d728c"),
                                20: ("libJit_level20_lcdcycle_v5.so", "70e66d2757378d7e2391fcf512f68525a667bcb728c19feebe54afcb267843ec")},
@@ -299,6 +315,11 @@ DESIGN_LIBS = {"fhband_v1": {5: ("libJit_level5_fhband_v1.so", "982d2ea9d8916246
                "ogfile2560_hs_s_v1": {18: ("libJit_level18_ogfile2560_hs_s_v1.so", "b322a716e7ef15267f5ac66e8fae89d29b8869041399baedb97ecd6ae2d00980"),
                                       19: ("libJit_level19_ogfile2560_hs_s_v1.so", "7a354f584b36bc38309f8257cd04784c6d245d3de2ae8e4a96a7b3ca0a21a7a2"),
                                       20: ("libJit_level20_ogfile2560_hs_s_v1.so", "674e5529c3d3e7dfd75be1e395c863637b77182a31e1177da673c98fd43c4c18")},
+               # ogfile2560_hs_s_v2 (2026-11-24; build_ogfile.py --meta): v1 plus the MP4 header heights (libmpr.so 0x222b90, 0x222bdc -> 2560;
+               # build/mp4_meta_sites.py, build/emu_mp4_meta.py): tkhd, stsd and Sony's PROF say 3840x2560. Sony's XML unchanged. Not run.
+               "ogfile2560_hs_s_v2": {18: ("libJit_level18_ogfile2560_hs_s_v2.so", "031615c3df4420b3a5652c4f3f8c11ef07cc2fd32234e71431a5843cc551d008"),
+                                      19: ("libJit_level19_ogfile2560_hs_s_v2.so", "cbd83147596c92ba5c5f715fc336d09839576a94673af2644b4021fa2f60964d"),
+                                      20: ("libJit_level20_ogfile2560_hs_s_v2.so", "644b6c4830f46e8a7440705e665cde942d3f785a0d3186f8d7c8f568d3868ee9")},
                # the encoder side of a 5760x3840 file on XAVC HS 4K and XAVC S 4K (build/build_og57.py; F701): both encoder cores, the 4K memory blocks
                # in an order that holds the picture, 29 descriptors and their profiles. 209 sites. Not run on a camera.
                "ogfile57_v1": {18: ("libJit_level18_ogfile57_v1.so", "00b099ed7a787e3a9402b5dd7cfe1c1d81531863ed0c81651f9d38a6b47ca5d3"),
@@ -310,6 +331,30 @@ DESIGN_LIBS = {"fhband_v1": {5: ("libJit_level5_fhband_v1.so", "982d2ea9d8916246
                "ogfile57r300_v1": {18: ("libJit_level18_ogfile57r300_v1.so", "7ea1b14d914074136b687bb871e662eb1c4855b9af2d954fa132f6281f6e6613"),
                                    19: ("libJit_level19_ogfile57r300_v1.so", "56f4af121f1b944fb50e94924035af3212b4e041ee3393e39d20d90a08693c75"),
                                    20: ("libJit_level20_ogfile57r300_v1.so", "1a093b909f326695aad2e220df185ddc6815401386c91f00f82fd3c079b8f0c0")},
+               # ogfile57r300m1_v1 (2026-11-24; build/build_og57.py --rate300 --m1; a test the owner asked for, trial 2 of the 5.7K cadence trials):
+               # ogfile57r300_v1 plus two bytes for XAVC HS 4K 23.98p 100M 4:2:2 10-bit: descriptor 406 PredMode and profile 101702 MParam 3 -> 1
+               # (I and P pictures only, no picture reordering). 244 sites. Not run on a camera.
+               "ogfile57r300m1_v1": {18: ("libJit_level18_ogfile57r300m1_v1.so", "f44d2da857892406d97a15fa5180a502be2f2244bcf7f22a888c37d6571146ed"),
+                                     19: ("libJit_level19_ogfile57r300m1_v1.so", "ee265074c8f7936df865236ca2a292fe1b57abc255cc5cd19873246ed65775dd"),
+                                     20: ("libJit_level20_ogfile57r300m1_v1.so", "e3f35fed13db8a803d446d2a108b0ee82743c179478a588a95061ba9434741b1")},
+               # ogfile57r300m1_v2 (2026-11-24; build/build_og57.py --rate300 --m1all; after F981): ogfile57r300_v1 with M = 1 in all 29 descriptors
+               # (XAVC HS 4K and XAVC S 4K, every record setting, 23.98p and 25p) and one libmpr.so instruction, 0x118004 csinc -> mov w0,#0: the
+               # video edit list starts at 0 instead of one frame. 301 sites (one code site, guarded by the instructions around it). Not run.
+               "ogfile57r300m1_v2": {18: ("libJit_level18_ogfile57r300m1_v2.so", "cd856bddf903c8c47d0c2bb30bcdbf6c64e7873aa1d33f48461d461e275762cb"),
+                                     19: ("libJit_level19_ogfile57r300m1_v2.so", "cd07c6c69be4a20633b4ef14e389d903bf27290da427afb5b843ef1ee161784f"),
+                                     20: ("libJit_level20_ogfile57r300m1_v2.so", "e96ab402bd848b3b80c2f5cd2d9e1db763f13a816a5eded8017943a241c840dc")},
+               # ogfile57r300m1_v3 (2026-11-24; build_og57.py --rate300 --m1all; after F986): v2's av-cam sites, and the libmpr.so code site moved
+               # to where a normal recording sets the edit list's start: 0x11f4e0 in 0x11f030, HEVC branch only (csel -> mov w0,#0). AVC keeps its
+               # one frame (its constant one-frame composition offset needs it). v2's 0x118004 changed nothing on the camera. Not run.
+               "ogfile57r300m1_v3": {18: ("libJit_level18_ogfile57r300m1_v3.so", "88398f48a526003e7c49bbae938543e32fc68a5c983b73c71e3b17616cf31c35"),
+                                     19: ("libJit_level19_ogfile57r300m1_v3.so", "65e77094e90af45556ed9ae3c743b538f716ffc325a7b2629b41bdc5f606b36c"),
+                                     20: ("libJit_level20_ogfile57r300m1_v3.so", "abd3b88ce65a80322f8b064873dbe8b6c105e374d5de88afdc82a7f8bdfc518e")},
+               # ogfile57r300m1_v4 (2026-11-24; build_og57.py --rate300 --m1all --meta): v3 plus the MP4 header size 5760x3840 (libmpr.so: the
+               # four size immediates of 0x222b18, the 7680 compares of 0x2240cc / 0x225d30 -> 5760, the three width reads of 0x2256fc -> 3840;
+               # build/emu_mp4_meta.py). tkhd, stsd and Sony's PROF say 5760x3840. Sony's XML unchanged. Not run.
+               "ogfile57r300m1_v4": {18: ("libJit_level18_ogfile57r300m1_v4.so", "7624199d22ae13ddb0525597aca82adf6810d7af6b58eeff47e1fbfe9b7a6ad7"),
+                                     19: ("libJit_level19_ogfile57r300m1_v4.so", "cbd9c4e942676ca29f62acd966ba73750919d416c0641dbe7447c471480296ad"),
+                                     20: ("libJit_level20_ogfile57r300m1_v4.so", "45bbfb719cd7e3b1d97be0a9c2d137c0b65721b86725e83f6a8498eb0669a038")},
                # ogfile69_v1 (2026-11-20; build/build_og57.py --raster 6912 2880): the same 209 sites for a 6912x2880 picture (2.4:1): rows for the
                # first core 1440, +0x4c 10368, Level 6. The codec's own calculation asks less memory than for 5760x3840. Not run on a camera.
                "ogfile69_v1": {18: ("libJit_level18_ogfile69_v1.so", "15bccab5d034cabaf90b153c1e288193456a57a9dc1d01c774dbc323633dcdc3"),
@@ -326,6 +371,40 @@ DESIGN_LIBS = {"fhband_v1": {5: ("libJit_level5_fhband_v1.so", "982d2ea9d8916246
                "vcd12_v1": {23: ("libJit_level23_vcd12_v1.so", "0a6aa8471df950a1c43c8871305ddffc32ec512e144902724264946d213f3b55"),
                             24: ("libJit_level24_vcd12_v1.so", "73a37de4f67072dcb7aa8cd42a01944e2c9b011d31f33702f24499dc93f299d3"),
                             25: ("libJit_level25_vcd12_v1.so", "a401d07cde7593445aba203e1e85d33471eb430b7e355f736f1b5bf3ed9f51ee")},
+               # vcd12_v2 (build/build_vcd12.py --design vcd12_v2, 2026-11-25): code 1 set up exactly as the builder's code 2 (12-bit) plus 12-bit
+               # profiles: HEVC QpBdOffset 0x8015d3f8 12->24, depth 0x8015d450 2->4, Main 4:2:2 12 constraints 0x8015d914 0x1a1->0x121; AVC
+               # 0x80163ed8..e0 depth 4 + profile 244. Six words, eleven guards; same levels and route as vcd12_v1. Replaces v1. Not run.
+               "vcd12_v2": {23: ("libJit_level23_vcd12_v2.so", "cef41ec624f82fa0d15030328ff56e5aab4aca9265e805c4b4194aa31381c2ec"),
+                            24: ("libJit_level24_vcd12_v2.so", "d36df1383c4e6f8de6e77fc9cbb17985c9d6d98df30932679c8fe0b5736f6355"),
+                            25: ("libJit_level25_vcd12_v2.so", "f35e62cbbbac5483504ac2a3542b46c4f4becd837d4af60b053bb0fb13a6b6b2")},
+               # vcd12_v3 (build/build_vcd12.py --design vcd12_v3, 2026-11-25, F993/F994): vcd12_v2's six words plus the input front end's depth:
+               # cmd_adaptor_vbb@323 0x80187c04 (HEVC) / 0x80187d4c (AVC) 'sltu v0,zero,v0' -> 'sll v0,v0,1', so the VBB record and registers
+               # 0xbf078200 / 0xbf078600 bits 4-5 get 2 (12-bit) while the surface geometry stays 10-bit. 8 sites, 23 guards. On a camera with v2
+               # applied only the two new words are written. Not run.
+               "vcd12_v3": {23: ("libJit_level23_vcd12_v3.so", "826d8a8320d5c1ca96008bf5b6574bbde46765fb3bc054b81d7cb44a7322429d"),
+                            24: ("libJit_level24_vcd12_v3.so", "edf6b5d453f4f9c3c618f5a374ab83a137cfbc5e81692a9b29a2f49789ed0f2a"),
+                            25: ("libJit_level25_vcd12_v3.so", "6619ebd01041a7fe3d678739392184561f6fda315b6e5ed7290df2f02318feff")},
+               # vcd12_v4a / vcd12_v4b (2026-11-25, F995/F996): vcd12_v2 plus ONE input front-end depth field doubled inside imola_ft_drv@399, both
+               # driver copies (core 0 / core 1), adapter stock: v4a field 0x200 (ext 0x18,4 -> 0x17,5 at 0x801bebf4/0x801bf9ec), v4b field 0x600
+               # bits 4-5 (sll 4 -> 5 at 0x801becd8/0x801bfad0). 8 sites, 19 guards; the guards refuse a copy holding vcd12_v3 or the other
+               # variant. Not run.
+               "vcd12_v4a": {23: ("libJit_level23_vcd12_v4a.so", "9d7c5637f6613f7d87b81089728c15afca5c7696c8aea8d2052673def7f30d32"),
+                             24: ("libJit_level24_vcd12_v4a.so", "573ccba95a259870dee4bee76dcea1b3a61093336e64917a4b24c7e3e340599c"),
+                             25: ("libJit_level25_vcd12_v4a.so", "1cae6eec35a51b01d96d9d56595816d39421b4739a9792055faccd54203e37c3")},
+               # vcd12_v5 (2026-11-25, F997/F998): vcd12_v2 with the core's selector 0x400 depth class back to 1 (10-bit) on both MBPs, HEVC and
+               # AVC ('srl x,y,1' -> 'sltu x,zero,y' at 0x807653ac/0x809103ac and 0x8074fbc0/0x808fabc0); adapter and front end stock. 10 sites,
+               # 29 guards (refuses v3/v4a/v4b copies). Not run.
+               # ebccd2_v1 (2026-11-25, F1000; build/build_bd12.py --design ebccd2_v1): av-cam.bin descriptor +0x87 EbcModeCD 4 (EBC_10_6) -> 2
+               # (EBC_10_10x2) in the 11 XAVC HS 4K / XAVC S 4K 4:2:2 10-bit descriptors at 23.98p; data only. With vcd12_v3 = test vcd12_v6. Not run.
+               "ebccd2_v1": {18: ("libJit_level18_ebccd2_v1.so", "438b0447c9a9e856f72214e8eeba975e6aa5f510040b04ed2545400f1e4d6371"),
+                             19: ("libJit_level19_ebccd2_v1.so", "a501f123798cf0ad4f588b2f8058399a6852a325805bba9e0b2c1d43c9fabe87"),
+                             20: ("libJit_level20_ebccd2_v1.so", "a0f5957c1767df8d904389208b9fd7bba50c2a801f67b528e32f2de6bd3f8ce7")},
+               "vcd12_v5": {23: ("libJit_level23_vcd12_v5.so", "5f1b2e20dd20b1108aeb549c555f91d8bbf8b85287c1ab1fe07355875c94e561"),
+                            24: ("libJit_level24_vcd12_v5.so", "f7d51092612ae1493762599266ed54c2a67937dd44cbcb6d18e719b35bf61604"),
+                            25: ("libJit_level25_vcd12_v5.so", "ba4f5d7b2f5ea91d19cf0c4337a30fca3aff031a119990b1473a980c19a14a82")},
+               "vcd12_v4b": {23: ("libJit_level23_vcd12_v4b.so", "680dbb9ff8fd1d00f2abcb251ac9bcb9ae5d2bb1e07e5bed8af025b2ffc3c7a6"),
+                             24: ("libJit_level24_vcd12_v4b.so", "9b42a547bfaa84d02b4baa72b9d693d41d24ce26e5dab397af8fc65ce3893a80"),
+                             25: ("libJit_level25_vcd12_v4b.so", "dfa837becc87a22424be04eb8c0bef40d3e4c989a113812989c2e93abe859f9a")},
                "fhs4080_v2": {5: ("libJit_level5_fhs4080_v2.so", "dd7eab5eceb496b457fe9a1fabc24397f5d73c379155686be71ac83bc7d28dc0"),
                               6: ("libJit_level6_fhs4080_v2.so", "8d0df2f806a34f3e499e98848ecf30aa6f5c445303d6439a6636fabdc4551608"),
                               8: ("libJit_level8_fhs4080_v2.so", "39716663b63dc83f4ce0a12f95a34f1b28fdbe04768e8aff771d9fb1e521f3f0")}}
@@ -1689,8 +1768,8 @@ def main():
     parser.add_argument("--level", type=int, choices=sorted(set(LIBS) | {13, 14, 16, 17, 18, 19, 20, 23, 24, 25}), default=1, help="which pinned build to use (default 1)")
     parser.add_argument("--design", choices=["og4k_data_v1"] + sorted(DESIGN_LIBS), default="og4k_data_v1",
                         help="for levels 5, 6 and 8: whose site table (default og4k_data_v1); for levels 13 and 14: dmmwb4080_v1 or dmmwb4688_v1; "
-                             "for levels 16 and 17: outsz2560_v1, og2560e4_v1, og57cp_v1, og57cp_v2, og57cp_v3 or lcdfill_v1; for level 18: ogfile2560_hs_v1, ogfile2560_s_v1, ogfile2560_hs_s_v1, ogfile57_v1 or ogfile57r300_v1; "
-                             "for levels 19 and 20: ogfile2560_hs_v1, ogfile2560_hs_s_v1, ogfile57_v1 or ogfile57r300_v1")
+                             "for levels 16 and 17: outsz2560_v1, og2560e4_v1, og57cp_v1, og57cp_v2, og57cp_v3, dmmslot8_v1, dmmslot8_v2 or lcdfill_v1; for level 18: ogfile2560_hs_v1, ogfile2560_s_v1, ogfile2560_hs_s_v1, ogfile2560_hs_s_v2, ogfile57_v1, ogfile57r300_v1, ogfile57r300m1_v1, ogfile57r300m1_v2, ogfile57r300m1_v3 or ogfile57r300m1_v4; "
+                             "for levels 19 and 20: ogfile2560_hs_v1, ogfile2560_hs_s_v1, ogfile2560_hs_s_v2, ogfile57_v1, ogfile57r300_v1, ogfile57r300m1_v1, ogfile57r300m1_v2, ogfile57r300m1_v3 or ogfile57r300m1_v4")
     parser.add_argument("--firmware-shown")
     parser.add_argument("--library-sha256", help="the SHA-256 of the library you reviewed; must equal the pinned one")
     args = parser.parse_args()

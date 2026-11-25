@@ -53,7 +53,7 @@ BODY_CONFIG: dict[str, dict[str, str]] = {
         "report_name": "s3_report.txt",
         "power_switch_note": (
             "This was a WRITE step. A cold boot (battery out for 10 seconds) undoes everything written. "
-            "On the a7S III the power switch clears it too: keep the camera on between steps."
+            "On the a7S III (5.01), toggling the power switch resets coprocessor RAM while retaining encoder patches: always pull the battery >= 10s to restore stock, and keep the camera on between steps."
         ),
     },
     "fx3_702": {
@@ -66,7 +66,7 @@ BODY_CONFIG: dict[str, dict[str, str]] = {
         "report_name": "fx3_report.txt",
         "power_switch_note": (
             "This was a WRITE step. A cold boot (battery out for 10 seconds) undoes everything written. "
-            "On the FX3 / a7S III coprocessor software the power switch may clear it too: keep the camera on between steps."
+            "On the FX3 / a7S III coprocessor software the power switch may clear only part of it: keep the camera on between steps, and pull the battery >= 10s to restore stock."
         ),
     },
 }
@@ -80,6 +80,7 @@ STEP_LEVEL_BASE: dict[str, int] = {
     "H": 700,
     "B": 800,
     "I": 900,
+    "P": 1000,
 }
 
 # Active context configured by use()
@@ -142,7 +143,7 @@ def parse_write_result(which: str, what: str, data: bytes) -> dict[str, Any]:
     pick = lambda start: next((ln for ln in lines if ln.startswith(start)), None)
     outcome = (
         "UNDO INCOMPLETE"
-        if pick("!! UNDO INCOMPLETE")
+        if (pick("!! UNDO INCOMPLETE") or pick("UNDO INCOMPLETE"))
         else "DONE"
         if pick("DONE: ")
         else "NOTHING TO DO"
@@ -170,7 +171,13 @@ def parse_write_result(which: str, what: str, data: bytes) -> dict[str, Any]:
             "what": what,
             "outcome": outcome,
             "ok": ok,
-            "outcome_line": pick("DONE: ") or pick("NOTHING TO DO") or pick("NOT DONE: ") or pick("!! UNDO INCOMPLETE"),
+            "outcome_line": (
+                pick("DONE: ")
+                or pick("NOTHING TO DO")
+                or pick("NOT DONE: ")
+                or pick("!! UNDO INCOMPLETE")
+                or pick("UNDO INCOMPLETE")
+            ),
             "problem_lines": problems,
         },
     }
@@ -550,7 +557,7 @@ def last_saved_sha() -> str | None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--body", required=True, choices=tuple(BODY_CONFIG))
-    ap.add_argument("which", help="check, dump, or a write step id from manifest.json (e.g. V19, H16, B19, I19)")
+    ap.add_argument("which", help="check, dump, or a write step id from manifest.json (e.g. V19, H16, B19, I19, P29)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--go", action="store_true")

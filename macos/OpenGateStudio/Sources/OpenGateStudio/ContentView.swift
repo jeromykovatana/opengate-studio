@@ -107,7 +107,7 @@ public struct ContentView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 520)
+                .frame(maxWidth: 540)
 
                 Spacer()
 
@@ -177,6 +177,8 @@ public struct ContentView: View {
     @ViewBuilder
     private var mainBody: some View {
         switch appState.selectedTab {
+        case .setupGuide:
+            CameraSetupWizardView()
         case .packsAndSafety:
             FeaturePacksAndStepperView()
         case .clipInspector:

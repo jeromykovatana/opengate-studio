@@ -328,6 +328,54 @@ struct OpenGateStudioTests {
         #expect(FileManager.default.isExecutableFile(atPath: putCmd.commandFile))
     }
 
+    @Test("fx3_702 exposes optional fx3_playback (P29/P30) and supports apply/putback with mp4_3x2,screen_3x2,fx3_playback")
+    func testFX3PlaybackOptionalPackRoundTrip() async throws {
+        let sessionDir = try makeTempDir(prefix: "ogs-fx3-playback")
+        defer { try? FileManager.default.removeItem(at: sessionDir) }
+        let bridge = try makeBridge(sessionDir: sessionDir)
+
+        let (bodiesRes, _) = try await bridge.listBodies()
+        let fx3 = try #require(bodiesRes.bodies.first(where: { $0.bodyId == "fx3_702" }))
+        let playbackPack = try #require(fx3.packs["fx3_playback"])
+        #expect(playbackPack.applySteps == ["P29"])
+        #expect(playbackPack.putbackSteps == ["P30"])
+
+        for nonFX3Id in ["zve1_202", "a7s3_501"] {
+            let body = try #require(bodiesRes.bodies.first(where: { $0.bodyId == nonFX3Id }))
+            #expect(body.packs["fx3_playback"] == nil)
+        }
+
+        let (pre, _) = try await bridge.preflight(
+            bodyId: "fx3_702",
+            mockCamera: true,
+            mockState: .stock,
+            sessionDir: sessionDir
+        )
+        #expect(pre.ready == true)
+
+        let packs = ["mp4_3x2", "screen_3x2", "fx3_playback"]
+        let (app, _) = try await bridge.apply(
+            bodyId: "fx3_702",
+            packs: packs,
+            mockCamera: true,
+            sessionDir: sessionDir
+        )
+        #expect(app.ok == true)
+        #expect(app.closingDumpVerdict.contains("VERDICT READY"))
+        #expect(app.stepsRun.contains(where: { $0.step == "P29" }))
+        #expect(app.activePacks.contains("fx3_playback"))
+
+        let (put, _) = try await bridge.putback(
+            bodyId: "fx3_702",
+            packs: packs,
+            mockCamera: true,
+            sessionDir: sessionDir
+        )
+        #expect(put.ok == true)
+        #expect(put.state == "stock")
+        #expect(put.stepsRun.contains(where: { $0.step == "P30" }))
+    }
+
     /// Generates a minimal valid ISO BMFF MP4 + M01.XML + rtmd fixture using cli/bionz_clip_check.py helpers.
     private func generateValid3x2ClipFixture(repoRoot: URL, mp4URL: URL, xmlURL: URL) throws {
         let script = """

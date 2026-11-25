@@ -1,0 +1,220 @@
+{
+ "design": "avdec8k_fx3_v1",
+ "build": "fx3_702",
+ "camera": "ILME-FX3 (FX3), firmware 7.02",
+ "kind": "avcam_code_data",
+ "title": "In-camera playback of 3840 x 2560 clips: the A7 IV's 8K decode channel (7690 x 4320, memory ids 0x47c / 0x47e)",
+ "status": "built from the 7.02 and 6.02 files; never read or written on an FX3. The A7 IV plays its own 3840 x 2560 clips with this channel; whether the FX3 then plays them is the camera test",
+ "artifact": "av-cam.bin",
+ "artifact_sha256": "0cb7e03a59b4ec3d7633664ab0f7a9477892d1aaf442b9db83a7e9a62a49bdaf",
+ "kernel_va_base": "0xffffffc001000000",
+ "avcam_phys": "0x401000000",
+ "generated_by": "build/build_avdec_fx3.py",
+ "ported_from": "A7 IV 6.02 av-cam.bin: allocation 0x20e3d8 (ids 0x20e408 / 0x20e490), row choice 0x20e788, table 0xbaceb0 row 3",
+ "code_page": "0x218000",
+ "code_sites": [
+  {
+   "file_off": "0x218ab4",
+   "kernel_address": "0xffffffc001218ab4",
+   "old": "a28f8052",
+   "new": "828f8052",
+   "asm_old": "mov w2, #0x47d",
+   "asm_new": "mov w2, #0x47c",
+   "what": "the id of the first decode-memory allocation (0x47d: 4K decode, 2 units of 152.3 MB in 0x6c4 -> 0x47c: 8K decode, the whole 536.2 MB of 0x6c4)"
+  },
+  {
+   "file_off": "0x218ac0",
+   "kernel_address": "0xffffffc001218ac0",
+   "old": "b48f8052",
+   "new": "948f8052",
+   "asm_old": "mov w20, #0x47d",
+   "asm_new": "mov w20, #0x47c",
+   "what": "its copy for the failure log line (str w20, [sp, #8] at 0x218af8)"
+  },
+  {
+   "file_off": "0x218b30",
+   "kernel_address": "0xffffffc001218b30",
+   "old": "e28f8052",
+   "new": "c28f8052",
+   "asm_old": "mov w2, #0x47f",
+   "asm_new": "mov w2, #0x47e",
+   "what": "the id of the second allocation (0x47f: 2 units of 38.6 MB -> 0x47e: 135.0 MB in 0x6dd)"
+  },
+  {
+   "file_off": "0x218b3c",
+   "kernel_address": "0xffffffc001218b3c",
+   "old": "f58f8052",
+   "new": "d58f8052",
+   "asm_old": "mov w21, #0x47f",
+   "asm_new": "mov w21, #0x47e",
+   "what": "its copy for the failure log line (str w21, [sp, #8] at 0x218b6c)"
+  }
+ ],
+ "code_guard": "the whole code page 0x218000-0x218fff apart from the four sites must be as in the file, in the mapping and in the kernel's own view (it holds the allocation 0x218a84, the start of create-ch 0x218cc4 and its row choice 0x218e14)",
+ "data_page": "0xbf8000",
+ "data_sites": [
+  {
+   "file_off": "0xbf8e70",
+   "kernel_address": "0xffffffc001bf8e70",
+   "old": "00107008",
+   "new": "0a1ee010",
+   "what": "decode size table row 0: width, height (the A7 IV's row 3)"
+  }
+ ],
+ "data_guards": [
+  {
+   "file_off": "0xbf8e74",
+   "bytes": "010200000200000003000708",
+   "what": "row 0 after the size"
+  },
+  {
+   "file_off": "0xbf8e80",
+   "bytes": "01000000001070080102000002000000",
+   "what": "row 0 end, row 1"
+  },
+  {
+   "file_off": "0xbf8e90",
+   "bytes": "03000703010000008007400401020000",
+   "what": "row 1, row 2"
+  },
+  {
+   "file_off": "0xbf8ea0",
+   "bytes": "020000000300070301000000",
+   "what": "row 2"
+  }
+ ],
+ "order": {
+  "apply": [
+   "the four code words, each one aligned 32-bit store",
+   "data cache clean and instruction cache invalidate at each, all processors; isb",
+   "the row's size, one aligned 32-bit store"
+  ],
+  "put_back": [
+   "the row's size",
+   "the four code words",
+   "data cache clean and instruction cache invalidate at each; isb"
+  ],
+  "why": "a 4K row with the 8K memory is a smaller channel in larger memory (harmless); an 8K row with the 4K memory is not, so the row is changed only while the 8K ids are in place"
+ },
+ "icache": {
+  "processors": "4 x Cortex-A35 (update/0800_appli/setting/cxd90057.dtb); kernel 4.9.337 (SCTLR_EL1.UCI and UCT set: EL0 may clean and invalidate by address)",
+  "alias": "the code page is mapped at a user address with the kernel's offset from a 2 MB boundary (0x18000), so a virtually indexed instruction cache is invalidated at the same index as the kernel's fetches",
+  "refuse": "an instruction cache that CTR_EL0 says is neither PIPT nor VIPT"
+ },
+ "checked": {
+  "fx3_type_never_14": "the FX3 caller 0x22a198 makes types 11 / 12 / 13 / 10; the A7 IV's 0x21f9c4 adds 14 for formats 0x26 / 0x27",
+  "rows_equal_a7iv": "FX3 rows 0-2 = A7 IV rows 0-2; A7 IV row 3 = FX3 row 0 with 7690 x 4320; the A7S III 5.01 has the A7 IV's four rows at 0xbf25e4",
+  "table_readers": [
+   "0x218e54 (create-ch)"
+  ],
+  "allocator": "FX3 0x22d394 = A7 IV 0x222bd0 (24 instructions, branch targets aside); arguments w1 0x61003c, w3 0x806800f3 the same",
+  "dmm": {
+   "0x47c": [
+    [
+     "0x6c4",
+     536182784
+    ]
+   ],
+   "0x47d": [
+    [
+     "0x6c4",
+     152305664
+    ],
+    [
+     "0x6c4",
+     152305664
+    ]
+   ],
+   "0x47e": [
+    [
+     "0x6dd",
+     135036928
+    ]
+   ],
+   "0x47f": [
+    [
+     "0x6c4",
+     38633472
+    ],
+    [
+     "0x6c4",
+     38633472
+    ]
+   ]
+  },
+  "other_id_immediates": [
+   [
+    "0x37968",
+    "mov w7, #0x47e",
+    "line number of a log call (w7)"
+   ],
+   [
+    "0x4cc4c",
+    "mov w3, #0x47d",
+    "w3 of a log call; the same at the A7 IV's 0x4c7dc"
+   ],
+   [
+    "0x4ccb8",
+    "mov w3, #0x47e",
+    "w3 of a log call; the same at the A7 IV's 0x4c848"
+   ],
+   [
+    "0x4cd18",
+    "mov w3, #0x47f",
+    "w3 of a log call; the same at the A7 IV's 0x4c8a8"
+   ],
+   [
+    "0xa9a0c",
+    "mov w7, #0x47c",
+    "line number of a log call (w7)"
+   ],
+   [
+    "0xa9a48",
+    "mov w7, #0x47e",
+    "line number of a log call (w7)"
+   ],
+   [
+    "0x16b2cc",
+    "mov w7, #0x47e",
+    "line number of a log call (w7)"
+   ],
+   [
+    "0x17c3ac",
+    "mov w7, #0x47d",
+    "line number of a log call (w7)"
+   ],
+   [
+    "0x2046a8",
+    "mov w2, #0x47d",
+    "line number of an assert call (w2; 0x20e824 / 0x27b228 take format or condition, file, line)"
+   ],
+   [
+    "0x223858",
+    "mov w7, #0x47d",
+    "line number of a log call (w7)"
+   ],
+   [
+    "0x2238c0",
+    "mov w7, #0x47f",
+    "line number of a log call (w7)"
+   ],
+   [
+    "0x24e4e8",
+    "mov w7, #0x47d",
+    "line number of a log call (w7)"
+   ],
+   [
+    "0x24e504",
+    "mov w2, #0x47e",
+    "line number of an assert call (w2; 0x20e824 / 0x27b228 take format or condition, file, line)"
+   ]
+  ]
+ },
+ "restore": "readcheck.c level 30 (put back), or a cold boot: av-cam.bin is loaded again from flash",
+ "not_shown": [
+  "anything on an FX3",
+  "that the FX3 then plays 3840 x 2560 clips (the A7 IV does)",
+  "that 0x47e's group can be had during playback on the FX3 (its 0x6dd has a third group, 0x6f {0x473, 0x476}, the A7 IV's has not)",
+  "the A7 IV's other limits (its 5.7K clips do not play in camera)"
+ ]
+}

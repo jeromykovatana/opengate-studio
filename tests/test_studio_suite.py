@@ -182,6 +182,46 @@ class StudioCliTests(unittest.TestCase):
                 self.assertEqual(put["state"], "stock")
                 self.assertIn("V20", put["steps_run"])
 
+    def test_fx3_playback_pack_apply_putback_and_default_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            rc_pre, pre = run_cli(
+                "preflight", "--body", "fx3_702", "--mock-camera", "--mock-state", "stock",
+                "--session-dir", tmp, "--json",
+            )
+            self.assertEqual(rc_pre, 0)
+            self.assertTrue(pre["ready"])
+
+            # Default apply (no --packs) excludes fx3_playback because default_enabled=false
+            rc_def, app_def = run_cli("apply", "--body", "fx3_702", "--mock-camera", "--session-dir", tmp, "--json")
+            self.assertEqual(rc_def, 0)
+            self.assertNotIn("fx3_playback", app_def["active_packs"])
+            self.assertNotIn("P29", app_def["steps_run"])
+
+            # Explicit fx3_playback applies P29 and puts back P30 before V20/core_open_gate
+            rc_app, app = run_cli(
+                "apply", "--body", "fx3_702", "--packs", "mp4_3x2,screen_3x2,fx3_playback",
+                "--mock-camera", "--session-dir", tmp, "--json",
+            )
+            self.assertEqual(rc_app, 0)
+            self.assertTrue(app["ok"])
+            self.assertIn("fx3_playback", app["active_packs"])
+            self.assertIn("P29", app["steps_run"])
+
+            rc_put, put = run_cli("putback", "--body", "fx3_702", "--mock-camera", "--session-dir", tmp, "--json")
+            self.assertEqual(rc_put, 0)
+            self.assertTrue(put["ok"])
+            self.assertEqual(put["state"], "stock")
+            self.assertIn("P30", put["steps_run"])
+            self.assertLess(put["steps_run"].index("P30"), put["steps_run"].index("V20"))
+            self.assertLess(put["steps_run"].index("P30"), put["steps_run"].index("L17"))
+
+        # Other bodies omit fx3_playback and still resolve default putback cleanly
+        for other_body in ("zve1_202", "a7s3_501"):
+            with tempfile.TemporaryDirectory() as tmp:
+                rc_put_other, put_other = run_cli("putback", "--body", other_body, "--mock-camera", "--session-dir", tmp, "--json")
+                self.assertEqual(rc_put_other, 0)
+                self.assertNotIn("P30", put_other["steps_run"])
+
     def test_check_clip_via_cli(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -367,9 +407,14 @@ class UsbTransportAndLiveOrchestratorTests(unittest.TestCase):
         self.assertEqual(ssr.step_level("H16"), 716)
         self.assertEqual(ssr.step_level("B19"), 819)
         self.assertEqual(ssr.step_level("I19"), 919)
+        self.assertEqual(ssr.step_level("P29"), 1029)
+        self.assertEqual(ssr.step_level("P30"), 1030)
 
         for body_id in ("zve1_202", "a7s3_501", "fx3_702"):
-            for which in ("check", "dump", "V19", "H16", "B19", "I19"):
+            steps = ["check", "dump", "V19", "H16", "B19", "I19"]
+            if body_id == "fx3_702":
+                steps.extend(["P29", "P30"])
+            for which in steps:
                 proc = subprocess.run(
                     [TRANSPORT_PYTHON, "-B", str(STEP_RUN), "--body", body_id, which, "--selftest"],
                     capture_output=True,
@@ -377,6 +422,42 @@ class UsbTransportAndLiveOrchestratorTests(unittest.TestCase):
                 )
                 self.assertEqual(proc.returncode, 0, f"{body_id} {which} failed:\n{proc.stderr}\n{proc.stdout}")
                 self.assertIn("guard refuses all 15 forbidden packet classes", proc.stdout)
+
+        for which in ("P29", "P30"):
+            dry = subprocess.run(
+                [TRANSPORT_PYTHON, "-B", str(STEP_RUN), "--body", "fx3_702", which, "--dry-run"],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(dry.returncode, 0, f"fx3_702 {which} --dry-run failed:\n{dry.stderr}\n{dry.stdout}")
+            self.assertIn("SET_FILE_PATH", dry.stdout)
+
+        # Verify P29/P30 write-result parsing including level 29/30 UNDO INCOMPLETE format (no leading !!)
+        done_res = ssr.parse_write_result(
+            "P29",
+            "avdec8k_fx3_v1",
+            b"readcheck 1 level 29\neuid 0\n== level 29\nDONE: every site holds the target bytes (apply)\n== done, bytes written before this line: 0\n",
+        )
+        self.assertTrue(done_res["header_ok"])
+        self.assertTrue(done_res["s3"]["ok"])
+        self.assertEqual(done_res["s3"]["outcome"], "DONE")
+
+        ntd_res = ssr.parse_write_result(
+            "P30",
+            "avdec8k_fx3_v1",
+            b"readcheck 1 level 30\neuid 0\n== level 30\nNOTHING TO DO: every site already holds the target bytes (put back)\n== done, bytes written before this line: 0\n",
+        )
+        self.assertTrue(ntd_res["header_ok"])
+        self.assertTrue(ntd_res["s3"]["ok"])
+        self.assertEqual(ntd_res["s3"]["outcome"], "NOTHING TO DO")
+
+        undo_res = ssr.parse_write_result(
+            "P29",
+            "avdec8k_fx3_v1",
+            b"readcheck 1 level 29\neuid 0\n== level 29\nUNDO INCOMPLETE: main-processor memory may be partly changed; cold boot the camera before anything else\n== done, bytes written before this line: 0\n",
+        )
+        self.assertFalse(undo_res["s3"]["ok"])
+        self.assertEqual(undo_res["s3"]["outcome"], "UNDO INCOMPLETE")
 
     def test_readonly_report_parser_validates_and_rejects_tampering(self) -> None:
         import studio_step_run as ssr
@@ -445,6 +526,7 @@ class CleanRoomTests(unittest.TestCase):
         res = vcr.verify_clean_room(REPO_ROOT)
         self.assertTrue(res["ok"], f"Clean-room errors: {res['errors']}")
         self.assertEqual(res["checked_manifests"], 3)
+        self.assertEqual(res["checked_so"], 62)
         self.assertGreaterEqual(res["checked_pmca_files"], 15)
 
 

@@ -4,8 +4,9 @@ import OpenGateStudioCore
 import SwiftUI
 
 public enum StudioTab: String, CaseIterable, Identifiable {
-    case packsAndSafety = "Feature Packs & 5-Gate Apply"
-    case clipInspector = "Clip, XML & Gyro Inspector"
+    case setupGuide = "1. Camera Setup"
+    case packsAndSafety = "2. Apply & Packs"
+    case clipInspector = "3. Clip & Gyro"
 
     public var id: String { rawValue }
 }
@@ -28,7 +29,7 @@ public final class AppState: ObservableObject {
         var lastResultSource: SessionResultSource?
     }
 
-    @Published public var selectedTab: StudioTab = .packsAndSafety
+    @Published public var selectedTab: StudioTab = .setupGuide
 
     // Bridge & bodies
     @Published public var bodies: [BodyInfo] = []
@@ -36,6 +37,7 @@ public final class AppState: ObservableObject {
         didSet {
             if oldValue != selectedBodyId {
                 resetSafetySessionResults()
+                resetBodySpecificSetupConfirmations()
                 syncDefaultPacksForSelectedBody()
             }
         }
@@ -67,6 +69,13 @@ public final class AppState: ObservableObject {
             }
         }
     }
+
+    // Tab 1: Camera Setup Wizard checklist
+    @Published public var checkedFirmwareVersion: Bool = false
+    @Published public var checkedSdCardSlot1: Bool = false
+    @Published public var checkedUsbMassStorage: Bool = false
+    @Published public var checkedMovie24pSettings: Bool = false
+    @Published public var checkedAppsClosed: Bool = false
 
     // Modular packs
     @Published public var selectedPacks: Set<String> = ["mp4_3x2", "screen_3x2"]
@@ -112,7 +121,8 @@ public final class AppState: ObservableObject {
         "screen_3x2",
         "hdmi32",
         "high_bitrate",
-        "xavc_si"
+        "xavc_si",
+        "fx3_playback"
     ]
 
     public init(bridge: StudioBridge? = nil, sessionDirectory: URL? = nil) {
@@ -140,6 +150,14 @@ public final class AppState: ObservableObject {
 
     public var selectedBody: BodyInfo? {
         bodies.first(where: { $0.bodyId == selectedBodyId }) ?? bodies.first
+    }
+
+    public var isSetupWizardChecklistComplete: Bool {
+        checkedFirmwareVersion
+            && checkedSdCardSlot1
+            && checkedUsbMassStorage
+            && checkedMovie24pSettings
+            && checkedAppsClosed
     }
 
     public var isChecklistComplete: Bool {
@@ -258,7 +276,9 @@ public final class AppState: ObservableObject {
         isApplying = true
         defer { isApplying = false }
 
-        let orderedPacks = Self.modularPackOrder.filter { selectedPacks.contains($0) }
+        let orderedPacks = Self.modularPackOrder.filter { packId in
+            selectedPacks.contains(packId) && (selectedBody == nil || selectedBody?.packs[packId] != nil)
+        }
         let packsToSend = orderedPacks.isEmpty ? ["core_open_gate"] : orderedPacks
 
         if !offlineMockCamera {
@@ -423,6 +443,13 @@ public final class AppState: ObservableObject {
         liveStatusBanner = nil
         lastResultSource = nil
         stepperError = nil
+    }
+
+    private func resetBodySpecificSetupConfirmations() {
+        checkedFirmwareVersion = false
+        checkedMovie24pSettings = false
+        batteryPulled10s = false
+        cameraInStillsMode = false
     }
 
     private func saveActiveSnapshot(forMock isMock: Bool) {

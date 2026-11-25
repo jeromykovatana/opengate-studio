@@ -51,11 +51,18 @@ for L in 19 20; do
     "$READCHECK_C" -o "$KIT_DIR/libJit_fx3_${N}.so"
 done
 
+# P29/P30: FX3 8K decode channel avdec8k_fx3_v1 (4 av-cam code words + 1 data word)
+for L in 29 30; do
+  N="P$L"
+  "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DAD_H="expected_ad_avdec8k_fx3_v1.h"' -DAVCAM_PHYS=0x401000000UL \
+    "$READCHECK_C" -o "$KIT_DIR/libJit_fx3_${N}.so"
+done
+
 # Coherent read-only helpers (fx3read_v2)
 "${CC[@]}" -I "$SRC_DIR" -DDUMP=0 "$SRC_DIR/fx3read.c" "$SEN" -o "$KIT_DIR/libJit_fx3_check.so"
 "${CC[@]}" -I "$SRC_DIR" -DDUMP=1 "$SRC_DIR/fx3read.c" "$SEN" -o "$KIT_DIR/libJit_fx3_dump.so"
 
 echo "Built FX3 7.02 artifacts in $KIT_DIR:"
-for f in "$KIT_DIR"/libJit_fx3_{V19,V20,H16,H17,B19,B20,I19,I20,check,dump}.so; do
+for f in "$KIT_DIR"/libJit_fx3_{V19,V20,H16,H17,B19,B20,I19,I20,P29,P30,check,dump}.so; do
   printf "  %s  %s  %d bytes\n" "$(shasum -a 256 "$f" | awk '{print $1}')" "$(basename "$f")" "$(wc -c < "$f")"
 done

@@ -34,6 +34,14 @@ Each body ships with orthogonal, stackable volatile RAM packs built with `ziglan
 | `hdmi32` | Clean 3:2 pillarboxed & uncropped anamorphic HDMI output (`H16`/`H17`) | Optional |
 | `high_bitrate` | `200M` / `300M` Long-GOP XAVC HS & XAVC S bitrate overlay (`B19`/`B20`) | Optional |
 | `xavc_si` | XAVC S-I 4K All-Intra `3840x2560` Open Gate + VPRF/playback (`I19`/`I20`) | Optional |
+| `fx3_playback` | FX3 In-Camera 3:2 Playback Fix (`avdec8k_fx3_v1`, `P29`/`P30`) | Optional, **FX3 only** (`default_enabled: false`, **untested on hardware**) |
+
+> [!IMPORTANT]
+> **Essential Hardware & SD Card Notes**
+> - **No files go on your SD card:** Leave a normal formatted SD/CFexpress card in **Slot 1** so the camera mounts as USB Mass Storage. Nothing on the card is modified or erased.
+> - **FX3 `7.02` Playback Freeze Warning:** On stock FX3 `7.02`, playing an open-gate clip shows `"Unable to display"` and retrying freezes the camera until battery pull. Do **not** play back clips on FX3 unless testing optional `fx3_playback` (`P29`/`P30`, untested on hardware — test 1 normal 16:9 clip first, then 1 open-gate clip, and **never retry** if it errors).
+> - **a7S III `5.01` & ZV-E1 `2.02` Warm Power-Switch Reset:** Toggling the power switch resets coprocessor RAM while retaining encoder patches (`mixed_powerswitch` — Issue #3 confirmed on `5.01`). Always **pull the battery for >= 10 seconds** to restore 100% stock.
+> - **macOS USB Auto-Reconnect:** On macOS, consecutive USB steps may re-enumerate automatically ~5 seconds apart after the stop/reset request.
 
 ---
 

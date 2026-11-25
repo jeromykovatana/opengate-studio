@@ -47,6 +47,13 @@ public struct FeaturePacksAndStepperView: View {
             subtitle: "Enables 3:2 open-gate recording in XAVC S-I intra-frame mode.",
             icon: "waveform.path.ecg.rectangle",
             defaultStepsHint: "I19 / I20"
+        ),
+        PackMetadata(
+            id: "fx3_playback",
+            title: "FX3 Open-Gate Playback Fix",
+            subtitle: "Experimental FX3 playback path patch for 3:2 open-gate clips (P29 / P30).",
+            icon: "play.rectangle.on.rectangle",
+            defaultStepsHint: "P29 / P30"
         )
     ]
 
@@ -90,7 +97,9 @@ public struct FeaturePacksAndStepperView: View {
             requiredCoreCard
 
             ForEach(modularCatalog, id: \.id) { meta in
-                modularPackCard(meta)
+                if meta.id != "fx3_playback" || appState.selectedBody?.packs[meta.id] != nil {
+                    modularPackCard(meta)
+                }
             }
         }
     }
@@ -147,6 +156,8 @@ public struct FeaturePacksAndStepperView: View {
             return "Apply: [\(apply)]  •  Putback: [\(putback)]"
         } ?? meta.defaultStepsHint
 
+        let isExperimentalFX3Playback = meta.id == "fx3_playback"
+
         return HStack(alignment: .top, spacing: 12) {
             Image(systemName: meta.icon)
                 .font(.title3)
@@ -154,9 +165,18 @@ public struct FeaturePacksAndStepperView: View {
                 .frame(width: 28, height: 28)
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
+                HStack(spacing: 6) {
                     Text(meta.title)
                         .font(.subheadline.weight(.semibold))
+                    if isExperimentalFX3Playback {
+                        Text("UNTESTED ON HARDWARE")
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.18))
+                            .foregroundStyle(.orange)
+                            .clipShape(Capsule())
+                    }
                     Spacer()
                     Toggle(
                         meta.id,
@@ -174,6 +194,21 @@ public struct FeaturePacksAndStepperView: View {
                 Text(manifestPack?.summary ?? manifestPack?.description ?? meta.subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                if isExperimentalFX3Playback {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        Text("Test 1 normal 16:9 clip first; if open-gate clip says Unable to Display, do NOT retry")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.orange)
+                    }
+                    .padding(6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.orange.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
 
                 HStack(spacing: 6) {
                     Text(meta.id)
@@ -247,6 +282,17 @@ public struct FeaturePacksAndStepperView: View {
                         "Camera dial is in Stills mode before USB connection",
                         isOn: $appState.cameraInStillsMode
                     )
+
+                    HStack {
+                        Button {
+                            appState.selectedTab = .setupGuide
+                        } label: {
+                            Label("Open Camera Setup Checklist", systemImage: "checklist")
+                        }
+                        .buttonStyle(.link)
+                        .font(.caption)
+                        Spacer()
+                    }
                 }
                 .font(.callout)
             }

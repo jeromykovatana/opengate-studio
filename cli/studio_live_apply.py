@@ -350,6 +350,11 @@ def run_write_flow(
         })
         say(f"Recorded apply session {sid} in {session_dir}: {closing_verdict}")
         say("Record ONLY in XAVC HS 4K / XAVC S 4K / XAVC S-I 4K at 24p (23.98p) while applied (60p crashes).")
+        if body_id == "fx3_702":
+            if "fx3_playback" in active_packs:
+                say("FX3 playback fix (P29) is applied (untested on hardware): test 1 normal 16:9 clip first, then 1 open-gate clip; if it errors, NEVER retry (retrying freezes until battery pull).")
+            else:
+                say("WARNING (FX3 7.02): Do NOT play back open-gate clips in-camera without fx3_playback (P29) — retrying 'Unable to display' freezes the camera until battery pull.")
         say("To restore 100% stock: pull battery for >= 10 seconds (or run putback).")
         return 0
 

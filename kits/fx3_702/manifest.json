@@ -101,6 +101,18 @@
         "I20"
       ],
       "summary": "Orthogonal delta unlocking XAVC S-I 4K All-Intra 3840x2560 recording"
+    },
+    "fx3_playback": {
+      "title": "FX3 In-Camera 3:2 Playback Fix (8K Decode Channel — Untested on Hardware)",
+      "required": false,
+      "default_enabled": false,
+      "apply_steps": [
+        "P29"
+      ],
+      "putback_steps": [
+        "P30"
+      ],
+      "summary": "Patches av-cam.bin decode channel (4096x2160 ids 0x47d/0x47f -> 7690x4320 ids 0x47c/0x47e) for in-camera 3:2 playback. Untested on hardware."
     }
   },
   "steps": {
@@ -215,6 +227,20 @@
       "size": 22968,
       "level": 20,
       "summary": "Put back orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_fx3_702"
+    },
+    "P29": {
+      "file": "libJit_fx3_P29.so",
+      "sha256": "c0ccb8c8fd80007cbc308720a78deec19fc132067ae5d04c78a555b27f63cc74",
+      "size": 24656,
+      "level": 29,
+      "summary": "Apply FX3 8K decode channel avdec8k_fx3_v1 (4 av-cam code words + 1 table word)"
+    },
+    "P30": {
+      "file": "libJit_fx3_P30.so",
+      "sha256": "671de524a2848830c89764420b69f4417a92cc249b5f5a6726f9fbaac9080079",
+      "size": 24648,
+      "level": 30,
+      "summary": "Put back FX3 8K decode channel avdec8k_fx3_v1"
     }
   }
 }
