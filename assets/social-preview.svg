@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">Sony OpenGate Studio — GitHub Social Preview</title>
+  <desc id="desc">Social preview card for Sony OpenGate Studio supporting Sony FX3, a7S III, and ZV-E1 in volatile RAM.</desc>
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090e1a"/>
+      <stop offset="55%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#0b1528"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Card Background -->
+  <rect x="1" y="1" width="1278" height="638" rx="20" fill="url(#bgGrad)" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- Left Content (with >=64px safe margin) -->
+  <g font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+    <!-- Top Pill -->
+    <rect x="64" y="64" width="440" height="36" rx="18" fill="#064e3b" fill-opacity="0.7" stroke="#10b981" stroke-opacity="0.7" stroke-width="1.5"/>
+    <circle cx="88" cy="82" r="5" fill="#34d399"/>
+    <text x="104" y="87" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="13.5" font-weight="700" letter-spacing="0.8" fill="#6ee7b7">VOLATILE RAM ONLY · GPL-3.0 OPEN SOURCE</text>
+
+    <!-- Title -->
+    <text x="64" y="176" font-size="54" font-weight="800" letter-spacing="-1" fill="#f8fafc">Sony OpenGate Studio</text>
+
+    <!-- Subtitle -->
+    <text x="64" y="232" font-size="25" font-weight="500" fill="#cbd5e1">3:2 Open Gate (3840×2560) Upgrade Studio for</text>
+    <text x="64" y="272" font-size="28" font-weight="700" fill="#38bdf8">Sony FX3 · Sony a7S III · Sony ZV-E1</text>
+
+    <rect x="64" y="302" width="180" height="4" rx="2" fill="url(#accentGrad)"/>
+
+    <!-- 2x2 Feature Pills -->
+    <g font-size="15.5" font-weight="700" fill="#e2e8f0">
+      <rect x="64" y="340" width="290" height="52" rx="12" fill="#070d19" stroke="#1e293b" stroke-width="1.5"/>
+      <circle cx="88" cy="366" r="5" fill="#10b981"/>
+      <text x="104" y="371">Native 3:2 MP4 + Gyroflow</text>
+
+      <rect x="374" y="340" width="290" height="52" rx="12" fill="#070d19" stroke="#1e293b" stroke-width="1.5"/>
+      <circle cx="398" cy="366" r="5" fill="#38bdf8"/>
+      <text x="414" y="371">Clean 3:2 &amp; Anamorphic HDMI</text>
+
+      <rect x="64" y="410" width="290" height="52" rx="12" fill="#070d19" stroke="#1e293b" stroke-width="1.5"/>
+      <circle cx="88" cy="436" r="5" fill="#f59e0b"/>
+      <text x="104" y="441">XAVC S-I All-Intra + 300M</text>
+
+      <rect x="374" y="410" width="290" height="52" rx="12" fill="#070d19" stroke="#1e293b" stroke-width="1.5"/>
+      <circle cx="398" cy="436" r="5" fill="#818cf8"/>
+      <text x="414" y="441">macOS SwiftUI App + CLI</text>
+    </g>
+
+    <!-- Bottom Reassurance Strip -->
+    <text x="64" y="544" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="15" font-weight="700" fill="#6ee7b7">Zero Flash Writes · Battery Pull Restores 100% Stock</text>
+    <text x="64" y="572" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="13.5" fill="#94a3b8">github.com/jeromykovatana/sony-opengate-studio</text>
+  </g>
+
+  <!-- Right Sensor Card -->
+  <g>
+    <rect x="730" y="64" width="486" height="512" rx="18" fill="#060b16" stroke="#1e293b" stroke-width="1.5"/>
+
+    <text x="973" y="106" text-anchor="middle" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="14" font-weight="700" letter-spacing="1" fill="#38bdf8">12.1MP IMX510 FULL-HEIGHT</text>
+
+    <!-- Proportional 3:2 Sensor Box (390 x 260) -->
+    <rect x="778" y="138" width="390" height="260" fill="#0c2038" stroke="#38bdf8" stroke-width="3"/>
+    <!-- Inner 16:9 Box (390 x 219.4) -->
+    <rect x="778" y="158.3" width="390" height="219.4" fill="#0b1120" fill-opacity="0.82" stroke="#f59e0b" stroke-width="2" stroke-dasharray="8 6"/>
+
+    <text x="973" y="153" text-anchor="middle" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="11" font-weight="700" fill="#7dd3fc">+18.5% VERTICAL SENSOR AREA</text>
+    <text x="973" y="392" text-anchor="middle" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="11" font-weight="700" fill="#7dd3fc">3:2 OPEN GATE · ZERO CROP</text>
+
+    <text x="973" y="258" text-anchor="middle" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="34" font-weight="800" fill="#f8fafc">3840 × 2560</text>
+    <text x="973" y="290" text-anchor="middle" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="16" font-weight="700" fill="#38bdf8">Native 3:2 Open Gate</text>
+    <text x="973" y="316" text-anchor="middle" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="13.5" font-weight="600" fill="#fbbf24">vs. Stock 3840 × 2160 (16:9)</text>
+
+    <!-- Camera Firmware Pills -->
+    <g font-family="'SF Mono', Menlo, Monaco, monospace" font-size="13" font-weight="700" text-anchor="middle">
+      <rect x="778" y="432" width="120" height="40" rx="8" fill="#0f172a" stroke="#38bdf8" stroke-opacity="0.6"/>
+      <text x="838" y="457" fill="#e0f2fe">FX3 7.02</text>
+
+      <rect x="913" y="432" width="120" height="40" rx="8" fill="#0f172a" stroke="#38bdf8" stroke-opacity="0.6"/>
+      <text x="973" y="457" fill="#e0f2fe">a7S III 5.01</text>
+
+      <rect x="1048" y="432" width="120" height="40" rx="8" fill="#0f172a" stroke="#38bdf8" stroke-opacity="0.6"/>
+      <text x="1108" y="457" fill="#e0f2fe">ZV-E1 2.02</text>
+    </g>
+
+    <text x="973" y="524" text-anchor="middle" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="13" font-weight="600" fill="#94a3b8">62 SHA-256 Pinned Helpers · Unicorn Verified</text>
+  </g>
+</svg>

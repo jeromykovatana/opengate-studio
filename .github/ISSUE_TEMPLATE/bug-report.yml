@@ -1,0 +1,45 @@
+name: Bug Report
+description: Report a bug in OpenGate Studio.app, the Python CLI, or USB transport
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do **not** attach Sony firmware files or proprietary binaries.
+        If the issue happened during USB service mode, include the exact error output and whether `--dry-run` / `--mock-camera` succeeds.
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Component
+      options:
+        - "macOS SwiftUI App (OpenGate Studio.app)"
+        - "Live USB Terminal (run_live_terminal.sh / studio_live_apply.py)"
+        - "Python CLI (studio_cli.py / bionz_clip_check.py)"
+        - "Documentation"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: OS, Camera Body & Firmware
+      placeholder: "e.g., macOS 15.1 (Apple Silicon), ZV-E1 2.02"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to Reproduce
+      validations:
+        required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Expected vs. Actual Output / Logs
+      render: bash
+    validations:
+      required: true

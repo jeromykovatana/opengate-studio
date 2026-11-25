@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="520" viewBox="0 0 1600 520" role="img" aria-labelledby="title desc">
+  <title id="title">Sony OpenGate Studio — 3:2 Open Gate (3840x2560) for Sony FX3, a7S III, and ZV-E1</title>
+  <desc id="desc">Hero banner showing Sony OpenGate Studio volatile RAM patch capabilities and 3:2 vs 16:9 sensor framing.</desc>
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090e1a"/>
+      <stop offset="55%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#0b1528"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <linearGradient id="sensorFill" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7" stop-opacity="0.22"/>
+      <stop offset="50%" stop-color="#0f172a" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#0284c7" stop-opacity="0.22"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Frame -->
+  <rect x="1" y="1" width="1598" height="518" rx="22" fill="url(#bgGrad)" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- Subtle Grid Accent -->
+  <g stroke="#1e293b" stroke-width="1" opacity="0.45">
+    <line x1="940" y1="24" x2="940" y2="496"/>
+  </g>
+
+  <!-- Left Column: Brand & Value Prop -->
+  <g font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+    <!-- Safety Status Pill -->
+    <rect x="64" y="52" width="498" height="34" rx="17" fill="#064e3b" fill-opacity="0.65" stroke="#10b981" stroke-opacity="0.65" stroke-width="1.5"/>
+    <circle cx="86" cy="69" r="5" fill="#34d399"/>
+    <text x="102" y="74" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="13.5" font-weight="700" letter-spacing="0.9" fill="#6ee7b7">VOLATILE RAM ONLY · ZERO FLASH WRITES · GPL-3.0</text>
+
+    <!-- Main Headline -->
+    <text x="64" y="162" font-size="64" font-weight="800" letter-spacing="-1.2" fill="#f8fafc">Sony OpenGate Studio</text>
+
+    <!-- Subtitle -->
+    <text x="64" y="216" font-size="24" font-weight="500" fill="#cbd5e1">Unlock 3:2 Open Gate (3840×2560), Native MP4 + Gyroflow Metadata,</text>
+    <text x="64" y="250" font-size="24" font-weight="500" fill="#cbd5e1">Clean 3:2 HDMI &amp; XAVC S-I All-Intra on 12.1MP BIONZ XR Cameras</text>
+
+    <!-- Accent Rule -->
+    <rect x="64" y="284" width="220" height="4" rx="2" fill="url(#accentGrad)"/>
+
+    <!-- 3 Quick Value Callouts -->
+    <g font-size="16" font-weight="600" fill="#e2e8f0">
+      <circle cx="72" cy="332" r="4.5" fill="#38bdf8"/>
+      <text x="86" y="337">+18.5% Sensor Height</text>
+
+      <circle cx="294" cy="332" r="4.5" fill="#10b981"/>
+      <text x="308" y="337">rtmd Gyro Preserved</text>
+
+      <circle cx="516" cy="332" r="4.5" fill="#f59e0b"/>
+      <text x="530" y="337">5-Gate Preflight Safety</text>
+    </g>
+
+    <!-- Supported Camera & Platform Pills -->
+    <g font-size="15" font-weight="700">
+      <rect x="64" y="388" width="166" height="44" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-opacity="0.7" stroke-width="1.5"/>
+      <text x="147" y="415" text-anchor="middle" fill="#e0f2fe">Sony FX3 · 7.02</text>
+
+      <rect x="244" y="388" width="194" height="44" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-opacity="0.7" stroke-width="1.5"/>
+      <text x="341" y="415" text-anchor="middle" fill="#e0f2fe">Sony a7S III · 5.01</text>
+
+      <rect x="452" y="388" width="182" height="44" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-opacity="0.7" stroke-width="1.5"/>
+      <text x="543" y="415" text-anchor="middle" fill="#e0f2fe">Sony ZV-E1 · 2.02</text>
+
+      <rect x="648" y="388" width="234" height="44" rx="10" fill="#1e1b4b" fill-opacity="0.75" stroke="#818cf8" stroke-opacity="0.8" stroke-width="1.5"/>
+      <text x="765" y="415" text-anchor="middle" fill="#e0e7ff">macOS SwiftUI + CLI</text>
+    </g>
+  </g>
+
+  <!-- Right Column: Sensor Viewfinder Reticle Diagram -->
+  <g>
+    <rect x="976" y="44" width="560" height="432" rx="18" fill="#060b16" stroke="#1e293b" stroke-width="1.5"/>
+
+    <!-- Top Viewfinder HUD -->
+    <circle cx="1010" cy="76" r="5" fill="#ef4444"/>
+    <text x="1024" y="81" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="13" font-weight="700" fill="#f8fafc">REC 23.98p · XAVC</text>
+    <text x="1508" y="81" text-anchor="end" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="13" font-weight="600" fill="#94a3b8">IMX510 · 12.1MP</text>
+
+    <!-- Outer 3:2 Open Gate Frame (450 x 300) -->
+    <rect x="1031" y="106" width="450" height="300" fill="url(#sensorFill)" stroke="#38bdf8" stroke-width="2.5"/>
+
+    <!-- Viewfinder Corner Brackets -->
+    <g stroke="#7dd3fc" stroke-width="3" fill="none">
+      <polyline points="1031,128 1031,106 1053,106"/>
+      <polyline points="1459,106 1481,106 1481,128"/>
+      <polyline points="1031,384 1031,406 1053,406"/>
+      <polyline points="1459,406 1481,406 1481,384"/>
+    </g>
+
+    <!-- Inner Stock 16:9 Frame (450 x 253.125 centered vertically: y=129.4..382.5) -->
+    <rect x="1031" y="129.5" width="450" height="253" fill="#0b1120" fill-opacity="0.72" stroke="#f59e0b" stroke-width="2" stroke-dasharray="8 6"/>
+
+    <!-- Top & Bottom Gain Labels -->
+    <text x="1256" y="122" text-anchor="middle" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="11" font-weight="700" letter-spacing="0.8" fill="#7dd3fc">+18.5% VERTICAL SENSOR AREA (3:2 OPEN GATE)</text>
+    <text x="1256" y="399" text-anchor="middle" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="11" font-weight="700" letter-spacing="0.8" fill="#7dd3fc">FULL 2832-ROW READOUT · NO VERTICAL CROP</text>
+
+    <!-- Center Resolution Readout -->
+    <rect x="1116" y="206" width="280" height="100" rx="12" fill="#0f172a" fill-opacity="0.92" stroke="#334155" stroke-width="1.2"/>
+    <text x="1256" y="248" text-anchor="middle" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="32" font-weight="800" fill="#f8fafc">3840 × 2560</text>
+    <text x="1256" y="274" text-anchor="middle" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#38bdf8">Native 3:2 Open Gate</text>
+    <text x="1256" y="294" text-anchor="middle" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="12.5" font-weight="600" fill="#fbbf24">vs. Stock 16:9 (3840 × 2160)</text>
+
+    <!-- Bottom Viewfinder HUD -->
+    <text x="1256" y="446" text-anchor="middle" font-family="'SF Mono', Menlo, Monaco, monospace" font-size="13" font-weight="600" fill="#94a3b8">NATIVE 3:2 MP4  ·  GYRO (rtmd)  ·  3:2 HDMI</text>
+  </g>
+</svg>

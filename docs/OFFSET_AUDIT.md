@@ -33,7 +33,7 @@ A critical finding from auditing `a7iv-open-gate-test`, `a7siii-open-gate-test`,
 
 ## 2. Firmware Version & SHA-256 Identity Pins
 
-Both [unpack_firmware.sh](file:///Users/jeromykovatana/Camera%20Upgrades/tools/unpack_firmware.sh) and [verify_all_offsets.py](file:///Users/jeromykovatana/Camera%20Upgrades/tools/verify_all_offsets.py) (100% offline), plus `CT6_memory_read_check` (on-camera read-only `check`), verify these exact SHA-256 digests and `version.txt` strings before permitting any operation:
+Both offline firmware audit tools (`unpack_firmware.sh` and `verify_all_offsets.py`, 100% offline), plus `CT6_memory_read_check` (on-camera read-only `check`), verify these exact SHA-256 digests and `version.txt` strings before permitting any operation:
 
 | Artifact | a7S III `5.01` (`a7s3_501`) | FX3 `7.02` (`fx3_702`) | ZV-E1 `2.02` (`zve1_202`) |
 |---|---|---|---|
@@ -62,8 +62,8 @@ Both [unpack_firmware.sh](file:///Users/jeromykovatana/Camera%20Upgrades/tools/u
 | **Fractional Line Timing** | Stock timing kept | Decoded timing law: frame = $(HMAX + E/P) \times VMAX$ ticks @ $36\text{ MHz}$, requiring **`E < P`**, odd `P | VMAX`, `4 | VMAX`. Patched 59.94Hz row: **`313 × 4788, P 57, E 34`** (`23.976 fps`); 50Hz row: **`313 × 4780, P 239, E 193`** (`24.000 fps`) |
 | **Vertical Squeeze Ratio** | `27/32` (`4672 × 27/32 = 3942.0`) | **`16/19`** (`2832 × 16/19 = 2384.8`, matching stock 2385-row second-scaler fit with zero cropped rows) |
 | **Raw Write Buffer (`0x43e`)** | Needs `dmmwb4688_v1` (enlarges 26.8 MB -> 33.0 MB) | **a7S III** (`26,214,400` B) & **FX3** (`27,864,320` B) fit `4288×2848` (`12,212,224` B) natively. **ZV-E1** (`10,325,504` B = exact `4288×2408`) **requires `dmmwb_zv_v1`** (`0x2580150` -> `26,214,400` B) |
-| **Rear LCD Panel Geometry** | The local kit uses a 3:2 rear panel, `lcdfill_v2` and the C3 preview cycle. | a7S III readback confirmed 4:3. FX3 panel geometry awaits a physical check. Its kit supports either panel shape. The ZV-E1 uses a 3:2 rear panel and the C2 preview cycle. [FX3 kit notes](../fx3-open-gate-test/README.md) |
-| **Known Runtime Caveats** | A cold boot clears the kit. The maintainer reports that a power-off can also clear it. [a7 IV field kit](../a7iv-open-gate-test/README.md) | a7S III and ZV-E1 testers reported 23.976p full-height recordings, purple standby on mode transitions and a crash at 60p. The a7S III tester also reported that power-off clears the kit. PAL 25p and the FX3 physical recording remain unverified. [Field results by body](UPGRADE_PRIORITIES.md) |
+| **Rear LCD Panel Geometry** | The local kit uses a 3:2 rear panel, `lcdfill_v2` and the C3 preview cycle. | a7S III readback confirmed 4:3. FX3 panel geometry awaits a physical check. Its kit supports either panel shape. The ZV-E1 uses a 3:2 rear panel and the C2 preview cycle. [FX3 kit notes](https://github.com/ArcaneLantern/fx3-open-gate-test) |
+| **Known Runtime Caveats** | A cold boot clears the kit. The maintainer reports that a power-off can also clear it. [a7 IV field kit](https://github.com/ArcaneLantern/a7iv-open-gate-test) | a7S III and ZV-E1 testers reported 23.976p full-height recordings, purple standby on mode transitions and a crash at 60p. The a7S III tester also reported that power-off clears the kit. PAL 25p and the FX3 physical recording remain unverified. |
 
 ---
 
@@ -141,10 +141,7 @@ Patches **4 sites** in `libmpr.so` (`g_videoParamComb` height `7008` -> `000a`) 
 
 ## 5. MP4 `16:9` Aspect Tag Fix (Preserve Sony `rtmd` Gyro Telemetry)
 
-All three models were analyzed cleanly in headless Ghidra (`analyzeHeadless` with `AuditLibXavcMp4Boxes.java` against `/a7siii_501/libmpr.so`, `/fx3_702/libmpr.so`, and `/zve1_202/libmpr.so`, Image Base `0x0`, PIE `PT_LOAD[0]` `p_offset == p_vaddr == 0`). Full decompiled C pseudocode and AArch64 listings are saved in:
-- [a7siii_501_mp4_boxes.md](file:///Users/jeromykovatana/Camera%20Upgrades/docs/mp4_muxer_decompiled/a7siii_501_mp4_boxes.md)
-- [fx3_702_mp4_boxes.md](file:///Users/jeromykovatana/Camera%20Upgrades/docs/mp4_muxer_decompiled/fx3_702_mp4_boxes.md)
-- [zve1_202_mp4_boxes.md](file:///Users/jeromykovatana/Camera%20Upgrades/docs/mp4_muxer_decompiled/zve1_202_mp4_boxes.md)
+All three models were analyzed cleanly in headless Ghidra (`analyzeHeadless` with `AuditLibXavcMp4Boxes.java` against `/a7siii_501/libmpr.so`, `/fx3_702/libmpr.so`, and `/zve1_202/libmpr.so`, Image Base `0x0`, PIE `PT_LOAD[0]` `p_offset == p_vaddr == 0`). Full decompiled C pseudocode and AArch64 listings are captured in offline research notes (`a7siii_501_mp4_boxes.md`, `fx3_702_mp4_boxes.md`, `zve1_202_mp4_boxes.md`).
 
 ### 5.1 Decompiled `libXavcMp4` Dataflow & Architecture
 
@@ -193,9 +190,9 @@ flowchart LR
 ### 5.3 Verified 8-Word (+1 Optional) Volatile `libmpr.so` Patch Table
 
 Every patch below targets executable `.text` inside `libmpr.so` `PT_LOAD[0]` (`file_off == va`) and is packaged as a reversible `/proc/self/mem` (`L19`/`L20`) JSON design with 16-byte aligned stock guard windows:
-- [mp4_3x2_s3_501.json](file:///Users/jeromykovatana/Camera%20Upgrades/docs/designs/mp4_3x2_s3_501.json)
-- [mp4_3x2_fx3_702.json](file:///Users/jeromykovatana/Camera%20Upgrades/docs/designs/mp4_3x2_fx3_702.json)
-- [mp4_3x2_zv_202.json](file:///Users/jeromykovatana/Camera%20Upgrades/docs/designs/mp4_3x2_zv_202.json)
+- [mp4_3x2_s3_501.json](../designs/mp4_3x2_s3_501.json)
+- [mp4_3x2_fx3_702.json](../designs/mp4_3x2_fx3_702.json)
+- [mp4_3x2_zv_202.json](../designs/mp4_3x2_zv_202.json)
 
 | Kind | a7S III `5.01` | FX3 `7.02` | ZV-E1 `2.02` | Stock Hex -> Patched Hex | Capstone AArch64 (`Old -> New`) | Effect |
 |---|---|---|---|---|---|---|
@@ -217,7 +214,7 @@ The [ZV-E1 2.02 recording test](ZVE1_RECORDING_TEST.md) covers stock, existing o
 Decompilation of the timed-metadata muxer path (`FUN_00227394` on a7S III, `FUN_002235b8` on FX3, `FUN_0020b45c` on ZV-E1) together with `xavcsMovieMeta::Init` and `xavcsMovieMeta::WriteMetaInfo` confirms:
 - `MakeMovieInternal` attaches the `rtmd` (`"cdsc"` = `0x63647363`) reference track with zero frame-height, `numOfVerticalLine`, or NRT `aspectRatio` dependencies.
 - `xavcsMovieMeta::WriteMetaInfo` records sensor readout timing, focal length, IBIS/OIS shift, and gyro quaternion samples independently of container video height.
-- The separate timed-metadata path supports the prediction that correcting the declared video dimensions will preserve gyro samples. End-to-end verification requires an untouched card original that imports at 3:2 in Resolve and stabilizes using its own telemetry in Catalyst or Gyroflow. The [upgrade review](UPGRADE_PRIORITIES.md) tracks this check for each body.
+- The separate timed-metadata path supports the prediction that correcting the declared video dimensions will preserve gyro samples. End-to-end verification requires an untouched card original that imports at 3:2 in Resolve and stabilizes using its own telemetry in Catalyst or Gyroflow.
 
 ---
 
@@ -232,7 +229,7 @@ Decompilation of the timed-metadata muxer path (`FUN_00227394` on a7S III, `FUN_
    ```bash
    .venv/bin/python tools/verify_all_offsets.py
    ```
-   Verifies all 3 `MANIFEST.json` bundles, all 15 repo design JSONs (`678` static checks, `12` runtime-only BSS/RAM fields, `0` mismatches), ELF `PT_LOAD[0]` bounds, Capstone AArch64 encodings, and generates/roundtrip-verifies [mp4_3x2_s3_501.json](file:///Users/jeromykovatana/Camera%20Upgrades/docs/designs/mp4_3x2_s3_501.json), [mp4_3x2_fx3_702.json](file:///Users/jeromykovatana/Camera%20Upgrades/docs/designs/mp4_3x2_fx3_702.json), and [mp4_3x2_zv_202.json](file:///Users/jeromykovatana/Camera%20Upgrades/docs/designs/mp4_3x2_zv_202.json).
+   Verifies all 3 `MANIFEST.json` bundles, all 15 repo design JSONs (`678` static checks, `12` runtime-only BSS/RAM fields, `0` mismatches), ELF `PT_LOAD[0]` bounds, Capstone AArch64 encodings, and generates/roundtrip-verifies [mp4_3x2_s3_501.json](../designs/mp4_3x2_s3_501.json), [mp4_3x2_fx3_702.json](../designs/mp4_3x2_fx3_702.json), and [mp4_3x2_zv_202.json](../designs/mp4_3x2_zv_202.json).
 3. **Offline Kit Self-Tests (Zero USB Contact):**
    ```bash
    .venv/bin/python a7siii-open-gate-test/windows/tools/camera_tests/CT6_memory_read_check/s3_run.py check --selftest
@@ -240,7 +237,7 @@ Decompilation of the timed-metadata muxer path (`FUN_00227394` on a7S III, `FUN_
    .venv/bin/python zve1-open-gate-test/windows/tools/camera_tests/CT6_memory_read_check/zv_run.py check --selftest
    ```
 4. **Interactive Ghidra / `GhidraMCP` Inspection (Optional Follow-Up):**
-   Open [sony_12mp_opengate](file:///Users/jeromykovatana/Camera%20Upgrades/ghidra_projects/sony_12mp_opengate.gpr) in Ghidra GUI (`/{a7siii_501,fx3_702,zve1_202}/libmpr.so`, Base `0x0`) if further live decompilation queries over `GhidraMCP` are desired.
+   Open `sony_12mp_opengate.gpr` in Ghidra GUI (`/{a7siii_501,fx3_702,zve1_202}/libmpr.so`, Base `0x0`) if further live decompilation queries over `GhidraMCP` are desired.
 5. **Read-Only Live Camera Verification (`CT6_memory_read_check` — Requires Explicit User Approval):**
    - Only after explicit approval, run `macos/check_readonly.command` (or `*_run.py check --go --firmware-shown <ver>`) and `macos/dump_info.command`.
    - Confirm **`VERDICT READY`**, `0` identity differences, and `STOCK` bytes across every coprocessor, `libmpr.so`, and `av-cam.bin` site before any volatile RAM `apply` test.

@@ -1,6 +1,6 @@
 # ZV-E1 2.02 · 3:2 metadata and gyro test
 
-**What is ready.** The existing native metadata design matches build `32000_08.2025101101`. Its eight required sites, one optional site and 17 guards passed offline checks. The current ZV-E1 field kit uses the earlier recorder design. Use it only for the baseline in this comparison. An unmerged desktop build now covers the MP4 height fields. Its scope and outstanding checks are recorded below. The desktop clip checker and geometry-only control copy work independently of that integration. [Native design](designs/mp4_3x2_zv_202.json) · [Build verification and live approval requirements](OFFSET_AUDIT.md) · [Clip checker](../tools/zve1_clip_check.py)
+**What is ready.** The existing native metadata design matches build `32000_08.2025101101`. Its eight required sites, one optional site and 17 guards passed offline checks. The current ZV-E1 field kit uses the earlier recorder design. Use it only for the baseline in this comparison. An unmerged desktop build now covers the MP4 height fields. Its scope and outstanding checks are recorded below. The desktop clip checker and geometry-only control copy work independently of that integration. [Native design](../designs/mp4_3x2_zv_202.json) · [Build verification and live approval requirements](OFFSET_AUDIT.md) · [Clip checker](../cli/bionz_clip_check.py)
 
 ## Set up once
 
@@ -17,7 +17,7 @@
 
 The contributor reports native 3840×2560 HEVC, track, sample-entry and VPRF dimensions at 23.98p. Embedded and sidecar Sony XML still report 3840×2160. For this revision a correct geometry result and an XML mismatch can coexist. Record both and retain the checker's original-file verdict. The revision contains no original camera clip for independent gyro or editor testing. The author also reports that the read-only preflight omits the two new header sites and can report READY after a power-switch cycle leaves the camera in a mixed state with black rows. Keep the C1/C2 trial on hold under the existing preflight requirement. The tape marks in C1 distinguish added image area from padded rows.
 
-**Local desktop preflight update.** Commit `6656c64` on `review/zve1-preflight` adds both MP4 header reads. A host build of the verdict code and desktop report tests rejected a stock sensor with an applied encoder, as well as either header applied alone. Both read-only binaries match their new SHA-256 pins. The patch applies to the PR head above. A maintainer update to the PR and an on-camera read-only result are still pending. [Verified PR patch](zve1-pr2-readonly-preflight.patch)
+**Local desktop preflight update.** Commit `6656c64` on `review/zve1-preflight` adds both MP4 header reads. A host build of the verdict code and desktop report tests rejected a stock sensor with an applied encoder, as well as either header applied alone. Both read-only binaries match their new SHA-256 pins. The patch applies to the PR head above. A maintainer update to the PR and an on-camera read-only result are still pending (`zve1-pr2-readonly-preflight.patch` offline review patch).
 
 | State | Framing take | Gyro take |
 | --- | --- | --- |

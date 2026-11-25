@@ -1,0 +1,23 @@
+name: Feature or Camera Request
+description: Suggest a new workflow feature, clip check, or camera body research target
+title: "[Request]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Policy Note:** Paid Sony license/DRM bypasses (`CUSTOM_GRID`, `C2PA`, `DIGITAL_SIGNATURE`, paid regional `DCI4K_24P`/`4K120P`) and persistent eMMC flash writes are strictly out of scope and will be closed.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature / Camera Body Summary
+      description: Describe what you want to unlock or improve and how you would use it in production.
+    validations:
+      required: true
+
+  - type: input
+    id: target_camera
+    attributes:
+      label: Target Camera & Firmware (if applicable)
+      placeholder: "e.g., Sony FX30 5.00 or Sony a7S III 5.01"

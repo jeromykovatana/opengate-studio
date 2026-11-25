@@ -1,58 +1,140 @@
-# Sony OpenGate Studio
+<div align="center">
 
-> [!WARNING]
-> **READ BEFORE USE — AS-IS / VOLATILE RAM ONLY / VOIDS WARRANTY**
-> - **PROVIDED AS-IS WITHOUT WARRANTY OF ANY KIND (GPL-3.0-or-later).**
-> - **VOLATILE RAM ONLY:** Every patch targets running camera RAM only (`persistent_writes: false`). Nothing is written to eMMC flash (`nflasha*`), `boot0`/`boot1`, or `BK4` settings. **Pulling the battery for >= 10 seconds restores 100% stock firmware state.**
-> - **EXPERIMENTAL MODIFICATION:** Running volatile RAM patches over USB service mode may void your warranty or cause temporary camera instability if battery power is lost mid-session. Always run the read-only preflight check first and keep the camera powered until `apply` / `putback` finishes.
+<a href="https://github.com/jeromykovatana/sony-opengate-studio">
+  <img src="assets/hero-banner.png" alt="Sony OpenGate Studio — 3:2 Open Gate 3840x2560 for Sony FX3, a7S III, and ZV-E1" width="100%">
+</a>
 
-**Sony OpenGate Studio** is a clean-room, multi-body macOS SwiftUI app, Python CLI, and Unicorn-verified volatile RAM patch studio for Sony's 12.1MP full-frame BIONZ XR cinema/hybrid cameras (`IMX510` + `CXD90057`).
+<h1>Sony OpenGate Studio</h1>
+
+<p><strong>Unlock 3:2 Open Gate (3840×2560), native 3:2 MP4 + Gyroflow telemetry, clean 3:2 HDMI, and XAVC S-I All-Intra on Sony FX3, a7S III, and ZV-E1 — 100% in volatile RAM.</strong></p>
+
+<p>
+  <a href="https://github.com/jeromykovatana/sony-opengate-studio/releases"><img src="https://img.shields.io/github/v/release/jeromykovatana/sony-opengate-studio?include_prereleases&label=release&color=0ea5e9" alt="Latest Release"></a>
+  <a href="https://github.com/jeromykovatana/sony-opengate-studio/actions/workflows/ci.yml"><img src="https://github.com/jeromykovatana/sony-opengate-studio/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
+  <img src="https://img.shields.io/badge/cameras-FX3%20%7C%20a7S%20III%20%7C%20ZV--E1-f59e0b" alt="Supported Cameras">
+  <img src="https://img.shields.io/badge/writes-Volatile%20RAM%20Only-10b981" alt="Volatile RAM Only">
+  <img src="https://img.shields.io/badge/platform-macOS%2014%2B%20%7C%20Python%203-6366f1" alt="Platform">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License: GPL-3.0-or-later"></a>
+</p>
+
+<p>
+  <a href="https://github.com/jeromykovatana/sony-opengate-studio/releases"><strong>Download macOS App</strong></a> ·
+  <a href="#why-sony-opengate-studio">Why Open Gate</a> ·
+  <a href="#supported-cameras--firmware-pins">Supported Cameras</a> ·
+  <a href="#modular-feature-packs">Feature Packs</a> ·
+  <a href="#5-gate-volatile-ram-safety-architecture">Safety Architecture</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#faq">FAQ</a> ·
+  <a href="docs/OFFICE_CAMERA_TEST_GUIDE.md">Field Test Guide</a>
+</p>
+
+</div>
 
 ---
 
-## Supported Bodies & Firmware Pins
+> [!WARNING]
+> **READ BEFORE USE — ALPHA PRE-RELEASE / VOLATILE RAM ONLY / AS-IS (GPL-3.0)**
+> - **100% VOLATILE RAM ONLY (`persistent_writes: false`):** Every patch runs in temporary camera RAM (`/tmp/jiritsu/`). **Zero bytes** are written to eMMC flash (`nflasha*`), `boot0`/`boot1`, or `BK4` settings. **Pulling the battery for ≥ 10 seconds restores 100% stock firmware state.**
+> - **READ-ONLY PREFLIGHT FIRST:** Never apply patches until the read-only preflight returns **`VERDICT READY`** on your exact pinned firmware version (`ZV-E1 2.02`, `a7S III 5.01`, or `FX3 7.02`).
+> - **`24p` (`23.976p`) ONLY WHILE APPLIED:** Shoot only at `24p` (`23.976p`) in `XAVC HS 4K`, `XAVC S 4K`, or `XAVC S-I 4K`. Switching to `60p` under `3840×2560` open gate exceeds the `IMX510` readout ceiling and crashes the camera.
+> - **PROVIDED AS-IS WITHOUT WARRANTY OF ANY KIND (GPL-3.0-or-later).** You can explore the entire macOS app and CLI offline in **Mock Camera Mode** before ever plugging in a camera.
 
-| Body | Firmware | `body_id` | Build ID (`version.txt`) | Status |
-|---|---|---|---|---|
-| **Sony ZV-E1** | `2.02` | `zve1_202` | `32000_08.2025101101` | Kit + Manifest + Unicorn Verified |
-| **Sony a7S III** (`ILCE-7SM3`) | `5.01` | `a7s3_501` | `39183_16.2026041504` | Kit + Manifest + Unicorn Verified |
-| **Sony FX3** (`ILME-FX3`) | `7.02` | `fx3_702` | `39180_21.2025122503` | Kit + Manifest + Unicorn Verified |
+---
 
-*(Clip Inspector `bionz_clip_check.py` also supports **a7 IV** `3840x2560` / `5760x3840` MP4 clips.)*
+## Why Sony OpenGate Studio?
+
+Sony's 12.1MP full-frame sensor (`IMX510` + `CXD90057` BIONZ XR) physically reads out 3:2 rows, yet stock firmware crops the frame vertically to 16:9 (`3840×2160`) before encoding. **Sony OpenGate Studio** unlocks the full **3:2 (`3840×2560`)** sensor height—plus native 3:2 MP4 metadata, Gyroflow/Catalyst telemetry preservation, clean 3:2 HDMI, and All-Intra/high-bitrate packs—inside a guided macOS SwiftUI utility and clean-room Python CLI.
+
+<div align="center">
+  <img src="assets/open-gate-framing.png" alt="3:2 Open Gate 3840x2560 vs Stock 16:9 3840x2160 Sensor Geometry" width="100%">
+</div>
+
+### How It Compares
+
+| Capability | Stock Sony Firmware | Basic Open-Gate Script | **Sony OpenGate Studio** |
+|---|---|---|---|
+| **3:2 Full Sensor (`3840×2560` @ `23.98p`)** | ❌ Cropped to `3840×2160` (`16:9`) | ✅ Sensor + base Long-GOP | ✅ Modular `core_open_gate` across 3 bodies |
+| **Native 3:2 MP4 Headers (`tkhd`/`stsd`/`VPRF`)** | ❌ `16:9` only | ⚠️ Often needs `ffmpeg` re-mux | ✅ Native `3:2` directly out of camera (`mp4_3x2`) |
+| **Sony `rtmd` Gyro Telemetry (Gyroflow / Catalyst)** | ✅ `16:9` clips only | ❌ Stripped if `ffmpeg` re-muxed | ✅ **Preserved in original camera MP4** |
+| **Clean 3:2 & Anamorphic HDMI Output** | ❌ `16:9` cropped HDMI | ❌ Not included | ✅ `hdmi32` (`H16`/`H17`) external monitor pack |
+| **High-Bitrate `200M/300M` & `XAVC S-I` All-Intra** | ❌ `16:9` only | ❌ Stock `100M` Long-GOP only | ✅ Optional `high_bitrate` & `xavc_si` packs |
+| **Safety & Preflight Enforcement** | — | Manual script order | ✅ **5-Gate Preflight + 16B Guards + Putback** |
+| **Clip, XML & Gyroflow Inspector** | ❌ None | ❌ None | ✅ Built-in SwiftUI & CLI `bionz_clip_check.py` |
+| **macOS Setup Experience** | — | Manual Python + scripts | ✅ One-click `OpenGate Studio.app` (no Zadig/Homebrew `libusb`) |
+
+---
+
+## Supported Cameras & Firmware Pins
+
+All 62 `.so` helper binaries across `kits/` are compiled reproducibly with `ziglang 0.13.0` (`clang 18.1.6`), pinned by SHA-256, and verified in Unicorn AArch64 emulation (`0` clean-room violations).
+
+| Camera Body | Model ID | Pinned Firmware | `body_id` | Build ID (`version.txt`) | Verification & Field Status |
+|---|---|---|---|---|---|
+| **Sony ZV-E1** | `ZV-E1` | **`2.02`** | `zve1_202` | `32000_08.2025101101` | 22 SHA-256 helpers · Unicorn verified · Alpha pre-release |
+| **Sony a7S III** | `ILCE-7SM3` | **`5.01`** | `a7s3_501` | `39183_16.2026041504` | 20 SHA-256 helpers · Unicorn verified · Alpha pre-release |
+| **Sony FX3** | `ILME-FX3` *(not `FX3A`)* | **`7.02`** | `fx3_702` | `39180_21.2025122503` | 20 SHA-256 helpers · Unicorn verified · Alpha pre-release |
+
+> [!NOTE]
+> - **Exact firmware required:** Only `ZV-E1 2.02`, `a7S III 5.01`, and `FX3 7.02` (`ILME-FX3`, **not** `ILME-FX3A`) are supported. Preflight rejects any mismatched `DeviceInfo.xml` or memory identity page before touching RAM.
+> - **Sony a7 IV Clip Support:** The built-in Clip Inspector (`cli/bionz_clip_check.py`) also validates `3840×2560` and `5760×3840` clips from `a7iv-open-gate-test`.
+> - **Help validate on hardware:** This project is in active **v0.1.x-alpha** testing. If you run it on hardware, please submit a [Field Test Report](https://github.com/jeromykovatana/sony-opengate-studio/issues/new?template=field-test-report.yml).
 
 ---
 
 ## Modular Feature Packs
 
-Each body ships with orthogonal, stackable volatile RAM packs built with `ziglang 0.13.0` (`clang version 18.1.6`) and verified for zero cross-pack guard collisions:
+Pick only the capabilities you want to stack in camera RAM. Each pack is checked for zero cross-pack guard collisions:
 
-| Pack | Description | Notes |
-|---|---|---|
-| `core_open_gate` *(required)* | `3840x2560` 3:2 23.98p sensor readout & output size (`ogsq` + `outsz2560`, plus `dmmwb` on ZV-E1) | Locked base pack |
-| `mp4_3x2` | Native `3840x2560` MP4 `tkhd`/`stsd`/`VPRF` height, codec level fix, NRT XML `16:9` suppression, and in-camera playback (`V19`/`V20`) | Preserves Sony `rtmd` gyro telemetry; falls back to `L19`/`L20` if deselected |
-| `screen_3x2` | Full-frame 3:2 LCD framing & preview aspect cycle (`lcdfill` + `lcdcycle` on ZV-E1/a7S III; `lcdfill` on FX3) | Optional |
-| `hdmi32` | Clean 3:2 pillarboxed & uncropped anamorphic HDMI output (`H16`/`H17`) | Optional |
-| `high_bitrate` | `200M` / `300M` Long-GOP XAVC HS & XAVC S bitrate overlay (`B19`/`B20`) | Optional |
-| `xavc_si` | XAVC S-I 4K All-Intra `3840x2560` Open Gate + VPRF/playback (`I19`/`I20`) | Optional |
-| `fx3_playback` | FX3 In-Camera 3:2 Playback Fix (`avdec8k_fx3_v1`, `P29`/`P30`) | Optional, **FX3 only** (`default_enabled: false`, **untested on hardware**) |
-
-> [!IMPORTANT]
-> **Essential Hardware & SD Card Notes**
-> - **No files go on your SD card:** Leave a normal formatted SD/CFexpress card in **Slot 1** so the camera mounts as USB Mass Storage. Nothing on the card is modified or erased.
-> - **FX3 `7.02` Playback Freeze Warning:** On stock FX3 `7.02`, playing an open-gate clip shows `"Unable to display"` and retrying freezes the camera until battery pull. Do **not** play back clips on FX3 unless testing optional `fx3_playback` (`P29`/`P30`, untested on hardware — test 1 normal 16:9 clip first, then 1 open-gate clip, and **never retry** if it errors).
-> - **a7S III `5.01` & ZV-E1 `2.02` Warm Power-Switch Reset:** Toggling the power switch resets coprocessor RAM while retaining encoder patches (`mixed_powerswitch` — Issue #3 confirmed on `5.01`). Always **pull the battery for >= 10 seconds** to restore 100% stock.
-> - **macOS USB Auto-Reconnect:** On macOS, consecutive USB steps may re-enumerate automatically ~5 seconds apart after the stop/reset request.
+| Pack | What It Unlocks | Steps | Availability |
+|---|---|---|---|
+| `core_open_gate` *(required)* | Full-height `3840×2560` 3:2 `23.98p` sensor readout & output size (`ogsq` + `outsz2560`, plus `dmmwb` raw buffer resize on ZV-E1) | `L13` *(ZV)* · `L5` · `L16` | ZV-E1, a7S III, FX3 |
+| `mp4_3x2` | Native `3840×2560` MP4 `tkhd`/`stsd`/`VPRF` height, codec level preservation, NRT XML `16:9` suppression, and in-camera playback (`rtmd` gyro preserved; falls back to `L19`/`L20` if deselected) | `V19` / `V20` | ZV-E1, a7S III, FX3 |
+| `screen_3x2` | Full-frame 3:2 LCD/EVF framing & live preview aspect cycle (`3:2 → 2:1 → 2.25:1 → 2.4:1` on C2/C3 for ZV-E1/a7S III; native De-Squeeze calibrated on FX3) | `S16` + `C19` *(ZV/S3)* | ZV-E1, a7S III, FX3 |
+| `hdmi32` | Clean 3:2 pillarboxed & uncropped anamorphic HDMI output for external monitors and recorders | `H16` / `H17` | ZV-E1, a7S III, FX3 |
+| `high_bitrate` | `200M` / `300M` Long-GOP bitrate overlay for `XAVC HS 4K` & `XAVC S 4K` | `B19` / `B20` | ZV-E1, a7S III, FX3 |
+| `xavc_si` | `XAVC S-I 4K` All-Intra `3840×2560` Open Gate + dual-core row split + VPRF/playback | `I19` / `I20` | ZV-E1, a7S III, FX3 |
+| `fx3_playback` *(experimental)* | Optional FX3 in-camera 3:2 playback path fix (`avdec8k_fx3_v1`, disabled by default — **untested on hardware**) | `P29` / `P30` | FX3 `7.02` only |
 
 ---
 
-## Quickstart
+## Quick Start
 
-### 1. CLI Quickstart (Safe Offline Mock Mode by Default)
+### Option A — macOS App (`OpenGate Studio.app` — Recommended)
 
-All CLI commands use pure Python 3 standard library and default to `--mock-camera` simulation so you can verify pins, preflight gates, and pack stacking safely offline:
+Requires **macOS 14+** and **Python 3.9+** (Apple Silicon `arm64` prebuilt bundle on [Releases](https://github.com/jeromykovatana/sony-opengate-studio/releases); Xcode CLT / `swift` optional if rebuilding from source). **No Homebrew `libusb` or Windows Zadig driver needed.**
+
+1. **Download & Open:** Grab the latest `.zip` from **[GitHub Releases](https://github.com/jeromykovatana/sony-opengate-studio/releases)**, or clone and run the one-click setup:
+   ```bash
+   git clone https://github.com/jeromykovatana/sony-opengate-studio.git
+   cd sony-opengate-studio
+   ./setup_and_open_mac.command
+   ```
+2. **Explore Safely Offline First:** Leave **Offline Mock Camera = ON** to walk through all three tabs with zero USB contact:
+   - **Tab 1 — Camera Setup Wizard:** Exact camera menu settings (`Mass Storage`, `Slot 1` card, `24p`, Stills cold-boot check).
+   - **Tab 2 — Feature Packs & 5-Gate Stepper:** Verify SHA-256 pins, toggle modular packs, run read-only Preflight, Apply, and Put Back.
+   - **Tab 3 — Clip, XML & Gyro Inspector:** Drag & drop any recorded `Cxxxx.MP4` + `CxxxxM01.XML` to verify `3840×2560` geometry, NRT XML aspect, and `rtmd` gyro samples.
+3. **Go Live Over USB-C:** Toggle **Offline Mock Camera = OFF**. Clicking Preflight, Apply, or Put Back launches an audited `Terminal.app` session via `macos/run_live_terminal.sh` (prompts once for `sudo` to detach `iousbmassstorage`), then syncs the verdict back into the app.
+
+### Option B — Live USB Terminal (macOS)
 
 ```bash
-# List supported bodies and packs
+# Preview any live USB flow safely offline (--dry-run sends nothing and skips sudo)
+./macos/run_live_terminal.sh preflight --body zve1_202 --dry-run
+./macos/run_live_terminal.sh apply --body a7s3_501 --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si --dry-run
+
+# Live USB runs (read-only preflight first, then apply, then putback)
+./macos/run_live_terminal.sh preflight --body zve1_202
+./macos/run_live_terminal.sh apply --body zve1_202 --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si
+./macos/run_live_terminal.sh putback --body zve1_202
+```
+
+<details>
+<summary><strong>Option C — Pure Python CLI, Offline Mock Mode & Developer Verification</strong></summary>
+
+All `cli/studio_cli.py` commands use pure Python 3 standard library and default to `--mock-camera` so you can test pack stacking, preflight gates, and clip verification safely on any OS:
+
+```bash
+# List supported bodies and modular packs
 python3 cli/studio_cli.py list-bodies --json
 
 # Verify SHA-256 pins of every .so helper in kits/
@@ -67,51 +149,114 @@ python3 cli/studio_cli.py apply --body zve1_202 --packs mp4_3x2,screen_3x2,hdmi3
 # Put back to stock RAM state
 python3 cli/studio_cli.py putback --body zve1_202 --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si --mock-camera --session-dir /tmp/og_sessions --json
 
-# Inspect an MP4 clip + optional M01.XML sidecar for 3:2 framing & rtmd gyro data
+# Inspect an MP4 clip + optional M01.XML sidecar for 3:2 framing & rtmd gyro telemetry
 python3 cli/studio_cli.py check-clip /path/to/C0001.MP4 --xml /path/to/C0001M01.XML --json
 
-# Run built-in clip checker self-test and clean-room verification
+# Run built-in clip checker self-test, clean-room audit, and unit tests
 python3 cli/bionz_clip_check.py --selftest
 python3 scripts/verify_clean_room.py
 python3 -B -m unittest discover -s tests -v
 ```
 
-### 2. macOS One-Click Setup, Live USB Terminal & SwiftUI App (`OpenGate Studio.app`)
-
-Requires macOS 14+ and Python 3.9+ (Swift 5.10+ on Apple Silicon `arm64` to rebuild `OpenGate Studio.app`):
-
-```bash
-# 1. One-time laptop setup: creates .venv, installs requirements.txt (pyusb, pycryptodomex, libusb-package),
-#    verifies kit pins, builds OpenGate Studio.app (if swift is installed), and launches it:
-./setup_and_open_mac.command
-
-# 2. Preview any live USB flow safely offline (--dry-run sends nothing and skips sudo):
-./macos/run_live_terminal.sh preflight --body zve1_202 --dry-run
-./macos/run_live_terminal.sh apply --body a7s3_501 --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si --dry-run
-
-# 3. Live USB runs (prompts once for sudo to detach iousbmassstorage, then restores folder ownership):
-./macos/run_live_terminal.sh preflight --body zve1_202
-./macos/run_live_terminal.sh apply --body zve1_202 --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si
-./macos/run_live_terminal.sh putback --body zve1_202
-```
-
-> [!NOTE]
-> Live USB transport is vendored cleanly in `transport/` (`sony-pmca-re` MIT + `CT1`/`CT6` GPL-3.0) with `cli/studio_step_run.py` and `cli/studio_live_apply.py`. In **Live Camera USB Mode** inside `OpenGate Studio.app`, clicking Preflight / Apply / Put Back prepares an executable `.command` wrapper (`studio_cli.py prepare-live-command`) and opens it in `Terminal.app`, then syncs the result back into the UI via `studio_cli.py latest-session`.
+</details>
 
 ---
 
-## Documentation
+## 5-Gate Volatile RAM Safety Architecture
 
-- [Office Camera Test Guide (ZV-E1 2.02 / a7S III 5.01 / FX3 7.02)](docs/OFFICE_CAMERA_TEST_GUIDE.md)
-- [Safety & Clean-Room Architecture](docs/SAFETY_AND_CLEANROOM.md)
-- [BIONZ XR 12.1MP Offset Audit & MP4 3:2 Muxer](docs/OFFSET_AUDIT.md)
-- [Feature Unlock Ranking & Verified Designs](docs/FEATURE_UNLOCK_RANKING.md)
-- [ZV-E1 2.02 Recording & Gyro Test Protocol](docs/ZVE1_RECORDING_TEST.md)
+Every run follows a strict read-only-first pipeline so no mismatched firmware, warm-boot partial state, or colliding offset can ever be written:
+
+```mermaid
+flowchart LR
+    G1["1. Cold-Boot Stills\n(Battery >= 10s, 24p set)"] --> G2["2. Read-Only Preflight\n(CT6 check + identity SHA-256)"]
+    G2 -->|"VERDICT READY"| G3["3. 16B Stock Guards\n(& zero pack collisions)"]
+    G2 -->|"NOT READY / Mixed"| BP["Pull Battery >= 10s\nto Restore Stock"]
+    G3 --> G4["4. Volatile RAM Apply\n(/tmp/jiritsu/ · 0 flash writes)"]
+    G4 --> SHOOT["5. Shoot 3:2 @ 23.98p\n(Native MP4 + rtmd Gyro)"]
+    SHOOT --> END["Software Putback OR\nBattery Pull >= 10s (100% Stock)"]
+```
+
+> [!IMPORTANT]
+> **Essential Hardware & SD Card Notes**
+> - **No files go on your SD card:** Leave a normal formatted SD/CFexpress card in **Slot 1** so the camera mounts as USB Mass Storage (`Setup > USB > Mass Storage`). Nothing on the card is modified or erased.
+> - **FX3 `7.02` Playback Freeze Warning:** On stock FX3 `7.02`, playing an open-gate clip shows `"Unable to display"` and retrying freezes the camera until battery pull. Do **not** play back clips on FX3 unless explicitly testing optional `fx3_playback` (`P29`/`P30`, **untested on hardware** — test 1 normal 16:9 clip first, then 1 open-gate clip, and **never retry** if it errors).
+> - **a7S III `5.01` & ZV-E1 `2.02` Warm Power-Switch Reset:** Toggling the power switch resets coprocessor RAM while retaining encoder patches (`mixed_powerswitch`). Always **pull the battery for ≥ 10 seconds** to restore 100% stock.
+> - **macOS USB Auto-Reconnect:** After a step finishes, macOS may re-enumerate the camera automatically ~5 seconds later without physically unplugging the cable.
+
+---
+
+## FAQ
+
+<details>
+<summary><strong>Can this brick my camera or void my warranty?</strong></summary>
+
+Every patch targets **volatile camera RAM only** (`persistent_writes: false`) via `/tmp/jiritsu/`. Nothing is written to `nflasha*` eMMC flash partitions, bootloaders, or persistent `BK4` settings. Pulling the battery for 10+ seconds wipes RAM and restores 100% factory state. Still, running volatile RAM modifications over Sony USB service mode is experimental and provided **AS-IS under GPL-3.0** without warranty—always run the read-only preflight check first and keep the battery charged.
+
+</details>
+
+<details>
+<summary><strong>Does Gyroflow and Sony Catalyst Browse still work on 3:2 Open Gate clips?</strong></summary>
+
+Yes—that is what the `mp4_3x2` pack is built for. Stock open-gate tools often produce `3840×2560` video inside a `16:9` MP4 header, requiring an `ffmpeg` re-mux that strips Sony's `rtmd` timed-metadata gyro track. `mp4_3x2` updates `tkhd`/`stsd`/`VPRF` dimensions and suppresses the fixed `"16:9"` XML flag **in-camera**, keeping `rtmd` gyro telemetry intact inside the original `.MP4` so DaVinci Resolve, Premiere Pro, Gyroflow, and Catalyst Browse can read it directly. Use Tab 3 (**Clip Inspector**) or `bionz_clip_check.py` to confirm `rtmd_gyro_present: true` on your clips.
+
+</details>
+
+<details>
+<summary><strong>Why only 24p (23.976p)? Will 60p or 120p work?</strong></summary>
+
+No—do not switch to `60p` while Open Gate is applied. Our timing audit (`IMX510` @ 36 MHz) shows full-height readout hits the pixel clock ceiling below `48p`/`60p`, and switching to `60p` distorts live view and crashes the camera. Stay in `24p` (`23.976p`) `XAVC HS 4K`, `XAVC S 4K`, or `XAVC S-I 4K`.
+
+</details>
+
+<details>
+<summary><strong>My camera is on an older or newer firmware—can I still run it?</strong></summary>
+
+No. Offsets are exact per firmware build (`ZV-E1 2.02`, `a7S III 5.01`, `FX3 7.02`). The read-only preflight checks `DeviceInfo.xml`, `/usr/lib/` SHA-256 digests, and coprocessor pages before allowing any write and will refuse mismatched builds with `VERDICT NOT READY`. Do not run `FX3 7.02` on `ILME-FX3A`.
+
+</details>
+
+<details>
+<summary><strong>Do I copy anything onto my SD card, or install custom firmware?</strong></summary>
+
+No. Leave a normal formatted SD or CFexpress card in **Slot 1** only so the camera enumerates in **USB Mass Storage** mode. Nothing is copied to or erased from your card, and no `.DAT` firmware update is flashed.
+
+</details>
+
+<details>
+<summary><strong>What about Sony a7 IV, Windows, or Linux?</strong></summary>
+
+- **Sony a7 IV (`6.02`):** Use [ArcaneLantern/a7iv-open-gate-test](https://github.com/ArcaneLantern/a7iv-open-gate-test) for `3840×2560` and `5760×3840` RAM patches; `cli/bionz_clip_check.py` already inspects a7 IV open-gate clips.
+- **Windows & Linux:** The pure-Python CLI (`cli/studio_cli.py`, `cli/studio_step_run.py`, `cli/studio_live_apply.py`) and vendored `transport/` work across Python 3 platforms (Windows requires `libusb-win32` via Zadig). The SwiftUI app targets macOS 14+.
+
+</details>
+
+<details>
+<summary><strong>Does this unlock paid Sony licenses like Custom Grid Lines, C2PA, or paid DCI 4K/120p?</strong></summary>
+
+**Never.** Paid Sony license/DRM checks (`CUSTOM_GRID`, `C2PA`, `DIGITAL_SIGNATURE`, paid regional `DCI4K_24P`/`4K120P`) are strictly excluded by policy.
+
+</details>
+
+---
+
+## Documentation & Community
+
+- [Office Camera Test Guide (`ZV-E1 2.02` · `a7S III 5.01` · `FX3 7.02`)](docs/OFFICE_CAMERA_TEST_GUIDE.md) — exact camera menu setup & step-by-step checklist
+- [Safety, Volatile RAM & Clean-Room Policy](docs/SAFETY_AND_CLEANROOM.md) — 5-gate architecture & clean-room verification rules
+- [BIONZ XR 12.1MP Offset Audit & MP4 3:2 Muxer](docs/OFFSET_AUDIT.md) — cross-body memory architecture & Ghidra muxer analysis
+- [Feature Unlock Ranking & Verified Designs](docs/FEATURE_UNLOCK_RANKING.md) — offline readiness audit & hardware exclusions
+- [ZV-E1 2.02 Recording & Gyro Test Protocol](docs/ZVE1_RECORDING_TEST.md) — structured framing & Gyroflow verification protocol
+- [Contributing Guide](CONTRIBUTING.md) · [Security & Safety Policy](SECURITY.md) · [GitHub Discussions](https://github.com/jeromykovatana/sony-opengate-studio/discussions)
 
 ---
 
 ## Credits & License
 
 - **Original Open-Gate Research & Volatile RAM Loader:** [ArcaneLantern](https://github.com/ArcaneLantern) (`a7iv-open-gate-test`, `a7siii-open-gate-test`, `fx3-open-gate-test`, `zve1-open-gate-test`)
-- **Sony USB Service Protocol Tooling:** [ma1co/Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE)
+- **Sony USB Service Protocol Tooling:** [ma1co/Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE) (vendored MIT components in `transport/third_party/sony-pmca-re`)
 - **License:** GNU General Public License v3.0 or later (`GPL-3.0-or-later`) — see [LICENSE](LICENSE).
+
+<div align="center">
+  <br>
+  <sub>If Sony OpenGate Studio helps your filmmaking workflow, consider giving the repo a ⭐ so more Sony shooters can find it.</sub>
+</div>

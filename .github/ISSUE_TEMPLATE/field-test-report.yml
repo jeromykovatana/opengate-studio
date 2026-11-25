@@ -1,0 +1,69 @@
+name: Field Test Report (Camera Hardware)
+description: Share real-camera test results for Sony ZV-E1 (2.02), a7S III (5.01), or FX3 (7.02)
+title: "[Field Test]: <Camera Body> — <Summary>"
+labels: ["field-test"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping validate **Sony OpenGate Studio** on camera hardware!
+        **Reminder:** Never upload Sony firmware binaries (`.DAT`, `.bin`, `.so` from the camera) or full private dump archives containing proprietary strings if unsure—stick to verdict output, `bionz_clip_check.py` JSON, and observed camera behavior.
+
+  - type: dropdown
+    id: camera_body
+    attributes:
+      label: Camera Body & Pinned Firmware
+      options:
+        - "Sony ZV-E1 (Firmware 2.02)"
+        - "Sony a7S III / ILCE-7SM3 (Firmware 5.01)"
+        - "Sony FX3 / ILME-FX3 (Firmware 7.02 — NOT FX3A)"
+    validations:
+      required: true
+
+  - type: input
+    id: release_version
+    attributes:
+      label: OpenGate Studio Version / Commit
+      placeholder: "e.g., v0.1.2-alpha or commit 7686238"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: packs
+    attributes:
+      label: Feature Packs Tested
+      options:
+        - label: "core_open_gate (required base)"
+        - label: "mp4_3x2 (native 3:2 MP4 + playback)"
+        - label: "screen_3x2 (3:2 LCD/EVF + C2/C3 aspect cycle)"
+        - label: "hdmi32 (3:2 & anamorphic HDMI)"
+        - label: "high_bitrate (200M / 300M Long-GOP)"
+        - label: "xavc_si (XAVC S-I 4K All-Intra)"
+        - label: "fx3_playback (optional FX3 P29/P30)"
+
+  - type: dropdown
+    id: preflight_verdict
+    attributes:
+      label: Read-Only Preflight Verdict
+      options:
+        - "VERDICT READY (stock preflight)"
+        - "VERDICT NOT READY (stopped before apply)"
+        - "Error before preflight completed"
+    validations:
+      required: true
+
+  - type: textarea
+    id: clip_check
+    attributes:
+      label: Clip, XML & Gyro Check (`bionz_clip_check.py`)
+      description: Paste output from Tab 3 (Clip Inspector) or `python3 cli/studio_cli.py check-clip ... --json`
+      render: json
+
+  - type: textarea
+    id: observations
+    attributes:
+      label: Camera Behavior, Editor & Gyroflow/Catalyst Notes
+      description: |
+        Include codec/fps tested (e.g., XAVC HS 4K 23.98p), rear LCD / EVF / HDMI behavior, in-camera playback result, DaVinci Resolve / Premiere import dimensions, and Gyroflow / Catalyst stabilization notes.
+    validations:
+      required: true
