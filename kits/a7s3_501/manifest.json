@@ -220,15 +220,15 @@
     },
     "I19": {
       "file": "libJit_s3_I19.so",
-      "sha256": "072ae9bbe7b2bfe43980de916c3fe3a25c71a10abe2f0a6175e9dfd6dad8df38",
-      "size": 22984,
+      "sha256": "dc3e9bec05aa6ea665a88e1c155ce6430c93c4c55a1ec118b4bf7e732dacbec7",
+      "size": 23304,
       "level": 19,
-      "summary": "Apply orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_s3_501 (32 av-cam + 2 libmpr)"
+      "summary": "Apply orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_s3_501 (40 av-cam + 2 libmpr, incl. +0x56 dual-core split)"
     },
     "I20": {
       "file": "libJit_s3_I20.so",
-      "sha256": "6b179c7e4c58d99893096287039b83c191fed56d300947a315705f09db364c82",
-      "size": 23000,
+      "sha256": "cdcccfee1a9ca2f0fb0c09c50dbd8c09561bdb644fe5a74c1e317a1d714bf371",
+      "size": 23320,
       "level": 20,
       "summary": "Put back orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_s3_501"
     }

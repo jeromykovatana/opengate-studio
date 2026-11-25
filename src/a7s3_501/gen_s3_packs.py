@@ -5,7 +5,7 @@ Generates:
   - expected_mp_ogfile2560_hs_s_s3_v3.h  (V19/V20: v1 105 sites + mp4_3x2 8 libmpr sites = 113 sites)
   - expected_words_hdmi32_s3_501.h       (H16/H17: 28 aligned 4-byte ram_word entries + 15 guards)
   - expected_mp_og_highbitrate_s3_501.h  (B19/B20: 108 av-cam sites + 54 av guards + 1 libmpr ELF magic guard)
-  - expected_mp_og_xavcsi_addon_s3_501.h (I19/I20: 34 orthogonal XAVC S-I delta sites + non-overlapping guards)
+  - expected_mp_og_xavcsi_addon_s3_501.h (I19/I20: 42 orthogonal XAVC S-I delta sites + non-overlapping guards)
   - s3_expected.h, s3_expected.json      (s3read_v9: 25 cp_sites, 12 lm_sites, 101 av_sites)
 
 Enforces cross-pack disjointness so no kind==0 guard in V19/B19/I19 overlaps any kind==1 site across V19/B19/I19.
@@ -186,7 +186,7 @@ def load_mp_pack_i19(av: bytes, lm: bytes, v19_site_keys: set[tuple[str, int]]) 
         src = av if b == "av-cam.bin" else lm
         assert len(old) == len(new) <= 16 and old != new and src[off:off + len(old)] == old
         sites[b].append((off, old, new))
-    assert len(sites["libmpr.so"]) + len(sites["av-cam.bin"]) == 34
+    assert len(sites["libmpr.so"]) + len(sites["av-cam.bin"]) == 42
 
     g_av: list[tuple[int, bytes]] = []
     g_lm: list[tuple[int, bytes]] = []
@@ -213,7 +213,7 @@ def load_mp_pack_i19(av: bytes, lm: bytes, v19_site_keys: set[tuple[str, int]]) 
         "header": "expected_mp_og_xavcsi_addon_s3_501.h",
         "sites": sites,
         "guards": {"av-cam.bin": g_av, "libmpr.so": g_lm},
-        "comment": "Orthogonal XAVC S-I 4K All-Intra delta excluding V19 sites (34 sites).",
+        "comment": "Orthogonal XAVC S-I 4K All-Intra delta excluding V19 sites (42 sites).",
     }
 
 

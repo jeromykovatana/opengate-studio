@@ -27,9 +27,9 @@
     "all_libmpr_patches_and_guards_in_pt_load0": true
   },
   "summary": {
-    "total_patches": 42,
+    "total_patches": 50,
     "libmpr_patches": 8,
-    "av_cam_patches": 34,
+    "av_cam_patches": 42,
     "intra_profile_keys": [
       105205,
       105206,
@@ -217,6 +217,18 @@
       "note": "profile key=105205: +0x38 height 2160 -> 2560"
     },
     {
+      "id": "A2-prof-105205-core1",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3acd4e",
+      "va": "0xffffffc0013acd4e",
+      "length": 2,
+      "old": "3004",
+      "new": "0005",
+      "code": false,
+      "note": "profile key=105205: +0x56 core-1 macroblock rows 1072 -> 1280 (half of 2560p in 16-row MB rows)"
+    },
+    {
       "id": "A2-prof-105205-h90",
       "binary": "av-cam.bin",
       "kind": "A2-profile",
@@ -263,6 +275,18 @@
       "new": "000a0000",
       "code": false,
       "note": "profile key=105206: +0x38 height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-105206-core1",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3ace4e",
+      "va": "0xffffffc0013ace4e",
+      "length": 2,
+      "old": "3004",
+      "new": "0005",
+      "code": false,
+      "note": "profile key=105206: +0x56 core-1 macroblock rows 1072 -> 1280 (half of 2560p in 16-row MB rows)"
     },
     {
       "id": "A2-prof-105206-h90",
@@ -313,6 +337,18 @@
       "note": "profile key=105208: +0x38 height 2160 -> 2560"
     },
     {
+      "id": "A2-prof-105208-core1",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3ad04e",
+      "va": "0xffffffc0013ad04e",
+      "length": 2,
+      "old": "3004",
+      "new": "0005",
+      "code": false,
+      "note": "profile key=105208: +0x56 core-1 macroblock rows 1072 -> 1280 (half of 2560p in 16-row MB rows)"
+    },
+    {
       "id": "A2-prof-105208-h90",
       "binary": "av-cam.bin",
       "kind": "A2-profile",
@@ -359,6 +395,18 @@
       "new": "000a0000",
       "code": false,
       "note": "profile key=105209: +0x38 height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-105209-core1",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3ad14e",
+      "va": "0xffffffc0013ad14e",
+      "length": 2,
+      "old": "3004",
+      "new": "0005",
+      "code": false,
+      "note": "profile key=105209: +0x56 core-1 macroblock rows 1072 -> 1280 (half of 2560p in 16-row MB rows)"
     },
     {
       "id": "A2-prof-105209-h90",
@@ -409,6 +457,18 @@
       "note": "profile key=205205: +0x38 height 2160 -> 2560"
     },
     {
+      "id": "A2-prof-205205-core1",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b014e",
+      "va": "0xffffffc0013b014e",
+      "length": 2,
+      "old": "3004",
+      "new": "0005",
+      "code": false,
+      "note": "profile key=205205: +0x56 core-1 macroblock rows 1072 -> 1280 (half of 2560p in 16-row MB rows)"
+    },
+    {
       "id": "A2-prof-205205-h90",
       "binary": "av-cam.bin",
       "kind": "A2-profile",
@@ -455,6 +515,18 @@
       "new": "000a0000",
       "code": false,
       "note": "profile key=205206: +0x38 height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-205206-core1",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b024e",
+      "va": "0xffffffc0013b024e",
+      "length": 2,
+      "old": "3004",
+      "new": "0005",
+      "code": false,
+      "note": "profile key=205206: +0x56 core-1 macroblock rows 1072 -> 1280 (half of 2560p in 16-row MB rows)"
     },
     {
       "id": "A2-prof-205206-h90",
@@ -505,6 +577,18 @@
       "note": "profile key=205208: +0x38 height 2160 -> 2560"
     },
     {
+      "id": "A2-prof-205208-core1",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b044e",
+      "va": "0xffffffc0013b044e",
+      "length": 2,
+      "old": "3004",
+      "new": "0005",
+      "code": false,
+      "note": "profile key=205208: +0x56 core-1 macroblock rows 1072 -> 1280 (half of 2560p in 16-row MB rows)"
+    },
+    {
       "id": "A2-prof-205208-h90",
       "binary": "av-cam.bin",
       "kind": "A2-profile",
@@ -551,6 +635,18 @@
       "new": "000a0000",
       "code": false,
       "note": "profile key=205209: +0x38 height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-205209-core1",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b054e",
+      "va": "0xffffffc0013b054e",
+      "length": 2,
+      "old": "3004",
+      "new": "0005",
+      "code": false,
+      "note": "profile key=205209: +0x56 core-1 macroblock rows 1072 -> 1280 (half of 2560p in 16-row MB rows)"
     },
     {
       "id": "A2-prof-205209-h90",

@@ -201,7 +201,7 @@ def build_i19(av: bytes, lm: bytes, lm_filesz: int, v19_keys: set[tuple[str, int
         else:
             sites_av.append((off, old, new))
 
-    assert len(sites_av) == 16 and len(sites_lm) == 2
+    assert len(sites_av) == 20 and len(sites_lm) == 2
 
     guards_av: list[tuple[int, bytes]] = []
     guards_lm: list[tuple[int, bytes]] = []

@@ -34,7 +34,7 @@ def main() -> None:
         ("H17", 17, "Put back 3:2 pillarboxed HDMI & anamorphic de-squeeze hdmi32_zv_202"),
         ("B19", 19, "Apply 200M/300M high-bitrate Long-GOP overlay og_highbitrate_zv_202 (108 av-cam sites)"),
         ("B20", 20, "Put back 200M/300M high-bitrate Long-GOP overlay og_highbitrate_zv_202"),
-        ("I19", 19, "Apply orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_zv_202 (16 av-cam + 2 libmpr)"),
+        ("I19", 19, "Apply orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_zv_202 (20 av-cam + 2 libmpr, incl. +0x56 dual-core split)"),
         ("I20", 20, "Put back orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_zv_202"),
     ]
 

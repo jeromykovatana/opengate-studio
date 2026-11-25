@@ -44,7 +44,7 @@ for L in 19 20; do
     "$READCHECK_C" -o "$KIT_DIR/libJit_s3_${N}.so"
 done
 
-# I19/I20: Orthogonal XAVC S-I All-Intra delta (34 sites)
+# I19/I20: Orthogonal XAVC S-I All-Intra delta (42 sites)
 for L in 19 20; do
   N="I$L"
   "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DMP_H="expected_mp_og_xavcsi_addon_s3_501.h"' -DAVCAM_PHYS=0x401000000UL \

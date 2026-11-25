@@ -297,13 +297,20 @@ public struct CameraSetupWizardView: View {
                     detail: "Stay in 24p (23.98p) while patched. Switching to 60p while open-gate is applied distorts or crashes the camera."
                 )
 
-                // FX3 Playback Freeze Warning (prominent on FX3, visible summary otherwise)
+                // FX3 Playback Freeze Warning & Field Note (prominent on FX3)
                 if profile.isFX3 {
                     warningCallout(
                         icon: "hand.raised.fill",
                         color: .red,
                         title: "FX3 Playback Freeze Warning",
                         detail: "Do NOT press Playback on open-gate clips on FX3 without P29 (fx3_playback). If Playback shows Unable to Display, do NOT retry — retrying freezes the camera until a battery pull."
+                    )
+
+                    warningCallout(
+                        icon: "info.circle.fill",
+                        color: .blue,
+                        title: "FX3 Field Note (NTSC 24p vs PAL 25p & Mode Switch)",
+                        detail: "NTSC 24p (0x8c0) is supported out of the box (PAL 25p requires drive mode 0x820, not yet in this kit). If switching Stills -> Movie after Apply flickers or restarts on FX3, testers reported booting cold directly in Movie mode avoided it."
                     )
                 }
 
