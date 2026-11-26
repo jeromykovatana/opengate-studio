@@ -34,9 +34,9 @@ BODY_STILLS_HINT = {
 }
 
 BODY_MOVIE_HINT = {
-    "zve1_202": "MOVIE mode (press Still/Movie/S&Q button; XAVC HS 4K or XAVC S 4K at 24p/23.98p)",
-    "a7s3_501": "MOVIE mode (turn physical mode dial to Movie; XAVC HS 4K or XAVC S 4K at 24p/23.98p)",
-    "fx3_702": "Movie mode (press MODE -> Movie; XAVC HS 4K or XAVC S 4K at 24p/23.98p)",
+    "zve1_202": "MOVIE mode (press Still/Movie/S&Q button; XAVC HS 4K, XAVC S 4K, or XAVC S-I 4K at 24p/23.98p, 25p PAL, or 30p/29.97p)",
+    "a7s3_501": "MOVIE mode (turn physical mode dial to Movie; XAVC HS 4K, XAVC S 4K, or XAVC S-I 4K at 24p/23.98p, 25p PAL, or 30p/29.97p)",
+    "fx3_702": "Movie mode (press MODE -> Movie; XAVC HS 4K, XAVC S 4K, or XAVC S-I 4K at 24p/23.98p, 25p PAL, or 30p/29.97p)",
 }
 
 
@@ -75,6 +75,14 @@ def latest_ct6_outcome() -> tuple[str | None, dict[str, Any] | None]:
         f = (res.get("ct6", {}).get("result") or {}).get("s3")
         return (res.get("which"), f) if f else (res.get("which"), None)
     return None, None
+
+
+def left_behind() -> bool:
+    for _, man in ct6_sessions():
+        ct6 = man.get("results", {}).get("ct6") or {}
+        on_cam = ct6.get("library_on_camera_after")
+        return on_cam is True or (on_cam is None and bool(ct6.get("library_sent")))
+    return False
 
 
 def usb_state() -> str:
@@ -308,7 +316,15 @@ def run_write_flow(
                 say("STOPPED at step 1 (L13): movie buffer already open. Pull battery >= 10s, power on in Stills, and retry.")
             else:
                 reason = "session did not finish" if (rc != 0 or which != k or not facts) else f"outcome {facts.get('outcome')}"
-                say(f"STOPPED at step {n} ({k}): {reason}. Pull battery >= 10s to return to clean stock.")
+                if n == 1:
+                    say(f"STOPPED at step 1 ({k}): {reason}. Nothing was changed in camera RAM.")
+                else:
+                    say(f"STOPPED at step {n} ({k}): {reason}. Pull battery >= 10s to return to clean stock.")
+            if left_behind():
+                say(
+                    "Note: /tmp/jiritsu/libJit.so may still remain on the service partition; "
+                    "it is NOT auto-loaded at boot, and the next run of OpenGate Studio will delete it automatically."
+                )
             raise SystemExit(1)
         completed_steps.append(k)
 
@@ -349,7 +365,7 @@ def run_write_flow(
             "pins_ok": True,
         })
         say(f"Recorded apply session {sid} in {session_dir}: {closing_verdict}")
-        say("Record ONLY in XAVC HS 4K / XAVC S 4K / XAVC S-I 4K at 24p (23.98p) while applied (60p crashes).")
+        say("Record ONLY in XAVC HS 4K / XAVC S 4K / XAVC S-I 4K at 24p (23.98p), 25p (PAL), or 30p (29.97p) while applied (50p/60p/120p crash or refuse).")
         if body_id == "fx3_702":
             if "fx3_playback" in active_packs:
                 say("FX3 playback fix (P29) is applied (untested on hardware): test 1 normal 16:9 clip first, then 1 open-gate clip; if it errors, NEVER retry (retrying freezes until battery pull).")

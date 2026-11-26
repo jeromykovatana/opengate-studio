@@ -39,7 +39,7 @@
         "L17",
         "L6"
       ],
-      "summary": "Enables 3840x2560 sensor readout and coprocessor output size class"
+      "summary": "Enables 3840x2560 sensor readout across 23.98p/24p/25p/29.97p (NTSC & PAL) and coprocessor output size class"
     },
     "mp4_3x2": {
       "label": "Native 3:2 MP4 Container & Playback",
@@ -56,7 +56,7 @@
       "fallback_putback_steps": [
         "L20"
       ],
-      "summary": "Patches encoder tables + 8 libmpr.so sites for native 3:2 MP4/NRT/playback (falls back to L19/L20)"
+      "summary": "Patches 23.98p/25p/29.97p encoder tables + 8 libmpr.so sites for native 3:2 MP4/NRT/playback (falls back to L19/L20)"
     },
     "screen_3x2": {
       "label": "3:2 Rear LCD Ratio & De-Squeeze Display",
@@ -100,10 +100,10 @@
       "putback_steps": [
         "I20"
       ],
-      "summary": "Orthogonal delta unlocking XAVC S-I 4K All-Intra 3840x2560 recording"
+      "summary": "Orthogonal delta unlocking XAVC S-I All-Intra 3840x2560 at 23.98p/25p/29.97p"
     },
     "fx3_playback": {
-      "title": "FX3 In-Camera 3:2 Playback Fix (8K Decode Channel — Untested on Hardware)",
+      "title": "FX3 In-Camera 3:2 Playback Fix (8K Decode Channel \u2014 Untested on Hardware)",
       "required": false,
       "default_enabled": false,
       "apply_steps": [
@@ -118,17 +118,17 @@
   "steps": {
     "L5": {
       "file": "libJit_fx3_L5.so",
-      "sha256": "9fd94c179f8c7b721600313a1e7a7f2a173a1a3dae24319fe4411cba4dac5946",
-      "size": 32704,
+      "sha256": "aaba9ec264b73d9f2cc28fa64b9ac5e3bc1001af41c801606e16b4d88ab903dd",
+      "size": 37472,
       "level": 5,
-      "summary": "Apply sensor-side open-gate ogsq_fx3_v1 (21 sensor/record sites + stored record)"
+      "summary": "Apply dual-mode sensor open-gate ogsq_fx3_v2 (0x8c0 + 0x820, NTSC/PAL MULTI_REC, 40 cells + 2 stored records)"
     },
     "L6": {
       "file": "libJit_fx3_L6.so",
-      "sha256": "6c8544fb91879ba4c1b8ce9351826253b61557d797466f836e4e8e65b0acf3b6",
-      "size": 32720,
+      "sha256": "16d14ae4b326614f6bdb11aec1c03b7d7db70e5bfc64be6ba1d76052e5ab3f4b",
+      "size": 37488,
       "level": 6,
-      "summary": "Put back sensor-side open-gate ogsq_fx3_v1"
+      "summary": "Put back dual-mode sensor open-gate ogsq_fx3_v2"
     },
     "L16": {
       "file": "libJit_fx3_L16.so",
@@ -146,31 +146,31 @@
     },
     "L19": {
       "file": "libJit_fx3_L19.so",
-      "sha256": "47400649ac29ac03fd77b4805e0a41c60b4a3cfa1ae5e3f384f0d33a0b503050",
-      "size": 25536,
+      "sha256": "745d95184a2ad10a91ad91775620ac8ae3c741c8f30ba5c350725dd1870f9561",
+      "size": 28024,
       "level": 19,
-      "summary": "Apply baseline encoder tables ogfile2560_hs_s_fx3_v1 (101 av-cam + 4 libmpr)"
+      "summary": "Apply 23.98p/25p/29.97p data-only encoder tables ogfile2560_hs_s_fx3_nometa (149 av-cam + 4 libmpr)"
     },
     "L20": {
       "file": "libJit_fx3_L20.so",
-      "sha256": "6ca3ee7df282bda70bc50bb4f9284ccc622c2c20e6ab64b964a949148a33d836",
-      "size": 25512,
+      "sha256": "6871dfa07ec82f90ab61fbcb0de76e6d7df45fcff04ac89b32fb3b5e9c6cb53b",
+      "size": 28000,
       "level": 20,
-      "summary": "Put back baseline encoder tables ogfile2560_hs_s_fx3_v1"
+      "summary": "Put back 23.98p/25p/29.97p data-only encoder tables ogfile2560_hs_s_fx3_nometa"
     },
     "V19": {
       "file": "libJit_fx3_V19.so",
-      "sha256": "f134ab54bdd485eff7643df63b9f59d4d1d7ce9040273183788c2fdd687063b5",
-      "size": 26520,
+      "sha256": "4f3be4553237ded7091d88410ddc7b6b4b086308e956db7b64681ca31e8ffdbd",
+      "size": 29000,
       "level": 19,
-      "summary": "Apply encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_fx3_v3 (101 av-cam + 12 libmpr)"
+      "summary": "Apply 23.98p/25p/29.97p encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_fx3_v3 (149 av-cam + 12 libmpr)"
     },
     "V20": {
       "file": "libJit_fx3_V20.so",
-      "sha256": "cf215b6115089b9d860b5fc6b09f9e4d69919f6c90f60ae7f24fe9b33afd853e",
-      "size": 26520,
+      "sha256": "2670d65b38a3a17c0a5600e605afdc2f3697324aca2d81d395a02e50f89bd32e",
+      "size": 29000,
       "level": 20,
-      "summary": "Put back encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_fx3_v3"
+      "summary": "Put back 23.98p/25p/29.97p encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_fx3_v3"
     },
     "S16": {
       "file": "libJit_fx3_S16.so",
@@ -216,17 +216,17 @@
     },
     "I19": {
       "file": "libJit_fx3_I19.so",
-      "sha256": "ccfd54779e384a5b903ca880d4f9a559d2a8b0077b03a72bdb8ac59cf8e19321",
-      "size": 23264,
+      "sha256": "51cc4c86d2d2f40436dd02dc2b101bf0dcdb6ad88d726b64156c696695987941",
+      "size": 24736,
       "level": 19,
-      "summary": "Apply orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_fx3_702 (40 av-cam + 2 libmpr, incl. +0x56 dual-core split)"
+      "summary": "Apply orthogonal XAVC S-I 3840x2560 (23.98p/25p/29.97p) delta og_xavcsi_addon_fx3_702 (60 av-cam + 2 libmpr, incl. +0x56 dual-core split)"
     },
     "I20": {
       "file": "libJit_fx3_I20.so",
-      "sha256": "32c4d2d168224ef16ba75025d92a79c135ac34437f3767e2b32fa67cd556161c",
-      "size": 23288,
+      "sha256": "9d0ea28bbd768315553d47486ed810c62518d7e00faf34033065a004a1a95f1c",
+      "size": 24744,
       "level": 20,
-      "summary": "Put back orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_fx3_702"
+      "summary": "Put back orthogonal XAVC S-I 3840x2560 (23.98p/25p/29.97p) delta og_xavcsi_addon_fx3_702"
     },
     "P29": {
       "file": "libJit_fx3_P29.so",

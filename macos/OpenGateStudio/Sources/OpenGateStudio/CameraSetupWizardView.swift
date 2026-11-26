@@ -206,7 +206,7 @@ public struct CameraSetupWizardView: View {
         let moviePresetSummary: String = {
             var parts = [
                 "XAVC HS 4K or XAVC S 4K",
-                "24p (23.98p)",
+                "24p (23.98p), 25p (PAL), or 30p (29.97p)",
                 "APS-C / Super 35 = Off",
                 "S&Q = Off",
                 "Proxy Recording = Off"
@@ -289,12 +289,12 @@ public struct CameraSetupWizardView: View {
                 .background(Color(nsColor: .textBackgroundColor).opacity(0.6))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                // 24p ONLY rule
+                // 24p / 25p / 30p rule
                 warningCallout(
                     icon: "exclamationmark.triangle.fill",
                     color: .orange,
-                    title: "24p ONLY While Open-Gate Is Applied",
-                    detail: "Stay in 24p (23.98p) while patched. Switching to 60p while open-gate is applied distorts or crashes the camera."
+                    title: "24p / 25p / 30p Only While Open-Gate Is Applied",
+                    detail: "23.98p (24p), 25p (PAL), and 29.97p (30p) are supported. Switching to 50p, 60p, or 120p while open-gate is applied distorts or crashes the camera."
                 )
 
                 // FX3 Playback Freeze Warning & Field Note (prominent on FX3)
@@ -309,8 +309,8 @@ public struct CameraSetupWizardView: View {
                     warningCallout(
                         icon: "info.circle.fill",
                         color: .blue,
-                        title: "FX3 Field Note (NTSC 24p vs PAL 25p & Mode Switch)",
-                        detail: "NTSC 24p (0x8c0) is supported out of the box (PAL 25p requires drive mode 0x820, not yet in this kit). If switching Stills -> Movie after Apply flickers or restarts on FX3, testers reported booting cold directly in Movie mode avoided it."
+                        title: "FX3 Field Note (NTSC 24p/30p, PAL 25p & Mode Switch)",
+                        detail: "NTSC (23.98p / 29.97p on 0x8c0) and PAL (25p on 0x820) are both supported automatically via dual NTSC/PAL MULTI_REC in L5/L6. If switching Stills -> Movie after Apply flickers or restarts on FX3, booting cold in Movie mode may still help on edge setups (apply still starts in Stills)."
                     )
                 }
 

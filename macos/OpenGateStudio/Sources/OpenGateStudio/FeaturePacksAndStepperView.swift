@@ -16,7 +16,7 @@ public struct FeaturePacksAndStepperView: View {
         PackMetadata(
             id: "mp4_3x2",
             title: "MP4 3:2 Native Container + Playback",
-            subtitle: "Writes native 3840x2560 MP4 dimensions & playback scaling; suppresses 16:9 NRT XML aspect.",
+            subtitle: "Writes native 3840x2560 MP4 dimensions & playback scaling (23.98p / 25p / 29.97p); suppresses 16:9 NRT XML aspect.",
             icon: "film.stack",
             defaultStepsHint: "V19 / V20 (fallback L19 / L20)"
         ),
@@ -44,7 +44,7 @@ public struct FeaturePacksAndStepperView: View {
         PackMetadata(
             id: "xavc_si",
             title: "XAVC S-I 3840x2560 All-Intra",
-            subtitle: "Enables 3:2 open-gate recording in XAVC S-I intra-frame mode.",
+            subtitle: "Enables 3:2 open-gate recording in XAVC S-I intra-frame mode (23.98p / 25p / 29.97p).",
             icon: "waveform.path.ecg.rectangle",
             defaultStepsHint: "I19 / I20"
         ),

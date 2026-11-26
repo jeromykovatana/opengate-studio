@@ -36,7 +36,7 @@
 > **READ BEFORE USE — ALPHA PRE-RELEASE / VOLATILE RAM ONLY / AS-IS (GPL-3.0)**
 > - **100% VOLATILE RAM ONLY (`persistent_writes: false`):** Every patch runs in temporary camera RAM (`/tmp/jiritsu/`). **Zero bytes** are written to eMMC flash (`nflasha*`), `boot0`/`boot1`, or `BK4` settings. **Pulling the battery for ≥ 10 seconds restores 100% stock firmware state.**
 > - **READ-ONLY PREFLIGHT FIRST:** Never apply patches until the read-only preflight returns **`VERDICT READY`** on your exact pinned firmware version (`ZV-E1 2.02`, `a7S III 5.01`, or `FX3 7.02`).
-> - **`24p` (`23.976p`) ONLY WHILE APPLIED:** Shoot only at `24p` (`23.976p`) in `XAVC HS 4K`, `XAVC S 4K`, or `XAVC S-I 4K`. Switching to `60p` under `3840×2560` open gate exceeds the `IMX510` readout ceiling and crashes the camera.
+> - **`24p` (`23.98p`), `25p` (PAL), or `30p` (`29.97p`) ONLY WHILE APPLIED:** Shoot only at `24p` (`23.976p`), `25p` (`PAL`, drive mode `0x820`), or `30p` (`29.97p`) in `XAVC HS 4K`, `XAVC S 4K`, or `XAVC S-I 4K`. Switching to `50p`, `60p`, or `120p` under `3840×2560` open gate exceeds the `IMX510` readout ceiling and crashes the camera.
 > - **PROVIDED AS-IS WITHOUT WARRANTY OF ANY KIND (GPL-3.0-or-later).** You can explore the entire macOS app and CLI offline in **Mock Camera Mode** before ever plugging in a camera.
 
 ---
@@ -53,7 +53,7 @@ Sony's 12.1MP full-frame sensor (`IMX510` + `CXD90057` BIONZ XR) physically read
 
 | Capability | Stock Sony Firmware | Basic Open-Gate Script | **OpenGate Studio** |
 |---|---|---|---|
-| **3:2 Full Sensor (`3840×2560` @ `23.98p`)** | ❌ Cropped to `3840×2160` (`16:9`) | ✅ Sensor + base Long-GOP | ✅ Modular `core_open_gate` across 3 bodies |
+| **3:2 Full Sensor (`3840×2560` @ `23.98p / 25p / 29.97p`)** | ❌ Cropped to `3840×2160` (`16:9`) | ✅ Sensor + base Long-GOP | ✅ Modular dual NTSC/PAL `core_open_gate` across 3 bodies |
 | **Native 3:2 MP4 Headers (`tkhd`/`stsd`/`VPRF`)** | ❌ `16:9` only | ⚠️ Often needs `ffmpeg` re-mux | ✅ Native `3:2` directly out of camera (`mp4_3x2`) |
 | **Sony `rtmd` Gyro Telemetry (Gyroflow / Catalyst)** | ✅ `16:9` clips only | ❌ Stripped if `ffmpeg` re-muxed | ✅ **Preserved in original camera MP4** |
 | **Clean 3:2 & Anamorphic HDMI Output** | ❌ `16:9` cropped HDMI | ❌ Not included | ✅ `hdmi32` (`H16`/`H17`) external monitor pack |
@@ -70,9 +70,9 @@ All 62 `.so` helper binaries across `kits/` are compiled reproducibly with `zigl
 
 | Camera Body | Model ID | Pinned Firmware | `body_id` | Build ID (`version.txt`) | Verification & Field Status |
 |---|---|---|---|---|---|
-| **Sony ZV-E1** | `ZV-E1` | **`2.02`** | `zve1_202` | `32000_08.2025101101` | 22 SHA-256 helpers · Unicorn verified · Alpha pre-release |
-| **Sony a7S III** | `ILCE-7SM3` | **`5.01`** | `a7s3_501` | `39183_16.2026041504` | 20 SHA-256 helpers · Unicorn verified · Alpha pre-release |
-| **Sony FX3** | `ILME-FX3` *(not `FX3A`)* | **`7.02`** | `fx3_702` | `39180_21.2025122503` | 20 SHA-256 helpers · Unicorn verified · Alpha pre-release |
+| **Sony ZV-E1** | `ZV-E1` | **`2.02`** | `zve1_202` | `32000_08.2025101101` | 22 SHA-256 helpers · `23.98p` + SteadyShot hardware-confirmed; `25p`/`29.97p` + `I19` Unicorn verified |
+| **Sony a7S III** | `ILCE-7SM3` | **`5.01`** | `a7s3_501` | `39183_16.2026041504` | 20 SHA-256 helpers · `23.98p` hardware-confirmed; `25p`/`29.97p` + `I19` Unicorn verified |
+| **Sony FX3** | `ILME-FX3` *(not `FX3A`)* | **`7.02`** | `fx3_702` | `39180_21.2025122503` | 20 SHA-256 helpers · `23.98p` + PAL `25p` + 4:3 panel hardware-confirmed; `29.97p` + `I19` Unicorn verified |
 
 > [!NOTE]
 > - **Exact firmware required:** Only `ZV-E1 2.02`, `a7S III 5.01`, and `FX3 7.02` (`ILME-FX3`, **not** `ILME-FX3A`) are supported. Preflight rejects any mismatched `DeviceInfo.xml` or memory identity page before touching RAM.
@@ -87,12 +87,12 @@ Pick only the capabilities you want to stack in camera RAM. Each pack is checked
 
 | Pack | What It Unlocks | Steps | Availability |
 |---|---|---|---|
-| `core_open_gate` *(required)* | Full-height `3840×2560` 3:2 `23.98p` sensor readout & output size (`ogsq` + `outsz2560`, plus `dmmwb` raw buffer resize on ZV-E1) | `L13` *(ZV)* · `L5` · `L16` | ZV-E1, a7S III, FX3 |
-| `mp4_3x2` | Native `3840×2560` MP4 `tkhd`/`stsd`/`VPRF` height, codec level preservation, NRT XML `16:9` suppression, and in-camera playback (`rtmd` gyro preserved; falls back to `L19`/`L20` if deselected) | `V19` / `V20` | ZV-E1, a7S III, FX3 |
+| `core_open_gate` *(required)* | Full-height `3840×2560` 3:2 dual NTSC (`0x8c0`) + PAL (`0x820`) `MULTI_REC` readout & output size (`23.98p / 25p / 29.97p`, plus `dmmwb` raw buffer resize on ZV-E1) | `L13` *(ZV)* · `L5` · `L16` | ZV-E1, a7S III, FX3 |
+| `mp4_3x2` | Native `3840×2560` MP4 `tkhd`/`stsd`/`VPRF` height, codec level preservation, NRT XML `16:9` suppression, and in-camera playback across `23.98p / 25p / 29.97p` (`149 av-cam + 12 libmpr`; falls back to `L19`/`L20` if deselected) | `V19` / `V20` | ZV-E1, a7S III, FX3 |
 | `screen_3x2` | Full-frame 3:2 LCD/EVF framing & live preview aspect cycle (`3:2 → 2:1 → 2.25:1 → 2.4:1` on C2/C3 for ZV-E1/a7S III; native De-Squeeze calibrated on FX3) | `S16` + `C19` *(ZV/S3)* | ZV-E1, a7S III, FX3 |
 | `hdmi32` | Clean 3:2 pillarboxed & uncropped anamorphic HDMI output for external monitors and recorders | `H16` / `H17` | ZV-E1, a7S III, FX3 |
 | `high_bitrate` | `200M` / `300M` Long-GOP bitrate overlay for `XAVC HS 4K` & `XAVC S 4K` | `B19` / `B20` | ZV-E1, a7S III, FX3 |
-| `xavc_si` | `XAVC S-I 4K` All-Intra `3840×2560` Open Gate + dual-core row split + VPRF/playback | `I19` / `I20` | ZV-E1, a7S III, FX3 |
+| `xavc_si` | `XAVC S-I 4K` All-Intra `3840×2560` Open Gate (`23.98p / 25p / 29.97p`) + dual-core row split + VPRF/playback | `I19` / `I20` | ZV-E1, a7S III, FX3 |
 | `fx3_playback` *(experimental)* | Optional FX3 in-camera 3:2 playback path fix (`avdec8k_fx3_v1`, disabled by default — **untested on hardware**) | `P29` / `P30` | FX3 `7.02` only |
 
 ---
@@ -168,11 +168,11 @@ Every run follows a strict read-only-first pipeline so no mismatched firmware, w
 
 ```mermaid
 flowchart LR
-    G1["1. Cold-Boot Stills\n(Battery >= 10s, 24p set)"] --> G2["2. Read-Only Preflight\n(CT6 check + identity SHA-256)"]
-    G2 -->|"VERDICT READY"| G3["3. 16B Stock Guards\n(& zero pack collisions)"]
+    G1["1. Cold-Boot Stills\n(Battery >= 10s, 24p/25p/30p set)"] --> G2["2. Read-Only Preflight\n(CT6 check + identity SHA-256)"]
+    G2 -->|"VERDICT READY"| G3["3. 16B Stock Guards\n(& leftover libJit auto-cleanup)"]
     G2 -->|"NOT READY / Mixed"| BP["Pull Battery >= 10s\nto Restore Stock"]
     G3 --> G4["4. Volatile RAM Apply\n(/tmp/jiritsu/ · 0 flash writes)"]
-    G4 --> SHOOT["5. Shoot 3:2 @ 23.98p\n(Native MP4 + rtmd Gyro)"]
+    G4 --> SHOOT["5. Shoot 3:2 @ 23.98p/25p/29.97p\n(Native MP4 + rtmd Gyro)"]
     SHOOT --> END["Software Putback OR\nBattery Pull >= 10s (100% Stock)"]
 ```
 
@@ -202,9 +202,9 @@ Yes—that is what the `mp4_3x2` pack is built for. Stock open-gate tools often 
 </details>
 
 <details>
-<summary><strong>Why only 24p (23.976p)? Will 60p or 120p work?</strong></summary>
+<summary><strong>Why only 24p / 25p / 30p? Will 50p, 60p, or 120p work?</strong></summary>
 
-No—do not switch to `60p` while Open Gate is applied. Our timing audit (`IMX510` @ 36 MHz) shows full-height readout hits the pixel clock ceiling below `48p`/`60p`, and switching to `60p` distorts live view and crashes the camera. Stay in `24p` (`23.976p`) `XAVC HS 4K`, `XAVC S 4K`, or `XAVC S-I 4K`.
+No—do not switch to `50p`, `60p`, or `120p` while Open Gate is applied. Our timing audit (`IMX510` @ 36 MHz) shows `23.98p` (`24p`), `25p` (PAL via `0x820`), and `29.97p` (`30p`, Long-GOP and XAVC S-I) stay within safe sensor readout margins, whereas `50p`–`120p` hits the pixel clock ceiling and distorts or crashes the camera. Stay in `24p` (`23.98p`), `25p` (`PAL`), or `30p` (`29.97p`) across `XAVC HS 4K`, `XAVC S 4K`, or `XAVC S-I 4K`.
 
 </details>
 

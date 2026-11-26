@@ -521,6 +521,86 @@ class UsbTransportAndLiveOrchestratorTests(unittest.TestCase):
                 self.assertIn("Dry run only: nothing was sent to any device.", proc_sh.stdout)
 
 
+class SyncAndRecoveryTests(unittest.TestCase):
+    def test_known_libs_includes_manifests_earlier_and_extra(self) -> None:
+        import studio_step_run as ssr
+
+        known = ssr.known_libs()
+        self.assertGreaterEqual(len(ssr.EARLIER_LIBS), 36)
+        for sha in ssr.EARLIER_LIBS:
+            self.assertIn(sha, known)
+        for body_id in ("zve1_202", "a7s3_501", "fx3_702"):
+            _, man = ssr.load_body_manifest(body_id)
+            for entry in man["steps"].values():
+                self.assertIn(entry["sha256"], known)
+
+        test_sha = "a" * 64
+        ssr.EXTRA_LIBS[test_sha] = "test extra"
+        try:
+            self.assertIn(test_sha, ssr.known_libs())
+        finally:
+            ssr.EXTRA_LIBS.pop(test_sha, None)
+
+    def test_remove_library_cli_validation(self) -> None:
+        bad = subprocess.run(
+            [TRANSPORT_PYTHON, "-B", str(STEP_RUN), "--body", "fx3_702", "check", "--selftest", "--remove-library", "not-hex"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(bad.returncode, 0)
+        self.assertIn("Invalid --remove-library", bad.stderr + bad.stdout)
+
+        good_sha = "0123456789abcdef" * 4
+        good = subprocess.run(
+            [TRANSPORT_PYTHON, "-B", str(STEP_RUN), "--body", "fx3_702", "check", "--selftest", "--remove-library", good_sha],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(good.returncode, 0, good.stderr + good.stdout)
+        self.assertIn("leftover known libJit.so: auto-deleted first, then normal run completes", good.stdout)
+
+    def test_live_apply_left_behind_and_frame_rate_hints(self) -> None:
+        import studio_live_apply as sla
+
+        for body_id in ("zve1_202", "a7s3_501", "fx3_702"):
+            hint = sla.BODY_MOVIE_HINT[body_id]
+            self.assertIn("24p/23.98p", hint)
+            self.assertIn("25p PAL", hint)
+            self.assertIn("30p/29.97p", hint)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            old_env = os.environ.get("OPENGATE_CAMERA_PRIVATE")
+            os.environ["OPENGATE_CAMERA_PRIVATE"] = tmp
+            try:
+                self.assertFalse(sla.left_behind())
+                d = Path(tmp) / "CT6_20261126_000001"
+                d.mkdir(parents=True)
+
+                (d / "manifest.json").write_text(json.dumps({"results": {"ct6": {"library_on_camera_after": True}}}), encoding="utf8")
+                self.assertTrue(sla.left_behind())
+
+                (d / "manifest.json").write_text(json.dumps({"results": {"ct6": {"library_on_camera_after": None, "library_sent": True}}}), encoding="utf8")
+                self.assertTrue(sla.left_behind())
+
+                (d / "manifest.json").write_text(json.dumps({"results": {"ct6": {"library_on_camera_after": False, "library_sent": True}}}), encoding="utf8")
+                self.assertFalse(sla.left_behind())
+            finally:
+                if old_env is None:
+                    os.environ.pop("OPENGATE_CAMERA_PRIVATE", None)
+                else:
+                    os.environ["OPENGATE_CAMERA_PRIVATE"] = old_env
+
+    def test_manifests_advertise_multirec_and_25p_30p_across_all_bodies(self) -> None:
+        import studio_step_run as ssr
+
+        for body_id in ("zve1_202", "a7s3_501", "fx3_702"):
+            _, man = ssr.load_body_manifest(body_id)
+            steps = man["steps"]
+            self.assertIn("MULTI_REC", steps["L5"]["summary"])
+            for k in ("L19", "L20", "V19", "V20", "I19", "I20"):
+                self.assertIn("23.98p/25p/29.97p", steps[k]["summary"], f"{body_id} {k}")
+
+
 class CleanRoomTests(unittest.TestCase):
     def test_clean_room_passes(self) -> None:
         res = vcr.verify_clean_room(REPO_ROOT)

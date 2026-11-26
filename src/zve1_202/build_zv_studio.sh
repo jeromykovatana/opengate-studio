@@ -30,7 +30,20 @@ CC=("$ZIG_PYTHON" -m ziglang cc -target aarch64-linux-gnu -std=gnu11 -O1 -Wall -
 
 mkdir -p "$KIT"
 
-# V19/V20: ogfile2560_hs_s_zv_v3
+# L5/L6: Dual-mode (0x8c0 + 0x820) NTSC/PAL sensor readout (MULTI_REC, 0x170-byte records)
+for L in 5 6; do
+  "${CC[@]}" -DLEVEL=$L '-DSITES_H="expected_sites_ogsq_zv_v3.h"' '-DDESIGN_LABEL="ogsq_zv_v3"' \
+    -DIMAGER=0x17f1f64UL -DCTRL_DRVPARAM=0x684U -DREC=0x170U \
+    "$READCHECK_C" "$SEN" -o "$KIT/libJit_zv_L$L.so"
+done
+
+# L19/L20: Data-only 23.98p/25p/29.97p Long-GOP fallback (4 libmpr + 149 av-cam = 153 sites)
+for L in 19 20; do
+  "${CC[@]}" -DLEVEL=$L '-DMP_H="expected_mp_ogfile2560_hs_s_zv_nometa.h"' -DAVCAM_PHYS=0x401000000UL \
+    "$READCHECK_C" -o "$KIT/libJit_zv_L$L.so"
+done
+
+# V19/V20: ogfile2560_hs_s_zv_v3 (12 libmpr + 149 av-cam = 161 sites)
 for L in 19 20; do
   "${CC[@]}" -DLEVEL=$L '-DMP_H="expected_mp_ogfile2560_hs_s_zv_v3.h"' -DAVCAM_PHYS=0x401000000UL \
     "$READCHECK_C" -o "$KIT/libJit_zv_V$L.so"

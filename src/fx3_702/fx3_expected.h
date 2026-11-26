@@ -110,32 +110,32 @@ static const unsigned char B104[] = {0,0,60,0};
 static const unsigned char B105[] = {0,0,26,0};
 static const unsigned char B106[] = {128,2,104,1};
 static const unsigned char B107[] = {128,2,172,1};
-static const unsigned char B108[] = {0,14,129,82};
-static const unsigned char B109[] = {0,64,129,82};
-static const unsigned char B110[] = {32,4,0,84};
-static const unsigned char B111[] = {34,4,0,84};
-static const unsigned char B112[] = {128,3,0,84};
-static const unsigned char B113[] = {130,3,0,84};
-static const unsigned char B114[] = {6,14,129,82};
-static const unsigned char B115[] = {6,64,129,82};
-static const unsigned char B116[] = {6,14,129,82};
-static const unsigned char B117[] = {6,64,129,82};
-static const unsigned char B118[] = {1,192,131,82};
-static const unsigned char B119[] = {1,224,129,82};
-static const unsigned char B120[] = {1,28,162,114};
-static const unsigned char B121[] = {1,64,161,114};
-static const unsigned char B122[] = {32,0,128,82};
-static const unsigned char B123[] = {0,0,128,82};
+static const unsigned char B108[] = {0,0,0,0,115,4,0,0,118,4,0,0,121,4,0,0};
+static const unsigned char B109[] = {134,4,0,0,116,4,0,0,119,4,0,0,122,4,0,0};
+static const unsigned char B110[] = {112,8};
+static const unsigned char B111[] = {0,10};
+static const unsigned char B112[] = {112,8};
+static const unsigned char B113[] = {0,10};
+static const unsigned char B114[] = {112,8,0,0};
+static const unsigned char B115[] = {0,10,0,0};
+static const unsigned char B116[] = {112,8};
+static const unsigned char B117[] = {0,10};
+static const unsigned char B118[] = {112,8};
+static const unsigned char B119[] = {0,10};
+static const unsigned char B120[] = {112,8};
+static const unsigned char B121[] = {0,10};
+static const unsigned char B122[] = {112,8,0,0};
+static const unsigned char B123[] = {0,10,0,0};
 static const unsigned char B124[] = {112,8};
 static const unsigned char B125[] = {0,10};
 static const unsigned char B126[] = {112,8};
 static const unsigned char B127[] = {0,10};
 static const unsigned char B128[] = {112,8};
 static const unsigned char B129[] = {0,10};
-static const unsigned char B130[] = {112,8};
-static const unsigned char B131[] = {0,10};
-static const unsigned char B132[] = {0,0,0,0,115,4,0,0,118,4,0,0,121,4,0,0};
-static const unsigned char B133[] = {134,4,0,0,116,4,0,0,119,4,0,0,122,4,0,0};
+static const unsigned char B130[] = {112,8,0,0};
+static const unsigned char B131[] = {0,10,0,0};
+static const unsigned char B132[] = {112,8};
+static const unsigned char B133[] = {0,10};
 static const unsigned char B134[] = {112,8};
 static const unsigned char B135[] = {0,10};
 static const unsigned char B136[] = {112,8};
@@ -208,14 +208,14 @@ static const unsigned char B202[] = {112,8,0,0};
 static const unsigned char B203[] = {0,10,0,0};
 static const unsigned char B204[] = {112,8};
 static const unsigned char B205[] = {0,10};
-static const unsigned char B206[] = {112,8};
-static const unsigned char B207[] = {0,10};
+static const unsigned char B206[] = {0,32,0,0,224,16,0,0,3,0,0,0};
+static const unsigned char B207[] = {0,15,0,0,0,10,0,0,23,0,0,0};
 static const unsigned char B208[] = {112,8};
 static const unsigned char B209[] = {0,10};
-static const unsigned char B210[] = {112,8,0,0};
-static const unsigned char B211[] = {0,10,0,0};
-static const unsigned char B212[] = {112,8};
-static const unsigned char B213[] = {0,10};
+static const unsigned char B210[] = {112,8};
+static const unsigned char B211[] = {0,10};
+static const unsigned char B212[] = {112,8,0,0};
+static const unsigned char B213[] = {0,10,0,0};
 static const unsigned char B214[] = {112,8};
 static const unsigned char B215[] = {0,10};
 static const unsigned char B216[] = {112,8};
@@ -226,14 +226,14 @@ static const unsigned char B220[] = {112,8};
 static const unsigned char B221[] = {0,10};
 static const unsigned char B222[] = {112,8};
 static const unsigned char B223[] = {0,10};
-static const unsigned char B224[] = {112,8};
-static const unsigned char B225[] = {0,10};
-static const unsigned char B226[] = {112,8,0,0};
-static const unsigned char B227[] = {0,10,0,0};
+static const unsigned char B224[] = {112,8,0,0};
+static const unsigned char B225[] = {0,10,0,0};
+static const unsigned char B226[] = {112,8};
+static const unsigned char B227[] = {0,10};
 static const unsigned char B228[] = {112,8};
 static const unsigned char B229[] = {0,10};
-static const unsigned char B230[] = {0,32,0,0,224,16,0,0,3,0,0,0};
-static const unsigned char B231[] = {0,15,0,0,0,10,0,0,23,0,0,0};
+static const unsigned char B230[] = {112,8,0,0};
+static const unsigned char B231[] = {0,10,0,0};
 static const unsigned char B232[] = {112,8};
 static const unsigned char B233[] = {0,10};
 static const unsigned char B234[] = {112,8};
@@ -312,30 +312,30 @@ static const unsigned char B306[] = {112,8};
 static const unsigned char B307[] = {0,10};
 static const unsigned char B308[] = {112,8,0,0};
 static const unsigned char B309[] = {0,10,0,0};
-static const unsigned char B310[] = {112,8};
-static const unsigned char B311[] = {0,10};
-static const unsigned char B312[] = {112,8};
-static const unsigned char B313[] = {0,10};
-static const unsigned char B314[] = {112,8,0,0};
-static const unsigned char B315[] = {0,10,0,0};
-static const unsigned char B316[] = {112,8};
-static const unsigned char B317[] = {0,10};
-static const unsigned char B318[] = {112,8};
-static const unsigned char B319[] = {0,10};
-static const unsigned char B320[] = {112,8,0,0};
-static const unsigned char B321[] = {0,10,0,0};
-static const unsigned char B322[] = {112,8};
-static const unsigned char B323[] = {0,10};
-static const unsigned char B324[] = {112,8};
-static const unsigned char B325[] = {0,10};
-static const unsigned char B326[] = {112,8,0,0};
-static const unsigned char B327[] = {0,10,0,0};
+static const unsigned char B310[] = {0,14,129,82};
+static const unsigned char B311[] = {0,64,129,82};
+static const unsigned char B312[] = {32,4,0,84};
+static const unsigned char B313[] = {34,4,0,84};
+static const unsigned char B314[] = {128,3,0,84};
+static const unsigned char B315[] = {130,3,0,84};
+static const unsigned char B316[] = {6,14,129,82};
+static const unsigned char B317[] = {6,64,129,82};
+static const unsigned char B318[] = {6,14,129,82};
+static const unsigned char B319[] = {6,64,129,82};
+static const unsigned char B320[] = {1,192,131,82};
+static const unsigned char B321[] = {1,224,129,82};
+static const unsigned char B322[] = {1,28,162,114};
+static const unsigned char B323[] = {1,64,161,114};
+static const unsigned char B324[] = {32,0,128,82};
+static const unsigned char B325[] = {0,0,128,82};
+static const unsigned char B326[] = {112,8};
+static const unsigned char B327[] = {0,10};
 static const unsigned char B328[] = {112,8};
 static const unsigned char B329[] = {0,10};
 static const unsigned char B330[] = {112,8};
 static const unsigned char B331[] = {0,10};
-static const unsigned char B332[] = {112,8,0,0};
-static const unsigned char B333[] = {0,10,0,0};
+static const unsigned char B332[] = {112,8};
+static const unsigned char B333[] = {0,10};
 #define FX3_LABEL "fx3read_v2"
 #define CP_LO 0xc0000U
 #define CP_HI 0x2100000U
@@ -417,121 +417,121 @@ static const struct cp_site cp_sites[] = {
     {"screen29", 0xd2e66c, 4, B106, B107, 1},
 };
 static const struct mp_site lm_sites[] = {
-    {0x1164b0UL, 4, B108, B109},
-    {0x21fb0cUL, 4, B110, B111},
-    {0x21fc68UL, 4, B112, B113},
-    {0x21ff3cUL, 4, B114, B115},
-    {0x220074UL, 4, B116, B117},
-    {0x222330UL, 4, B118, B119},
-    {0x222334UL, 4, B120, B121},
-    {0x250288UL, 4, B122, B123},
-    {0x2cb10eUL, 2, B124, B125},
-    {0x2cb13eUL, 2, B126, B127},
-    {0x2cb186UL, 2, B128, B129},
-    {0x2cb1b6UL, 2, B130, B131},
+    {0x1164b0UL, 4, B310, B311},
+    {0x21fb0cUL, 4, B312, B313},
+    {0x21fc68UL, 4, B314, B315},
+    {0x21ff3cUL, 4, B316, B317},
+    {0x220074UL, 4, B318, B319},
+    {0x222330UL, 4, B320, B321},
+    {0x222334UL, 4, B322, B323},
+    {0x250288UL, 4, B324, B325},
+    {0x2cb10eUL, 2, B326, B327},
+    {0x2cb13eUL, 2, B328, B329},
+    {0x2cb186UL, 2, B330, B331},
+    {0x2cb1b6UL, 2, B332, B333},
 };
 static const struct mp_site av_sites[] = {
-    {0x395098UL, 16, B132, B133},
-    {0x3a35e8UL, 2, B134, B135},
-    {0x3c6b9eUL, 2, B136, B137},
-    {0x3c6bd0UL, 4, B138, B139},
-    {0x3c6c24UL, 2, B140, B141},
-    {0x3a3678UL, 2, B142, B143},
-    {0x3c6c9eUL, 2, B144, B145},
-    {0x3c6cd0UL, 4, B146, B147},
-    {0x3c6d24UL, 2, B148, B149},
-    {0x3a3708UL, 2, B150, B151},
-    {0x3c6d9eUL, 2, B152, B153},
-    {0x3c6dd0UL, 4, B154, B155},
-    {0x3c6e24UL, 2, B156, B157},
-    {0x3a4248UL, 2, B158, B159},
-    {0x3c819eUL, 2, B160, B161},
-    {0x3c81d0UL, 4, B162, B163},
-    {0x3c8224UL, 2, B164, B165},
-    {0x3a5f88UL, 2, B166, B167},
-    {0x3cb59eUL, 2, B168, B169},
-    {0x3cb5d0UL, 4, B170, B171},
-    {0x3cb624UL, 2, B172, B173},
-    {0x3a6018UL, 2, B174, B175},
-    {0x3cb69eUL, 2, B176, B177},
-    {0x3cb6d0UL, 4, B178, B179},
-    {0x3cb724UL, 2, B180, B181},
-    {0x3a70f8UL, 2, B182, B183},
-    {0x3cd49eUL, 2, B184, B185},
-    {0x3cd4d0UL, 4, B186, B187},
-    {0x3cd524UL, 2, B188, B189},
-    {0x3a7188UL, 2, B190, B191},
-    {0x3cd59eUL, 2, B192, B193},
-    {0x3cd5d0UL, 4, B194, B195},
-    {0x3cd624UL, 2, B196, B197},
-    {0x3a7608UL, 2, B198, B199},
-    {0x3cdd9eUL, 2, B200, B201},
-    {0x3cddd0UL, 4, B202, B203},
-    {0x3cde24UL, 2, B204, B205},
-    {0x3a7698UL, 2, B206, B207},
-    {0x3cde9eUL, 2, B208, B209},
-    {0x3cded0UL, 4, B210, B211},
-    {0x3cdf24UL, 2, B212, B213},
-    {0x3a7f98UL, 2, B214, B215},
-    {0x3cee9eUL, 2, B216, B217},
-    {0x3ceed0UL, 4, B218, B219},
-    {0x3cef24UL, 2, B220, B221},
-    {0x3a8e38UL, 2, B222, B223},
-    {0x3d089eUL, 2, B224, B225},
-    {0x3d08d0UL, 4, B226, B227},
-    {0x3d0924UL, 2, B228, B229},
-    {0x393370UL, 12, B230, B231},
-    {0x395458UL, 2, B232, B233},
-    {0x3ad89eUL, 2, B234, B235},
-    {0x3ad8d0UL, 4, B236, B237},
-    {0x3954e8UL, 2, B238, B239},
-    {0x3ad99eUL, 2, B240, B241},
-    {0x3ad9d0UL, 4, B242, B243},
-    {0x395608UL, 2, B244, B245},
-    {0x3adb9eUL, 2, B246, B247},
-    {0x3adbd0UL, 4, B248, B249},
-    {0x395698UL, 2, B250, B251},
-    {0x3adc9eUL, 2, B252, B253},
-    {0x3adcd0UL, 4, B254, B255},
-    {0x396808UL, 2, B256, B257},
-    {0x3afb9eUL, 2, B258, B259},
-    {0x3afbd0UL, 4, B260, B261},
-    {0x396898UL, 2, B262, B263},
-    {0x3afc9eUL, 2, B264, B265},
-    {0x3afcd0UL, 4, B266, B267},
-    {0x3969b8UL, 2, B268, B269},
-    {0x3afe9eUL, 2, B270, B271},
-    {0x3afed0UL, 4, B272, B273},
-    {0x396a48UL, 2, B274, B275},
-    {0x3aff9eUL, 2, B276, B277},
-    {0x3affd0UL, 4, B278, B279},
-    {0x397228UL, 2, B280, B281},
-    {0x3b0d9eUL, 2, B282, B283},
-    {0x3b0dd0UL, 4, B284, B285},
-    {0x3972b8UL, 2, B286, B287},
-    {0x3b0e9eUL, 2, B288, B289},
-    {0x3b0ed0UL, 4, B290, B291},
-    {0x3973d8UL, 2, B292, B293},
-    {0x3b109eUL, 2, B294, B295},
-    {0x3b10d0UL, 4, B296, B297},
-    {0x397468UL, 2, B298, B299},
-    {0x3b119eUL, 2, B300, B301},
-    {0x3b11d0UL, 4, B302, B303},
-    {0x397bb8UL, 2, B304, B305},
-    {0x3b1e9eUL, 2, B306, B307},
-    {0x3b1ed0UL, 4, B308, B309},
-    {0x397c48UL, 2, B310, B311},
-    {0x3b1f9eUL, 2, B312, B313},
-    {0x3b1fd0UL, 4, B314, B315},
-    {0x397d68UL, 2, B316, B317},
-    {0x3b219eUL, 2, B318, B319},
-    {0x3b21d0UL, 4, B320, B321},
-    {0x397df8UL, 2, B322, B323},
-    {0x3b229eUL, 2, B324, B325},
-    {0x3b22d0UL, 4, B326, B327},
-    {0x39a0d8UL, 2, B328, B329},
-    {0x3b609eUL, 2, B330, B331},
-    {0x3b60d0UL, 4, B332, B333},
+    {0x395098UL, 16, B108, B109},
+    {0x3a35e8UL, 2, B110, B111},
+    {0x3c6b9eUL, 2, B112, B113},
+    {0x3c6bd0UL, 4, B114, B115},
+    {0x3c6c24UL, 2, B116, B117},
+    {0x3a3678UL, 2, B118, B119},
+    {0x3c6c9eUL, 2, B120, B121},
+    {0x3c6cd0UL, 4, B122, B123},
+    {0x3c6d24UL, 2, B124, B125},
+    {0x3a3708UL, 2, B126, B127},
+    {0x3c6d9eUL, 2, B128, B129},
+    {0x3c6dd0UL, 4, B130, B131},
+    {0x3c6e24UL, 2, B132, B133},
+    {0x3a4248UL, 2, B134, B135},
+    {0x3c819eUL, 2, B136, B137},
+    {0x3c81d0UL, 4, B138, B139},
+    {0x3c8224UL, 2, B140, B141},
+    {0x3a5f88UL, 2, B142, B143},
+    {0x3cb59eUL, 2, B144, B145},
+    {0x3cb5d0UL, 4, B146, B147},
+    {0x3cb624UL, 2, B148, B149},
+    {0x3a6018UL, 2, B150, B151},
+    {0x3cb69eUL, 2, B152, B153},
+    {0x3cb6d0UL, 4, B154, B155},
+    {0x3cb724UL, 2, B156, B157},
+    {0x3a70f8UL, 2, B158, B159},
+    {0x3cd49eUL, 2, B160, B161},
+    {0x3cd4d0UL, 4, B162, B163},
+    {0x3cd524UL, 2, B164, B165},
+    {0x3a7188UL, 2, B166, B167},
+    {0x3cd59eUL, 2, B168, B169},
+    {0x3cd5d0UL, 4, B170, B171},
+    {0x3cd624UL, 2, B172, B173},
+    {0x3a7608UL, 2, B174, B175},
+    {0x3cdd9eUL, 2, B176, B177},
+    {0x3cddd0UL, 4, B178, B179},
+    {0x3cde24UL, 2, B180, B181},
+    {0x3a7698UL, 2, B182, B183},
+    {0x3cde9eUL, 2, B184, B185},
+    {0x3cded0UL, 4, B186, B187},
+    {0x3cdf24UL, 2, B188, B189},
+    {0x3a7f98UL, 2, B190, B191},
+    {0x3cee9eUL, 2, B192, B193},
+    {0x3ceed0UL, 4, B194, B195},
+    {0x3cef24UL, 2, B196, B197},
+    {0x3a8e38UL, 2, B198, B199},
+    {0x3d089eUL, 2, B200, B201},
+    {0x3d08d0UL, 4, B202, B203},
+    {0x3d0924UL, 2, B204, B205},
+    {0x393370UL, 12, B206, B207},
+    {0x395458UL, 2, B208, B209},
+    {0x3ad89eUL, 2, B210, B211},
+    {0x3ad8d0UL, 4, B212, B213},
+    {0x3954e8UL, 2, B214, B215},
+    {0x3ad99eUL, 2, B216, B217},
+    {0x3ad9d0UL, 4, B218, B219},
+    {0x395608UL, 2, B220, B221},
+    {0x3adb9eUL, 2, B222, B223},
+    {0x3adbd0UL, 4, B224, B225},
+    {0x395698UL, 2, B226, B227},
+    {0x3adc9eUL, 2, B228, B229},
+    {0x3adcd0UL, 4, B230, B231},
+    {0x396808UL, 2, B232, B233},
+    {0x3afb9eUL, 2, B234, B235},
+    {0x3afbd0UL, 4, B236, B237},
+    {0x396898UL, 2, B238, B239},
+    {0x3afc9eUL, 2, B240, B241},
+    {0x3afcd0UL, 4, B242, B243},
+    {0x3969b8UL, 2, B244, B245},
+    {0x3afe9eUL, 2, B246, B247},
+    {0x3afed0UL, 4, B248, B249},
+    {0x396a48UL, 2, B250, B251},
+    {0x3aff9eUL, 2, B252, B253},
+    {0x3affd0UL, 4, B254, B255},
+    {0x397228UL, 2, B256, B257},
+    {0x3b0d9eUL, 2, B258, B259},
+    {0x3b0dd0UL, 4, B260, B261},
+    {0x3972b8UL, 2, B262, B263},
+    {0x3b0e9eUL, 2, B264, B265},
+    {0x3b0ed0UL, 4, B266, B267},
+    {0x3973d8UL, 2, B268, B269},
+    {0x3b109eUL, 2, B270, B271},
+    {0x3b10d0UL, 4, B272, B273},
+    {0x397468UL, 2, B274, B275},
+    {0x3b119eUL, 2, B276, B277},
+    {0x3b11d0UL, 4, B278, B279},
+    {0x397bb8UL, 2, B280, B281},
+    {0x3b1e9eUL, 2, B282, B283},
+    {0x3b1ed0UL, 4, B284, B285},
+    {0x397c48UL, 2, B286, B287},
+    {0x3b1f9eUL, 2, B288, B289},
+    {0x3b1fd0UL, 4, B290, B291},
+    {0x397d68UL, 2, B292, B293},
+    {0x3b219eUL, 2, B294, B295},
+    {0x3b21d0UL, 4, B296, B297},
+    {0x397df8UL, 2, B298, B299},
+    {0x3b229eUL, 2, B300, B301},
+    {0x3b22d0UL, 4, B302, B303},
+    {0x39a0d8UL, 2, B304, B305},
+    {0x3b609eUL, 2, B306, B307},
+    {0x3b60d0UL, 4, B308, B309},
 };
 static const struct av_guard av_guards[] = {
     {"unit_rows_0_2", 0x395068UL, 48, {124,27,139,242,1,39,149,204,181,179,222,39,80,85,2,239,147,151,198,249,196,185,174,227,40,14,8,183,64,184,61,212}},

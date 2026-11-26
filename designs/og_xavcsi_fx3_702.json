@@ -27,16 +27,20 @@
     "all_libmpr_patches_and_guards_in_pt_load0": true
   },
   "summary": {
-    "total_patches": 50,
+    "total_patches": 70,
     "libmpr_patches": 8,
-    "av_cam_patches": 42,
+    "av_cam_patches": 62,
     "intra_profile_keys": [
+      105204,
       105205,
       105206,
+      105207,
       105208,
       105209,
+      205204,
       205205,
       205206,
+      205207,
       205208,
       205209
     ],
@@ -659,6 +663,246 @@
       "new": "000a",
       "code": false,
       "note": "profile key=205209: +0x90 AVC raster height 2160 -> 2560"
+    },
+    {
+      "id": "A1-desc-105204",
+      "binary": "av-cam.bin",
+      "kind": "A1-desc",
+      "file_off": "0x399088",
+      "va": "0xffffffc001399088",
+      "length": 2,
+      "old": "7008",
+      "new": "000a",
+      "code": false,
+      "note": "desc[112] key=105204 rc=2 qc=12 XAVC S-I: height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-105204-h06",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b439e",
+      "va": "0xffffffc0013b439e",
+      "length": 2,
+      "old": "7008",
+      "new": "000a",
+      "code": false,
+      "note": "profile key=105204: +0x06 height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-105204-h38",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b43d0",
+      "va": "0xffffffc0013b43d0",
+      "length": 4,
+      "old": "70080000",
+      "new": "000a0000",
+      "code": false,
+      "note": "profile key=105204: +0x38 height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-105204-core1",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b43ee",
+      "va": "0xffffffc0013b43ee",
+      "length": 2,
+      "old": "3004",
+      "new": "0005",
+      "code": false,
+      "note": "profile key=105204: +0x56 core-1 macroblock rows 1072 -> 1280 (half of 2560p in 16-row MB rows)"
+    },
+    {
+      "id": "A2-prof-105204-h90",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b4428",
+      "va": "0xffffffc0013b4428",
+      "length": 2,
+      "old": "7008",
+      "new": "000a",
+      "code": false,
+      "note": "profile key=105204: +0x90 AVC raster height 2160 -> 2560"
+    },
+    {
+      "id": "A1-desc-105207",
+      "binary": "av-cam.bin",
+      "kind": "A1-desc",
+      "file_off": "0x399238",
+      "va": "0xffffffc001399238",
+      "length": 2,
+      "old": "7008",
+      "new": "000a",
+      "code": false,
+      "note": "desc[115] key=105207 rc=2 qc=15 XAVC S-I: height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-105207-h06",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b469e",
+      "va": "0xffffffc0013b469e",
+      "length": 2,
+      "old": "7008",
+      "new": "000a",
+      "code": false,
+      "note": "profile key=105207: +0x06 height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-105207-h38",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b46d0",
+      "va": "0xffffffc0013b46d0",
+      "length": 4,
+      "old": "70080000",
+      "new": "000a0000",
+      "code": false,
+      "note": "profile key=105207: +0x38 height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-105207-core1",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b46ee",
+      "va": "0xffffffc0013b46ee",
+      "length": 2,
+      "old": "3004",
+      "new": "0005",
+      "code": false,
+      "note": "profile key=105207: +0x56 core-1 macroblock rows 1072 -> 1280 (half of 2560p in 16-row MB rows)"
+    },
+    {
+      "id": "A2-prof-105207-h90",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b4728",
+      "va": "0xffffffc0013b4728",
+      "length": 2,
+      "old": "7008",
+      "new": "000a",
+      "code": false,
+      "note": "profile key=105207: +0x90 AVC raster height 2160 -> 2560"
+    },
+    {
+      "id": "A1-desc-205204",
+      "binary": "av-cam.bin",
+      "kind": "A1-desc",
+      "file_off": "0x39adc8",
+      "va": "0xffffffc00139adc8",
+      "length": 2,
+      "old": "7008",
+      "new": "000a",
+      "code": false,
+      "note": "desc[164] key=205204 rc=2 qc=12 XAVC S-I: height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-205204-h06",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b779e",
+      "va": "0xffffffc0013b779e",
+      "length": 2,
+      "old": "7008",
+      "new": "000a",
+      "code": false,
+      "note": "profile key=205204: +0x06 height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-205204-h38",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b77d0",
+      "va": "0xffffffc0013b77d0",
+      "length": 4,
+      "old": "70080000",
+      "new": "000a0000",
+      "code": false,
+      "note": "profile key=205204: +0x38 height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-205204-core1",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b77ee",
+      "va": "0xffffffc0013b77ee",
+      "length": 2,
+      "old": "3004",
+      "new": "0005",
+      "code": false,
+      "note": "profile key=205204: +0x56 core-1 macroblock rows 1072 -> 1280 (half of 2560p in 16-row MB rows)"
+    },
+    {
+      "id": "A2-prof-205204-h90",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b7828",
+      "va": "0xffffffc0013b7828",
+      "length": 2,
+      "old": "7008",
+      "new": "000a",
+      "code": false,
+      "note": "profile key=205204: +0x90 AVC raster height 2160 -> 2560"
+    },
+    {
+      "id": "A1-desc-205207",
+      "binary": "av-cam.bin",
+      "kind": "A1-desc",
+      "file_off": "0x39af78",
+      "va": "0xffffffc00139af78",
+      "length": 2,
+      "old": "7008",
+      "new": "000a",
+      "code": false,
+      "note": "desc[167] key=205207 rc=2 qc=15 XAVC S-I: height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-205207-h06",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b7a9e",
+      "va": "0xffffffc0013b7a9e",
+      "length": 2,
+      "old": "7008",
+      "new": "000a",
+      "code": false,
+      "note": "profile key=205207: +0x06 height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-205207-h38",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b7ad0",
+      "va": "0xffffffc0013b7ad0",
+      "length": 4,
+      "old": "70080000",
+      "new": "000a0000",
+      "code": false,
+      "note": "profile key=205207: +0x38 height 2160 -> 2560"
+    },
+    {
+      "id": "A2-prof-205207-core1",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b7aee",
+      "va": "0xffffffc0013b7aee",
+      "length": 2,
+      "old": "3004",
+      "new": "0005",
+      "code": false,
+      "note": "profile key=205207: +0x56 core-1 macroblock rows 1072 -> 1280 (half of 2560p in 16-row MB rows)"
+    },
+    {
+      "id": "A2-prof-205207-h90",
+      "binary": "av-cam.bin",
+      "kind": "A2-profile",
+      "file_off": "0x3b7b28",
+      "va": "0xffffffc0013b7b28",
+      "length": 2,
+      "old": "7008",
+      "new": "000a",
+      "code": false,
+      "note": "profile key=205207: +0x90 AVC raster height 2160 -> 2560"
     }
   ],
   "optional_sites": [
@@ -1027,6 +1271,134 @@
       "length": 16,
       "bytes": "01000000010000000100000000000000",
       "note": "pre-site 16B untouched stock guard near L1-comb-9 (0x2cb1e6)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x399070",
+      "va": "0xffffffc001399070",
+      "length": 16,
+      "bytes": "04000000520200000101000000000000",
+      "note": "pre-site 16B untouched stock guard near A1-desc-105204 (0x399088)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x3b4380",
+      "va": "0xffffffc0013b4380",
+      "length": 16,
+      "bytes": "00000000010000010000010101010000",
+      "note": "pre-site 16B untouched stock guard near A2-prof-105204-h06 (0x3b439e)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x3b43c0",
+      "va": "0xffffffc0013b43c0",
+      "length": 16,
+      "bytes": "000100020000000100000000000f0000",
+      "note": "pre-site 16B untouched stock guard near A2-prof-105204-h38 (0x3b43d0)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x3b4410",
+      "va": "0xffffffc0013b4410",
+      "length": 16,
+      "bytes": "00000000000000000000000000000000",
+      "note": "pre-site 16B untouched stock guard near A2-prof-105204-h90 (0x3b4428)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x399220",
+      "va": "0xffffffc001399220",
+      "length": 16,
+      "bytes": "04000000520200000101000000000000",
+      "note": "pre-site 16B untouched stock guard near A1-desc-105207 (0x399238)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x3b4680",
+      "va": "0xffffffc0013b4680",
+      "length": 16,
+      "bytes": "00000000010000000000010101010000",
+      "note": "pre-site 16B untouched stock guard near A2-prof-105207-h06 (0x3b469e)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x3b46c0",
+      "va": "0xffffffc0013b46c0",
+      "length": 16,
+      "bytes": "000100020000000100000000000f0000",
+      "note": "pre-site 16B untouched stock guard near A2-prof-105207-h38 (0x3b46d0)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x3b4710",
+      "va": "0xffffffc0013b4710",
+      "length": 16,
+      "bytes": "00000000000000000000000000000000",
+      "note": "pre-site 16B untouched stock guard near A2-prof-105207-h90 (0x3b4728)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x39adb0",
+      "va": "0xffffffc00139adb0",
+      "length": 16,
+      "bytes": "04000000520200000101000000000000",
+      "note": "pre-site 16B untouched stock guard near A1-desc-205204 (0x39adc8)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x3b7780",
+      "va": "0xffffffc0013b7780",
+      "length": 16,
+      "bytes": "00000000010000010000010101010000",
+      "note": "pre-site 16B untouched stock guard near A2-prof-205204-h06 (0x3b779e)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x3b77c0",
+      "va": "0xffffffc0013b77c0",
+      "length": 16,
+      "bytes": "000100020000000100000000000f0000",
+      "note": "pre-site 16B untouched stock guard near A2-prof-205204-h38 (0x3b77d0)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x3b7810",
+      "va": "0xffffffc0013b7810",
+      "length": 16,
+      "bytes": "00000000000000000000000000000000",
+      "note": "pre-site 16B untouched stock guard near A2-prof-205204-h90 (0x3b7828)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x39af60",
+      "va": "0xffffffc00139af60",
+      "length": 16,
+      "bytes": "04000000520200000101000000000000",
+      "note": "pre-site 16B untouched stock guard near A1-desc-205207 (0x39af78)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x3b7a80",
+      "va": "0xffffffc0013b7a80",
+      "length": 16,
+      "bytes": "00000000010000000000010101010000",
+      "note": "pre-site 16B untouched stock guard near A2-prof-205207-h06 (0x3b7a9e)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x3b7ac0",
+      "va": "0xffffffc0013b7ac0",
+      "length": 16,
+      "bytes": "000100020000000100000000000f0000",
+      "note": "pre-site 16B untouched stock guard near A2-prof-205207-h38 (0x3b7ad0)"
+    },
+    {
+      "binary": "av-cam.bin",
+      "file_off": "0x3b7b10",
+      "va": "0xffffffc0013b7b10",
+      "length": 16,
+      "bytes": "00000000000000000000000000000000",
+      "note": "pre-site 16B untouched stock guard near A2-prof-205207-h90 (0x3b7b28)"
     }
   ]
 }

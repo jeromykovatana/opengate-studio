@@ -48,7 +48,7 @@ Both offline firmware audit tools (`unpack_firmware.sh` and `verify_all_offsets.
 | `appFw.so` | `eba89299273542e9de89d64f3bd380114b2b9df67a246a6927cd7a83f2043781` | `545c5053a74e04ffbf2bbaaf80f558092dd545ed2298b2395ca547dbba58290f` *(unneeded; FX3 uses native De-Squeeze)* | `88146fa5f5844b45de9f20ab5f1750aa6e821e10658af37f88ce7d4d76a833f8` |
 | `cpapp` 4KB ID Pages | `0x128000`, `0x4a8000`, `0x86d000`, `0xb11000` | `0x128000`, `0x4a8000`, `0x857000`, `0xaeb000` | `0x128000`, `0x4aa000`, `0x96d000`, `0x788000` |
 | Offline Binary Audit | **678 static checks verified (0 mismatches)** via `verify_all_offsets.py` | **678 static checks verified (0 mismatches)** via `verify_all_offsets.py` | **678 static checks verified (0 mismatches)** via `verify_all_offsets.py` |
-| Hardware Validation Status | **Confirmed working on camera** (`ogsq_s3_v5` + `lcdratio32_s3_v1` + `lcdcycle_s3_v2`, 2026-11-23) | **Emulated & cross-checked** (`Unicorn` + `qemu-arm`, relinked A7S III `cpapp`; awaits first FX3 hardware run) | **v1 tested on camera (2026-11-23); v2 fixes DMM buffer crash** (`dmmwb_zv_v1` + `ogsq_zv_v2`; awaits v2 camera run) |
+| Hardware Validation Status | **`23.98p` confirmed on camera** (`ogsq_s3_v5` + `lcdratio32_s3_v1` + `lcdcycle_s3_v2`, 2026-11-23); dual NTSC/PAL `ogsq_s3_v6` + `29.97p` Long-GOP & `XAVC S-I` **Unicorn-verified** | **`23.98p`, PAL `25p` (`0x820`), and `4:3` panel confirmed on hardware**; unified `ogsq_fx3_v2` + `29.97p` Long-GOP & `XAVC S-I` **Unicorn-verified** | **`23.98p` `v2` + SteadyShot Active/Dynamic Active confirmed on camera**; dual NTSC/PAL `ogsq_zv_v3` + `29.97p` Long-GOP & `XAVC S-I` **Unicorn-verified** |
 
 ---
 
@@ -56,14 +56,14 @@ Both offline firmware audit tools (`unpack_firmware.sh` and `verify_all_offsets.
 
 | Pipeline Stage | a7 IV 6.02 (`IMX710`, 33MP) | a7S III 5.01 / FX3 7.02 / ZV-E1 2.02 (`IMX510`, 12.1MP) |
 |---|---|---|
-| **Active 4K 23.98p Mode** | `0x8c0` (index 10): `7008×3942` cropped from `7008×4672` | `0x8c0` (index 12): `4240×2392` (from row 220) cropped from **`4240×2832`** (stage `4288×2848`) |
+| **Active 4K `23.98p / 25p / 29.97p` Modes** | `0x8c0` (index 10): `7008×3942` cropped from `7008×4672` | `0x8c0` (index 12, NTSC `23.98p`/`29.97p`) + `0x820` (index 10, PAL `25p`): `4240×2392` (row 220) cropped from **`4240×2832`** (stage `4288×2848`), patched via `MULTI_REC` |
 | **Sensor Mode Switch** | 4K and full-height share timing registers; patch simply switches register column | No stock "4K timing + full-height" column exists. Patch switches `0x8c0` from column `11` (mode `0x21`, 16:9 band) to **column `1` (mode `0x01`, full-height from `0xe011`)** without altering the shared register matrix (preserving other 4K modes) |
 | **MIPI Link Bit-Depth** | Unchanged 10-bit link | Stock `0x8c0` uses a **10-bit** link (`5,3` on A7S III/FX3; `6,3` on ZV-E1), whereas full-height `0xe011` is **12-bit (`0,2`)**. Both 3000B picture records must update 6 link-format words (`+0x274`, `+0x27c`, `+0x280`, `+0x284`, `+0x294`, `+0x2a8`) to 12-bit values (fixed tonal stepping in `ogsq_s3_v5`) |
 | **Fractional Line Timing** | Stock timing kept | Decoded timing law: frame = $(HMAX + E/P) \times VMAX$ ticks @ $36\text{ MHz}$, requiring **`E < P`**, odd `P | VMAX`, `4 | VMAX`. Patched 59.94Hz row: **`313 × 4788, P 57, E 34`** (`23.976 fps`); 50Hz row: **`313 × 4780, P 239, E 193`** (`24.000 fps`) |
 | **Vertical Squeeze Ratio** | `27/32` (`4672 × 27/32 = 3942.0`) | **`16/19`** (`2832 × 16/19 = 2384.8`, matching stock 2385-row second-scaler fit with zero cropped rows) |
 | **Raw Write Buffer (`0x43e`)** | Needs `dmmwb4688_v1` (enlarges 26.8 MB -> 33.0 MB) | **a7S III** (`26,214,400` B) & **FX3** (`27,864,320` B) fit `4288×2848` (`12,212,224` B) natively. **ZV-E1** (`10,325,504` B = exact `4288×2408`) **requires `dmmwb_zv_v1`** (`0x2580150` -> `26,214,400` B) |
-| **Rear LCD Panel Geometry** | The local kit uses a 3:2 rear panel, `lcdfill_v2` and the C3 preview cycle. | a7S III readback confirmed 4:3. FX3 panel geometry awaits a physical check. Its kit supports either panel shape. The ZV-E1 uses a 3:2 rear panel and the C2 preview cycle. [FX3 kit notes](https://github.com/ArcaneLantern/fx3-open-gate-test) |
-| **Known Runtime Caveats** | A cold boot clears the kit. The maintainer reports that a power-off can also clear it. [a7 IV field kit](https://github.com/ArcaneLantern/a7iv-open-gate-test) | a7S III and ZV-E1 testers reported 23.976p full-height recordings, purple standby on mode transitions and a crash at 60p. The a7S III tester also reported that power-off clears the kit. PAL 25p and the FX3 physical recording remain unverified. |
+| **Rear LCD Panel Geometry** | The local kit uses a 3:2 rear panel, `lcdfill_v2` and the C3 preview cycle. | Hardware checks confirmed **4:3 (`panel-type = 2`)** on both `a7S III` and `FX3`. `ZV-E1` uses a 3:2 rear panel and the C2 preview cycle. [FX3 kit notes](https://github.com/ArcaneLantern/fx3-open-gate-test) |
+| **Known Runtime Caveats** | A cold boot clears the kit. The maintainer reports that a power-off can also clear it. [a7 IV field kit](https://github.com/ArcaneLantern/a7iv-open-gate-test) | `23.98p` across all 3 bodies, FX3 PAL `25p` (`0x820`), and ZV-E1 `v2` SteadyShot Active/Dynamic Active are hardware-confirmed; `29.97p` (`30p`) and a7S III/ZV-E1 `25p` are Unicorn-verified awaiting field check. Do not switch to `50p`/`60p`/`120p` (crashes/distorts). Power-off partially resets ZV-E1/a7S III; pull battery >= 10s. |
 
 ---
 
@@ -77,9 +77,9 @@ Both offline firmware audit tools (`unpack_firmware.sh` and `verify_all_offsets.
 | FX3 7.02 | *(none)* | — | `0x01a93000` (27,864,320) | *(unchanged)* | Fits `12,212,224` B full-height raw frame |
 | ZV-E1 2.02 | `dmmwb_zv_v1` (`L13`/`L14`) | `0x2580150` | `008e9d00` (`10,325,504`) | `00009001` (`26,214,400`) | Unit `0x57f` (`id 0x43e`) in RAM copy of `/cp/DmmCfg.bin` (refuses if movie buffer already open) |
 
-### 4.2 Sensor & Image Pipeline (`ogsq` in `cpapp-b.bin` @ Base `0x108000`, `L5`/`L6`)
+### 4.2 Sensor & Image Pipeline (`ogsq` dual-mode `0x8c0` + `0x820` `MULTI_REC` in `cpapp-b.bin` @ Base `0x108000`, `L5`/`L6`)
 
-Notice that FX3 `7.02` is a direct relink of a7S III `5.01` with exact constant shifts (`-0x1ce94` on mode/timing/geometry tables, `-0x20c54` on window/readout tables, `-0x1ce20` on picture records), whereas ZV-E1 `2.02` shares the `A7C II` coprocessor platform (`39` modes, `0x170`-byte stored records, 16-byte readout rows):
+Notice that FX3 `7.02` is a direct relink of a7S III `5.01` with exact constant shifts (`-0x1ce94` on mode/timing/geometry tables, `-0x20c54` on window/readout tables, `-0x1ce20` on picture records), whereas ZV-E1 `2.02` shares the `A7C II` coprocessor platform (`39` modes, `0x170`-byte stored records, 16-byte readout rows). `ogsq_fx3_v2`, `ogsq_s3_v6`, and `ogsq_zv_v3` patch **40 coprocessor cells + 2 pointer-walked stored records** (`0x8c0` index 12 + `0x820` index 10) with both NTSC (60 Hz) and PAL (50 Hz) records via `#ifdef MULTI_REC`:
 
 | # | Site / Field (`mode 0x8c0`, idx 12) | a7S III `5.01` | FX3 `7.02` | ZV-E1 `2.02` | Stock Hex (`S3,FX3` / `ZV`) | Target Hex |
 |---|---|---|---|---|---|---|
@@ -115,9 +115,9 @@ Notice that FX3 `7.02` is a direct relink of a7S III `5.01` with exact constant 
 | FX3 `7.02` | `outsz2560_fx3_v1` | `0x13c3190` | `0x13c31c8` | `000f7008` | `000f000a` |
 | ZV-E1 `2.02` | `outsz2560_zv_v1` | `0x1996514` (`+0x50`) | `0x199655c` | `000f7008` | `000f000a` |
 
-### 4.4 Encoder & Recorder Tables (`ogfile2560_hs_s_*`, `L19`/`L20`)
+### 4.4 Encoder & Recorder Tables (`ogfile2560_hs_s_*`, `L19`/`L20`, `V19`/`V20`, and `I19`/`I20`)
 
-Patches **4 sites** in `libmpr.so` (`g_videoParamComb` height `7008` -> `000a`) and **101 sites** in `av-cam.bin` (`A0-unit` row 3 := row 2, `A3-clip` unused `8192×4320` row 1 -> `3840×2560` with 4K clip code, 29 `A1-desc` heights, and 70 `A2-profile` heights for 23.98p & 25p):
+`L19`/`L20` patch **4 sites** in `libmpr.so` (`g_videoParamComb` height `7008` -> `000a`) and **149 sites** in `av-cam.bin` (`A0-unit` row 3 := row 2, `A3-clip` unused `8192×4320` row 1 -> `3840×2560` with 4K clip code `23`, plus `A1-desc` descriptors and `A2-profile` heights across **`23.98p`, `25p`, and `29.97p` (rate code `2`)**); `V19`/`V20` add the 8 native 3:2 MP4/NRT/playback `libmpr.so` sites (`12 libmpr + 149 av-cam`). `I19`/`I20` (`og_xavcsi_addon_*`) layer `XAVC S-I` All-Intra `3840×2560` across `23.98p / 25p / 29.97p` (`105204..105209`, plus `205204..205209` twins on FX3/a7S III -> **`60 av-cam + 2 libmpr`** on FX3/a7S III, **`30 av-cam + 2 libmpr`** on ZV-E1).
 
 | Target Site | a7 IV `6.02` | a7S III `5.01` | FX3 `7.02` | ZV-E1 `2.02` | Stock -> New |
 |---|---|---|---|---|---|
@@ -215,6 +215,21 @@ Decompilation of the timed-metadata muxer path (`FUN_00227394` on a7S III, `FUN_
 - `MakeMovieInternal` attaches the `rtmd` (`"cdsc"` = `0x63647363`) reference track with zero frame-height, `numOfVerticalLine`, or NRT `aspectRatio` dependencies.
 - `xavcsMovieMeta::WriteMetaInfo` records sensor readout timing, focal length, IBIS/OIS shift, and gyro quaternion samples independently of container video height.
 - The separate timed-metadata path supports the prediction that correcting the declared video dimensions will preserve gyro samples. End-to-end verification requires an untouched card original that imports at 3:2 in Resolve and stabilizes using its own telemetry in Catalyst or Gyroflow.
+
+### 5.5 Rebuilt `23.98p / 25p / 29.97p` Helper SHA-256 Pins & Leftover Cleanup
+
+Rebuilt under `ziglang 0.13.0` (`clang 18.1.6`). `H16/H17`, `B19/B20`, `S16/S17`, `C19/C20`, `L13/L14`, `L16/L17`, `P29/P30`, `check`, and `dump` remain bit-for-bit identical; `studio_step_run.py` auto-cleans superseded studio + upstream `check`/`dump` hashes in `EARLIER_LIBS` if left on `/tmp/jiritsu/libJit.so`:
+
+| Step | FX3 `7.02` (`fx3_702`) | a7S III `5.01` (`a7s3_501`) | ZV-E1 `2.02` (`zve1_202`) |
+|---|---|---|---|
+| `L5` | `aaba9ec264b73d9f2cc28fa64b9ac5e3bc1001af41c801606e16b4d88ab903dd` (`37472` B) | `371ded6d9cb66e8d8b26b582c2af171b9dd31c235bc6a2c4ffc8037d6e108947` (`37472` B) | `24f6697f0dab5f5bea24933cc667aa490af2cb57841beb1d5f80f55fa40cfcc3` (`37536` B) |
+| `L6` | `16d14ae4b326614f6bdb11aec1c03b7d7db70e5bfc64be6ba1d76052e5ab3f4b` (`37488` B) | `1fdd3296387814c1fc577fad439059447c362e2eddbff20e7310b63a93707ac1` (`37488` B) | `40887db79186cc46988ee39ea488fe7a44d9eab210a084befe4ec999d0fd1142` (`37552` B) |
+| `L19` | `745d95184a2ad10a91ad91775620ac8ae3c741c8f30ba5c350725dd1870f9561` (`28024` B) | `b87e5fb342be98d50d8a01beb93d8ffc0bdaf205d4caa19844b4cf966947b216` (`28024` B) | `91feca335466618d3a3c0c97942d848291829d166ac2840aa48854ceffeea77e` (`28040` B) |
+| `L20` | `6871dfa07ec82f90ab61fbcb0de76e6d7df45fcff04ac89b32fb3b5e9c6cb53b` (`28000` B) | `526c85a73e37d763d4529c73ca3a36333eac323468b0b64c1b5432f7a0238583` (`28000` B) | `461f9c66293096f73cd547c9f6435fa926285696984fb9374a20c413bfbea675` (`28016` B) |
+| `V19` | `4f3be4553237ded7091d88410ddc7b6b4b086308e956db7b64681ca31e8ffdbd` (`29000` B) | `68a33c49b145cdfd39c28c390e669b34d24d74c78dc0f45d5ffadbd93a1e8d18` (`29000` B) | `a2c3cda80851abf0f6a592de817c365cdaf0143325d7f70af4fac114bb29f31a` (`29016` B) |
+| `V20` | `2670d65b38a3a17c0a5600e605afdc2f3697324aca2d81d395a02e50f89bd32e` (`29000` B) | `e78762128deeb703ed9b40f00397eeb0428722fe9761d0ab5a755c016dcda4c9` (`29000` B) | `796f58d4ef240e90a9bda244f66da884c320f48d34ce19bbe87831c8cc279777` (`29016` B) |
+| `I19` | `51cc4c86d2d2f40436dd02dc2b101bf0dcdb6ad88d726b64156c696695987941` (`24736` B) | `12ea26beab58616a91add9aaff44abae7dd639309715a7dae39783c1cdfa4aea` (`24776` B) | `413c968dbc583d218594cd9d09e653305f04396e880c665a33eab6e1d0756d35` (`22528` B) |
+| `I20` | `9d0ea28bbd768315553d47486ed810c62518d7e00faf34033065a004a1a95f1c` (`24744` B) | `9f9155559bd9c9864bb1dbb9d5c01256268f48a94d85ba07af8820a249294025` (`24776` B) | `058b41f320c49181df1d0dba4f42d340cc509eb6c81d12c09d3fab68191062e4` (`22544` B) |
 
 ---
 

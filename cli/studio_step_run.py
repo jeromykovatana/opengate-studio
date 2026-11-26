@@ -83,6 +83,51 @@ STEP_LEVEL_BASE: dict[str, int] = {
     "P": 1000,
 }
 
+# Superseded studio + upstream ArcaneLantern helper SHA-256 hashes (auto-cleaned if left on /tmp/jiritsu/libJit.so).
+EARLIER_LIBS: dict[str, str] = {
+    # Superseded fx3_702 studio builds
+    "9fd94c179f8c7b721600313a1e7a7f2a173a1a3dae24319fe4411cba4dac5946": "earlier fx3_702 L5 (libJit_fx3_L5.so)",
+    "6c8544fb91879ba4c1b8ce9351826253b61557d797466f836e4e8e65b0acf3b6": "earlier fx3_702 L6 (libJit_fx3_L6.so)",
+    "47400649ac29ac03fd77b4805e0a41c60b4a3cfa1ae5e3f384f0d33a0b503050": "earlier fx3_702 L19 (libJit_fx3_L19.so)",
+    "6ca3ee7df282bda70bc50bb4f9284ccc622c2c20e6ab64b964a949148a33d836": "earlier fx3_702 L20 (libJit_fx3_L20.so)",
+    "f134ab54bdd485eff7643df63b9f59d4d1d7ce9040273183788c2fdd687063b5": "earlier fx3_702 V19 (libJit_fx3_V19.so)",
+    "cf215b6115089b9d860b5fc6b09f9e4d69919f6c90f60ae7f24fe9b33afd853e": "earlier fx3_702 V20 (libJit_fx3_V20.so)",
+    "616d24d147dbf646deb0df3257ceeab39790e03bc301645b69852917c8e9813e": "earlier fx3_702 B19 (libJit_fx3_B19.so)",
+    "040341f109d2b1ba956558cdaa665a839faef81dc53c8f3e4ba125949903e26d": "earlier fx3_702 B20 (libJit_fx3_B20.so)",
+    "ccfd54779e384a5b903ca880d4f9a559d2a8b0077b03a72bdb8ac59cf8e19321": "earlier fx3_702 I19 (libJit_fx3_I19.so)",
+    "32c4d2d168224ef16ba75025d92a79c135ac34437f3767e2b32fa67cd556161c": "earlier fx3_702 I20 (libJit_fx3_I20.so)",
+    # Superseded a7s3_501 studio builds
+    "5bc1bdcee924e1bd30e405fc29c269440b2c36548ede357d8e34c5d21cc4efa3": "earlier a7s3_501 L5 (libJit_s3_L5.so)",
+    "5ea7f7cac2a2bda8628a3dda9012532c7c508f6ea5ce9603021474ee5249f69c": "earlier a7s3_501 L6 (libJit_s3_L6.so)",
+    "85b5882d0fd2f2525a6eab109ed7ee8ea2f53be42351b56af52e2e7f7f47d588": "earlier a7s3_501 L19 (libJit_s3_L19.so)",
+    "3683c64f54784cfb7fde5af0c4b4096cb6cd3d58cc9c3d988c92abd1c9358f86": "earlier a7s3_501 L20 (libJit_s3_L20.so)",
+    "3ef580f51952b458f3191fb08190311544f5fdc188b0151c5c0a57737bfc52c3": "earlier a7s3_501 V19 (libJit_s3_V19.so)",
+    "145af3e92df71648b15cd6fabd569963d3d990f1bd5f32df822a0a0688791653": "earlier a7s3_501 V20 (libJit_s3_V20.so)",
+    "07afc62ff0fcfe6f3f207d90ed88e4b84e0edb1fd7c6a2ae02e9a4bc8c5888ba": "earlier a7s3_501 B19 (libJit_s3_B19.so)",
+    "f1d6a368322019d19411948e74edba6ced6cf4f56dc95a2ebec1f825b72f218f": "earlier a7s3_501 B20 (libJit_s3_B20.so)",
+    "dc3e9bec05aa6ea665a88e1c155ce6430c93c4c55a1ec118b4bf7e732dacbec7": "earlier a7s3_501 I19 (libJit_s3_I19.so)",
+    "cdcccfee1a9ca2f0fb0c09c50dbd8c09561bdb644fe5a74c1e317a1d714bf371": "earlier a7s3_501 I20 (libJit_s3_I20.so)",
+    # Superseded zve1_202 studio builds
+    "5d419a3222f413b01a05c3dcf27f85c3cd2de16354f44d4feae79a084edfae47": "earlier zve1_202 L5 (libJit_zv_L5.so)",
+    "0850515ead1d11214509974f30edc22889db23a6fa81cc4a67b236883f6dc9e6": "earlier zve1_202 L6 (libJit_zv_L6.so)",
+    "4341773dcfb1cb922379075ed2760f75e9443e7a9127f9ae80ddd5ebff895c26": "earlier zve1_202 L19 (libJit_zv_L19.so)",
+    "f54bb2855db9fe4e7d48c7eec06f67b9b9c218ebe8fb839ad4e219406df9a987": "earlier zve1_202 L20 (libJit_zv_L20.so)",
+    "657ea733c8574c6a2d9ab6961f09c513c219a4a588375f34348e0e284da69f01": "earlier zve1_202 V19 (libJit_zv_V19.so)",
+    "e77f71adfd1850944aeff91c5ba210f7cfeddadcb5582cc931bbd5c2e8ba98c3": "earlier zve1_202 V20 (libJit_zv_V20.so)",
+    "974e2624d0cf34862deb2585606715893af026fc0201c2e47d5f65083a3637a6": "earlier zve1_202 B19 (libJit_zv_B19.so)",
+    "7d1bfb6eaaa6d08438522fbf56138f572a49f431cea5b87dbf0599749837da72": "earlier zve1_202 B20 (libJit_zv_B20.so)",
+    "8c9640e98f817420502b33d2723e8030f4a6db4d6bae007323fb38735db91f28": "earlier zve1_202 I19 (libJit_zv_I19.so)",
+    "5a623fcdfd7ea86b8b8a65a640a3cd75fff58db9d0322053501d3eb5137d9466": "earlier zve1_202 I20 (libJit_zv_I20.so)",
+    # Upstream ArcaneLantern prebuilt helpers (check/dump across fx3, a7siii, zve1)
+    "fcf97a8ea56abee543734779b8cac10267b4b33adda863a4032c11436e6d78ce": "upstream fx3 check (libJit_fx3_check.so)",
+    "ad2bae7922865dd7faf3bce59aa4114e53fe56ce4366b133c96ce91414592527": "upstream fx3 dump (libJit_fx3_dump.so)",
+    "e8adeae97caab3b26958068de0dcf1dacd76ad8483333b5cf23f91743d6a91dc": "upstream a7siii check (libJit_s3_check.so)",
+    "ad416c29151f435f45aa71c6bb8f4bb9cf24c85bf098945642e92bf76f37f91c": "upstream a7siii dump (libJit_s3_dump.so)",
+    "c25e08bf01dbd4e314d91a54aa39ec450c2326e43030df6c8277e73b57a508e0": "upstream zve1 check (libJit_zv_check.so)",
+    "30aab4055212647723c26e8d5332e926fe73cb6898370aa28496799576996421": "upstream zve1 dump (libJit_zv_dump.so)",
+}
+EXTRA_LIBS: dict[str, str] = {}
+
 # Active context configured by use()
 CURRENT_BODY: str = "zve1_202"
 CURRENT_WHICH: str = "check"
@@ -432,6 +477,24 @@ def make_sim(lib: bytes, files: dict[str, bytes] | None = None, fault: str | Non
     return Sim()
 
 
+def known_libs() -> dict[str, str]:
+    """All toolkit .so SHA-256 hashes (all 3 manifests + superseded studio/upstream hashes + --remove-library)."""
+    out: dict[str, str] = dict(EARLIER_LIBS)
+    for bid in BODY_CONFIG:
+        try:
+            _, man = load_body_manifest(bid)
+        except OSError:
+            continue
+        for k, entry in man.get("readonly", {}).items():
+            if isinstance(entry, dict) and entry.get("sha256"):
+                out[entry["sha256"]] = f"{bid} {k} ({entry['file']})"
+        for k, entry in man.get("steps", {}).items():
+            if isinstance(entry, dict) and entry.get("sha256"):
+                out[entry["sha256"]] = f"{bid} {k} ({entry['file']})"
+    out.update(EXTRA_LIBS)
+    return out
+
+
 def use(body_id: str, which: str) -> bytes:
     global CURRENT_BODY, CURRENT_WHICH, CURRENT_KIT_DIR, CURRENT_MANIFEST, CURRENT_EXPECTED, CURRENT_WRITE_STEPS
     kit_dir, manifest = load_body_manifest(body_id)
@@ -456,6 +519,7 @@ def use(body_id: str, which: str) -> bytes:
     R.DESIGN = body_id
     R.LIB = lib_path
     R.LIB_SHA256 = sha
+    R.KNOWN_LIBS = known_libs()
     R.check_result = check_result
     R.known_answer = known_answer
     R.run_helper = run_helper
@@ -496,6 +560,42 @@ def selftest(lib: bytes) -> list[str]:
 
     s, sim, stopped = R.simulate(lib, R.body_run, files={R.LIB_PATH.decode(): b"someone else's"})
     check(stopped and w_cmd not in R.sent(s) and d_cmd not in R.sent(s), "foreign libJit.so: stops, nothing written or deleted")
+    s, sim, stopped = R.simulate(lib, R.body_run, files={R.LIB_PATH.decode(): lib})
+    check(
+        not stopped
+        and R.sent(s).count(d_cmd) == 2
+        and R.sent(s).count(w_cmd) == 1
+        and bool(s.results.get("ct6", {}).get("leftover_removed", {}).get("gone"))
+        and R.LIB_PATH.decode() not in sim.fs,
+        "leftover known libJit.so: auto-deleted first, then normal run completes",
+    )
+    s, sim, stopped = R.simulate(lib, R.body_run, files={R.LIB_PATH.decode(): lib}, fault="sticky")
+    check(
+        bool(stopped) and w_cmd not in R.sent(s),
+        "leftover known libJit.so when delete fails: stops before writing anything",
+    )
+    s, sim, stopped = R.simulate(lib, R.body_remove_only, files={R.LIB_PATH.decode(): lib})
+    check(not stopped and w_cmd not in R.sent(s) and R.LIB_PATH.decode() not in sim.fs, "--remove-only: removes known leftover without writing")
+    s, sim, stopped = R.simulate(lib, R.body_remove_only)
+    check(not stopped and w_cmd not in R.sent(s) and d_cmd not in R.sent(s), "--remove-only: nothing present sends neither write nor delete")
+
+    foreign_bytes = b"earlier local test build bytes"
+    foreign_sha = hashlib.sha256(foreign_bytes).hexdigest()
+    EXTRA_LIBS[foreign_sha] = "--remove-library simulation"
+    saved_known = R.KNOWN_LIBS
+    R.KNOWN_LIBS = known_libs()
+    try:
+        s, sim, stopped = R.simulate(lib, R.body_remove_only, files={R.LIB_PATH.decode(): foreign_bytes})
+        check(
+            not stopped
+            and w_cmd not in R.sent(s)
+            and bool(s.results.get("ct6", {}).get("leftover_removed", {}).get("gone"))
+            and R.LIB_PATH.decode() not in sim.fs,
+            "--remove-library: removes explicitly listed library cleanly",
+        )
+    finally:
+        EXTRA_LIBS.pop(foreign_sha, None)
+        R.KNOWN_LIBS = saved_known
     s, sim, stopped = R.simulate(lib, R.body_run, files={"/tmp_wbshd/readcheck_result.txt": b"old"})
     check(stopped and w_cmd not in R.sent(s), "existing result on RAM disk: stops, nothing written")
     s, sim, stopped = R.simulate(lib, R.body_run, files={"/tmp/jbusy": b""})
@@ -565,7 +665,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--clear-result", metavar="SHA256")
     ap.add_argument("--firmware-shown")
     ap.add_argument("--writes-memory", action="store_true")
+    ap.add_argument(
+        "--remove-library",
+        metavar="SHA256",
+        action="append",
+        default=[],
+        help="Also remove an existing /tmp/jiritsu/libJit.so matching this SHA-256 (64 hex chars)",
+    )
     args = ap.parse_args(argv)
+
+    for extra in args.remove_library:
+        hx = extra.strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", hx):
+            raise SystemExit(f"Invalid --remove-library SHA-256: {extra!r} (expected 64 hex chars). Nothing was sent.")
+        EXTRA_LIBS[hx] = "--remove-library argument"
 
     cfg = BODY_CONFIG[args.body]
     lib = use(args.body, args.which)
@@ -621,6 +734,12 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(3)
             c.print_pnp(session, "after the stop request")
             out = session.results.get("ct6", {})
+            if isinstance(out.get("leftover_removed"), dict):
+                lr = out["leftover_removed"]
+                print(
+                    f"Leftover /tmp/jiritsu/libJit.so removed first: {lr.get('name')} "
+                    f"({lr.get('sha256', '')[:16]}..., gone={lr.get('gone')})."
+                )
             after_map = {
                 False: "no (confirmed)",
                 True: "YES",

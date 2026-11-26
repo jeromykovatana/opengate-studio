@@ -39,7 +39,7 @@
         "L17",
         "L6"
       ],
-      "summary": "Enables 3840x2560 sensor readout and coprocessor output size class"
+      "summary": "Enables 3840x2560 sensor readout across 23.98p/24p/25p/29.97p (NTSC & PAL) and coprocessor output size class"
     },
     "mp4_3x2": {
       "label": "Native 3:2 MP4 Container & Playback",
@@ -56,7 +56,7 @@
       "fallback_putback_steps": [
         "L20"
       ],
-      "summary": "Patches encoder tables + 8 libmpr.so sites for native 3:2 MP4/NRT/playback (falls back to L19/L20)"
+      "summary": "Patches 23.98p/25p/29.97p encoder tables + 8 libmpr.so sites for native 3:2 MP4/NRT/playback (falls back to L19/L20)"
     },
     "screen_3x2": {
       "label": "3:2 Rear LCD/EVF Ratio & C3 Aspect Cycling",
@@ -102,23 +102,23 @@
       "putback_steps": [
         "I20"
       ],
-      "summary": "Orthogonal delta unlocking XAVC S-I 4K All-Intra 3840x2560 recording"
+      "summary": "Orthogonal delta unlocking XAVC S-I All-Intra 3840x2560 at 23.98p/25p/29.97p"
     }
   },
   "steps": {
     "L5": {
       "file": "libJit_s3_L5.so",
-      "sha256": "5bc1bdcee924e1bd30e405fc29c269440b2c36548ede357d8e34c5d21cc4efa3",
-      "size": 32704,
+      "sha256": "371ded6d9cb66e8d8b26b582c2af171b9dd31c235bc6a2c4ffc8037d6e108947",
+      "size": 37472,
       "level": 5,
-      "summary": "Apply sensor-side open-gate ogsq_s3_v5 (21 sensor/record sites + stored record)"
+      "summary": "Apply dual-mode sensor open-gate ogsq_s3_v6 (0x8c0 + 0x820, NTSC/PAL MULTI_REC, 40 cells + 2 stored records)"
     },
     "L6": {
       "file": "libJit_s3_L6.so",
-      "sha256": "5ea7f7cac2a2bda8628a3dda9012532c7c508f6ea5ce9603021474ee5249f69c",
-      "size": 32720,
+      "sha256": "1fdd3296387814c1fc577fad439059447c362e2eddbff20e7310b63a93707ac1",
+      "size": 37488,
       "level": 6,
-      "summary": "Put back sensor-side open-gate ogsq_s3_v5"
+      "summary": "Put back dual-mode sensor open-gate ogsq_s3_v6"
     },
     "L16": {
       "file": "libJit_s3_L16.so",
@@ -136,31 +136,31 @@
     },
     "L19": {
       "file": "libJit_s3_L19.so",
-      "sha256": "85b5882d0fd2f2525a6eab109ed7ee8ea2f53be42351b56af52e2e7f7f47d588",
-      "size": 25536,
+      "sha256": "b87e5fb342be98d50d8a01beb93d8ffc0bdaf205d4caa19844b4cf966947b216",
+      "size": 28024,
       "level": 19,
-      "summary": "Apply baseline encoder tables ogfile2560_hs_s_s3_v1 (101 av-cam + 4 libmpr)"
+      "summary": "Apply 23.98p/25p/29.97p data-only encoder tables ogfile2560_hs_s_s3_nometa (149 av-cam + 4 libmpr)"
     },
     "L20": {
       "file": "libJit_s3_L20.so",
-      "sha256": "3683c64f54784cfb7fde5af0c4b4096cb6cd3d58cc9c3d988c92abd1c9358f86",
-      "size": 25512,
+      "sha256": "526c85a73e37d763d4529c73ca3a36333eac323468b0b64c1b5432f7a0238583",
+      "size": 28000,
       "level": 20,
-      "summary": "Put back baseline encoder tables ogfile2560_hs_s_s3_v1"
+      "summary": "Put back 23.98p/25p/29.97p data-only encoder tables ogfile2560_hs_s_s3_nometa"
     },
     "V19": {
       "file": "libJit_s3_V19.so",
-      "sha256": "3ef580f51952b458f3191fb08190311544f5fdc188b0151c5c0a57737bfc52c3",
-      "size": 26520,
+      "sha256": "68a33c49b145cdfd39c28c390e669b34d24d74c78dc0f45d5ffadbd93a1e8d18",
+      "size": 29000,
       "level": 19,
-      "summary": "Apply encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_s3_v3 (101 av-cam + 12 libmpr)"
+      "summary": "Apply 23.98p/25p/29.97p encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_s3_v3 (149 av-cam + 12 libmpr)"
     },
     "V20": {
       "file": "libJit_s3_V20.so",
-      "sha256": "145af3e92df71648b15cd6fabd569963d3d990f1bd5f32df822a0a0688791653",
-      "size": 26520,
+      "sha256": "e78762128deeb703ed9b40f00397eeb0428722fe9761d0ab5a755c016dcda4c9",
+      "size": 29000,
       "level": 20,
-      "summary": "Put back encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_s3_v3"
+      "summary": "Put back 23.98p/25p/29.97p encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_s3_v3"
     },
     "S16": {
       "file": "libJit_s3_S16.so",
@@ -220,17 +220,17 @@
     },
     "I19": {
       "file": "libJit_s3_I19.so",
-      "sha256": "dc3e9bec05aa6ea665a88e1c155ce6430c93c4c55a1ec118b4bf7e732dacbec7",
-      "size": 23304,
+      "sha256": "12ea26beab58616a91add9aaff44abae7dd639309715a7dae39783c1cdfa4aea",
+      "size": 24776,
       "level": 19,
-      "summary": "Apply orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_s3_501 (40 av-cam + 2 libmpr, incl. +0x56 dual-core split)"
+      "summary": "Apply orthogonal XAVC S-I 3840x2560 (23.98p/25p/29.97p) delta og_xavcsi_addon_s3_501 (60 av-cam + 2 libmpr, incl. +0x56 dual-core split)"
     },
     "I20": {
       "file": "libJit_s3_I20.so",
-      "sha256": "cdcccfee1a9ca2f0fb0c09c50dbd8c09561bdb644fe5a74c1e317a1d714bf371",
-      "size": 23320,
+      "sha256": "9f9155559bd9c9864bb1dbb9d5c01256268f48a94d85ba07af8820a249294025",
+      "size": 24776,
       "level": 20,
-      "summary": "Put back orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_s3_501"
+      "summary": "Put back orthogonal XAVC S-I 3840x2560 (23.98p/25p/29.97p) delta og_xavcsi_addon_s3_501"
     }
   }
 }

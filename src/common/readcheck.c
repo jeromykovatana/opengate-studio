@@ -620,7 +620,11 @@ extern u32 sen_dma_transfer(u32 dir, u64 src, u64 dst, u32 size);   /* dir 0: co
 #define RAM_LO 0x400000000UL
 #define RAM_HI 0x500000000UL
 #define N_TABLE (sizeof cp_sites / sizeof cp_sites[0])
+#ifdef MULTI_REC                           /* N_RECS stored records (rec_modes), each in REC_VARIANTS timing variants */
+#define N_SITES (N_TABLE + N_RECS)
+#else
 #define N_SITES (N_TABLE + 1)              /* the table's sites, then the stored record */
+#endif
 #define CP_LO 0x108000UL                   /* pointers read from coprocessor memory must lie between these, or nothing is written */
 #define CP_HI 0x10000000UL
 #ifndef IMAGER                             /* another build of the camera software names its own (-DIMAGER=, -DCTRL_DRVPARAM=): helper_s3/build_s3_write.sh */
@@ -650,8 +654,14 @@ extern u32 sen_dma_transfer(u32 dir, u64 src, u64 dst, u32 size);   /* dir 0: co
 
 static u64 l5_phys;
 static u8 *l5_buf;
+#ifdef MULTI_REC
+static struct cp_site l5_recs[N_RECS];     /* the sites after the table's, filled in once the records have been found */
+static u32 l5_variant;                     /* the timing variant all records hold (index into rec_stock / rec_new) */
+static const struct cp_site *site_at(u64 i) { return i < N_TABLE ? &cp_sites[i] : &l5_recs[i - N_TABLE]; }
+#else
 static struct cp_site l5_rec;              /* the 14th site, filled in once the record has been found */
 static const struct cp_site *site_at(u64 i) { return i < N_TABLE ? &cp_sites[i] : &l5_rec; }
+#endif
 
 /* Every transfer is of whole 64-byte lines: the lines a site lies in, at most 4,096 bytes (the generator checks). */
 static u64 line_base(const struct cp_site *s) { return s->address & ~63UL; }
@@ -689,6 +699,44 @@ static const u8 *chain_read(u64 addr, u32 len)
 }
 static u32 le32(const u8 *p) { return (u32)p[0] | (u32)p[1] << 8 | (u32)p[2] << 16 | (u32)p[3] << 24; }
 static int bad_pointer(u32 v) { return (v & 3) || v < CP_LO || v >= CP_HI; }
+#ifdef MULTI_REC
+/* Find the stored record of each mode in rec_modes through the same chain and fill l5_recs; then the timing variant (the camera computes
+   the records at start-up from its 60 Hz or 50 Hz table) whose stock or new bytes every record holds. 0 on success; 1: a record was not
+   found; 2: not exactly one variant fits every record. Only reads. */
+static int find_record(void)
+{
+    const u8 *p = chain_read(IMAGER, 4);
+    if (!p) return 1;
+    u32 ctrl = le32(p);
+    if (bad_pointer(ctrl) || !(p = chain_read((u64)ctrl + CTRL_DRVPARAM, 4))) return 1;
+    u32 obj = le32(p);
+    if (bad_pointer(obj) || !(p = chain_read(obj, 0x18))) return 1;
+    u32 count = le32(p + 4), ids = le32(p + 8), base = le32(p + 0x10);
+    if (count == 0 || count > 64 || bad_pointer(ids) || bad_pointer(base) || !(p = chain_read(ids, count * 4))) return 1;
+    for (u32 r = 0; r < N_RECS; r++) {
+        u32 index = 0xff;
+        for (u32 i = 0; i < count; i++) if (le32(p + 4 * i) == rec_modes[r] && index == 0xff) index = i;
+        if (index == 0xff) return 1;
+        l5_recs[r].address = (u64)base + index * REC;
+        l5_recs[r].length = REC;
+        l5_recs[r].offs = rec_offs; l5_recs[r].noffs = REC_BYTES;
+        if (l5_recs[r].address + REC > CP_HI) return 1;
+    }
+    u32 fits = 0, which = 0;
+    for (u32 v = 0; v < REC_VARIANTS; v++) {
+        int all = 1;
+        for (u32 r = 0; r < N_RECS && all; r++) {
+            if (site_read(&l5_recs[r])) return 1;
+            if (!site_holds(&l5_recs[r], rec_stock[r][v]) && !site_holds(&l5_recs[r], rec_new[r][v])) all = 0;
+        }
+        if (all) { fits++; which = v; }
+    }
+    if (fits != 1) return 2;
+    l5_variant = which;
+    for (u32 r = 0; r < N_RECS; r++) { l5_recs[r].stock = rec_stock[r][which]; l5_recs[r].changed = rec_new[r][which]; }
+    return 0;
+}
+#else
 /* Find the stored record of MODE_ID and fill l5_rec. 0 on success. */
 static int find_record(void)
 {
@@ -709,6 +757,7 @@ static int find_record(void)
     l5_rec.offs = rec_offs; l5_rec.noffs = REC_BYTES;
     return l5_rec.address + REC > CP_HI;
 }
+#endif
 static void say_site(const char *what, const struct cp_site *s)
 {
     u8 a[4] = { (u8)(s->address >> 24), (u8)(s->address >> 16), (u8)(s->address >> 8), (u8)s->address };
@@ -737,8 +786,16 @@ static void level5(void)
     if (m == -1) { puts_("!! mmap of the buffer failed; nothing is written\n"); sys_close((int)fd); cam_dmm_free(handle); return; }
     l5_buf = (u8 *)m + lead;
 
+#ifdef MULTI_REC
+    int found = find_record();
+    if (found == 1) { puts_("!! a stored record was not found where the pointers lead; nothing is written\n"); goto out; }
+    if (found == 2) { puts_("!! the stored records hold neither timing variant (" REC_VARIANTS_TEXT ") throughout; nothing is written\n"); goto out; }
+    for (u32 r = 0; r < N_RECS; r++) { say_site("stored record", &l5_recs[r]); puts_("mode "); puts_(rec_mode_text[r]); puts_("\n"); }
+    puts_("the stored records are the "); puts_(rec_variant_name[l5_variant]); puts_(" variant; "); putnum(REC_BYTES); puts_(" bytes of each are a site\n");
+#else
     if (find_record()) { puts_("!! the stored record was not found where the pointers lead; nothing is written\n"); goto out; }
     say_site("stored record of mode " MODE_TEXT " at", &l5_rec); puts_(REC_BYTES_TEXT " of its bytes are a site\n");
+#endif
     puts_("pass 1: read every site; nothing is written unless all are as expected\n");
     u32 todo = 0;
     for (u64 i = 0; i < N_SITES; i++) {

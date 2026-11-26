@@ -459,6 +459,9 @@ def rules(lib):
 
 
 GUARDS = []                                        # the guard of the current session is the last one
+# Libraries of the toolkit or caller, SHA-256 -> name (or set of SHA-256 strings). A session interrupted after its
+# write leaves /tmp/jiritsu/libJit.so on the service partition; any known hash here is auto-deleted before continuing.
+KNOWN_LIBS = {}
 
 
 class Guard(c.ServiceGuard):
@@ -578,6 +581,29 @@ def remove(session, camera, out):
     else:
         session.say("!! THE LIBRARY MAY STILL BE ON THE SERVICE PARTITION (/tmp/jiritsu/libJit.so). It is not loaded again by itself "
                     "(F409: only with /tmp/jmode set). Cold boot the camera, then run this script with --remove-only.")
+
+
+def _known_label(sha):
+    if isinstance(KNOWN_LIBS, dict):
+        return KNOWN_LIBS.get(sha)
+    if sha in KNOWN_LIBS:
+        return "known toolkit library"
+    return None
+
+
+def remove_leftover(session, camera, out, data):
+    """Delete a known library left by an interrupted earlier session and confirm; stops if removal fails."""
+    sha = c.sha256(data)
+    label = _known_label(sha) or ("this step's library" if sha == LIB_SHA256 else "known library")
+    session.say("A library from an earlier session is still on the service partition: %s (%d bytes, SHA-256 %s...)." % (label, len(data), sha[:16]))
+    session.say("That session was cut off before it could delete it. It is not loaded again by itself. Deleting it now.")
+    left = {}
+    remove(session, camera, left)
+    gone = left.get("library_on_camera_after") is False
+    out["leftover_removed"] = {"sha256": sha, "name": label, "bytes": len(data), "remove_status": left.get("remove_status"), "gone": gone}
+    if not gone:
+        raise c.StopTest("leftover libJit.so (%s) could not be removed (status %s); nothing was written."
+                         % (label, text(left.get("remove_status"))))
 
 
 def check_result(data):
@@ -1017,11 +1043,15 @@ def body_run(session, camera, lib):
     out = session.results["ct6"] = {"library_bytes": len(lib), "library_sha256": LIB_SHA256, "library_sent": False}
     known_answer(session, camera)
     there, data = read(camera, LIB_PATH)
+    if there and (_known_label(c.sha256(data)) is not None or c.sha256(data) == LIB_SHA256):
+        remove_leftover(session, camera, out, data)
+        there = False
     if there:
-        ours = c.sha256(data) == LIB_SHA256
-        raise c.StopTest("a libJit.so is already on the service partition (%d bytes, %s). Nothing was written. %s"
-                         % (len(data), "it is this script's library from an earlier run" if ours else "it is NOT this script's library",
-                            "Use --remove-only." if ours else "It is left alone."))
+        sha = c.sha256(data)
+        raise c.StopTest("a libJit.so is already on the service partition (%d bytes, SHA-256 %s). Nothing was written. "
+                         "It is NOT a known library from this toolkit and is left alone. "
+                         "If it is an earlier build of ours, pass --remove-library %s."
+                         % (len(data), sha, sha))
     there, old = read(camera, RESULT_PATH)
     if there and CLEAR_SHA and c.sha256(old) == CLEAR_SHA:          # --clear-result: it is a result already saved here; delete it and go on
         session.say("An earlier result is on the RAM disk and is the one already saved here (%d bytes). Deleting it." % len(old))
@@ -1304,8 +1334,15 @@ def body_remove_only(session, camera, lib):
         out["library_on_camera_after"] = False
         session.say("There is no /tmp/jiritsu/libJit.so on the camera. Nothing to remove.")
         return
-    if c.sha256(data) != LIB_SHA256:
-        raise c.StopTest("the libJit.so on the camera (%d bytes) is not this script's library. It is left alone." % len(data))
+    sha = c.sha256(data)
+    if _known_label(sha) is not None and sha != LIB_SHA256:
+        remove_leftover(session, camera, out, data)
+        out["library_on_camera_after"] = False
+        return
+    if sha != LIB_SHA256:
+        raise c.StopTest("the libJit.so on the camera (%d bytes, SHA-256 %s) is NOT a known library and is left alone. "
+                         "If it is an earlier build of ours, pass --remove-library %s."
+                         % (len(data), sha, sha))
     remove(session, camera, out)
 
 
@@ -1695,12 +1732,15 @@ def selftest(lib):
     check(sim.vendor_requests[-1][:3] == (1, 0xC800, 0x2855), "normal run: the stop request was sent")
 
     for label, files in (("a library already there", {"/tmp/jiritsu/libJit.so": b"someone else's"}),
-                         ("this library already there", {"/tmp/jiritsu/libJit.so": lib}),
                          ("a result already there", {"/tmp_wbshd/readcheck_result.txt": b"old"}),
                          ("/tmp/jbusy there", {"/tmp/jbusy": b""})):
         s, sim, stopped = simulate(lib, body_run, files)
         check(stopped and W not in sent(s) and D not in sent(s) and all(sim.fs[k] == v for k, v in files.items()),
               "%s: stops, nothing written, nothing deleted" % label)
+    s, sim, stopped = simulate(lib, body_run, {"/tmp/jiritsu/libJit.so": lib})
+    check(not stopped and sent(s).count(D) == 2 and sent(s).count(W) == 1 and s.results["ct6"].get("leftover_removed", {}).get("gone") is True
+          and LIB_PATH.decode() not in sim.fs and sim.loads == 1,
+          "this library already there (leftover): deleted first, then normal run proceeds cleanly")
     s, sim, stopped = simulate(lib, body_run, {"/usr/share/pmbp/DeviceInfo.xml": b"<other/>"})
     check(stopped and sent(s) == ["SET_FILE_PATH", "GET_FILE2"], "known answer wrong: stops after the first read")
 
@@ -1772,8 +1812,19 @@ def main():
                              "for levels 19 and 20: ogfile2560_hs_v1, ogfile2560_hs_s_v1, ogfile2560_hs_s_v2, ogfile57_v1, ogfile57r300_v1, ogfile57r300m1_v1, ogfile57r300m1_v2, ogfile57r300m1_v3 or ogfile57r300m1_v4")
     parser.add_argument("--firmware-shown")
     parser.add_argument("--library-sha256", help="the SHA-256 of the library you reviewed; must equal the pinned one")
+    parser.add_argument("--remove-library", metavar="SHA256", action="append", default=[],
+                        help="also treat an existing /tmp/jiritsu/libJit.so with this SHA-256 (64 hex chars) as an earlier library of ours to remove")
     args = parser.parse_args()
-    global LEVEL, LIB, LIB_SHA256, DESIGN
+    global LEVEL, LIB, LIB_SHA256, DESIGN, KNOWN_LIBS
+    KNOWN_LIBS = {sha: f"level {lvl} ({fn})" for lvl, (fn, sha) in LIBS.items()}
+    for dname, entries in DESIGN_LIBS.items():
+        for lvl, (fn, sha) in entries.items():
+            KNOWN_LIBS[sha] = f"{dname} level {lvl} ({fn})"
+    for extra in args.remove_library:
+        hx = extra.strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", hx):
+            raise SystemExit(f"Invalid --remove-library SHA-256: {extra!r} (expected 64 hex chars). Nothing was sent.")
+        KNOWN_LIBS[hx] = "--remove-library argument"
     LEVEL, DESIGN = args.level, args.design
     if DESIGN == "og4k_data_v1":
         if args.level not in LIBS:

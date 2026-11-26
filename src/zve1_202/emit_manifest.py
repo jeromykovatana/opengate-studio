@@ -18,14 +18,14 @@ def main() -> None:
     step_specs = [
         ("L13", 13, "Apply DMM raw write buffer size dmmwb_zv_v1 (10.3MB -> 26.2MB, 1 word)"),
         ("L14", 14, "Put back DMM raw write buffer size dmmwb_zv_v1"),
-        ("L5", 5, "Apply sensor-side open-gate ogsq_zv_v2 (21 sensor/record sites + stored record)"),
-        ("L6", 6, "Put back sensor-side open-gate ogsq_zv_v2"),
+        ("L5", 5, "Apply sensor-side open-gate ogsq_zv_v3 (0x8c0 + 0x820, NTSC/PAL MULTI_REC, 40 cells + 2 stored records)"),
+        ("L6", 6, "Put back sensor-side open-gate ogsq_zv_v3"),
         ("L16", 16, "Apply coprocessor output size outsz2560_zv_v1 (3840x2160 -> 3840x2560)"),
         ("L17", 17, "Put back coprocessor output size outsz2560_zv_v1"),
-        ("L19", 19, "Apply baseline encoder tables ogfile2560_hs_s_zv_v1 (101 av-cam + 4 libmpr)"),
-        ("L20", 20, "Put back baseline encoder tables ogfile2560_hs_s_zv_v1"),
-        ("V19", 19, "Apply encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_zv_v3 (101 av-cam + 12 libmpr)"),
-        ("V20", 20, "Put back encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_zv_v3"),
+        ("L19", 19, "Apply 23.98p/25p/29.97p data-only encoder tables ogfile2560_hs_s_zv_nometa (149 av-cam + 4 libmpr)"),
+        ("L20", 20, "Put back 23.98p/25p/29.97p data-only encoder tables ogfile2560_hs_s_zv_nometa"),
+        ("V19", 19, "Apply 23.98p/25p/29.97p encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_zv_v3 (149 av-cam + 12 libmpr)"),
+        ("V20", 20, "Put back 23.98p/25p/29.97p encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_zv_v3"),
         ("S16", 16, "Apply rear LCD 3:2 fill & AF/tracking frame tables lcdfill_zv_v2 (5 words)"),
         ("S17", 17, "Put back rear LCD 3:2 fill & AF/tracking frame tables lcdfill_zv_v2"),
         ("C19", 19, "Apply C2 preview aspect cycling routine lcdcycle_zv_v1 (appFw.so)"),
@@ -34,8 +34,8 @@ def main() -> None:
         ("H17", 17, "Put back 3:2 pillarboxed HDMI & anamorphic de-squeeze hdmi32_zv_202"),
         ("B19", 19, "Apply 200M/300M high-bitrate Long-GOP overlay og_highbitrate_zv_202 (108 av-cam sites)"),
         ("B20", 20, "Put back 200M/300M high-bitrate Long-GOP overlay og_highbitrate_zv_202"),
-        ("I19", 19, "Apply orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_zv_202 (20 av-cam + 2 libmpr, incl. +0x56 dual-core split)"),
-        ("I20", 20, "Put back orthogonal XAVC S-I 3840x2560 delta og_xavcsi_addon_zv_202"),
+        ("I19", 19, "Apply orthogonal XAVC S-I 3840x2560 (23.98p/25p/29.97p) delta og_xavcsi_addon_zv_202 (30 av-cam + 2 libmpr, incl. +0x56 dual-core split)"),
+        ("I20", 20, "Put back orthogonal XAVC S-I 3840x2560 (23.98p/25p/29.97p) delta og_xavcsi_addon_zv_202"),
     ]
 
     steps = {}
@@ -87,7 +87,7 @@ def main() -> None:
                 "required": True,
                 "apply_steps": ["L13", "L5", "L16"],
                 "putback_steps": ["L17", "L6", "L14"],
-                "summary": "Enables 3840x2560 sensor readout, raw write buffer resize, and output size class",
+                "summary": "Enables 3840x2560 sensor readout across 23.98p/24p/25p/29.97p (NTSC & PAL), raw write buffer resize, and output size class",
             },
             "mp4_3x2": {
                 "label": "Native 3:2 MP4 Container & Playback",
@@ -96,7 +96,7 @@ def main() -> None:
                 "putback_steps": ["V20"],
                 "fallback_apply_steps": ["L19"],
                 "fallback_putback_steps": ["L20"],
-                "summary": "Patches encoder tables + 8 libmpr.so sites for native 3:2 MP4/NRT/playback (falls back to L19/L20)",
+                "summary": "Patches 23.98p/25p/29.97p encoder tables + 8 libmpr.so sites for native 3:2 MP4/NRT/playback (falls back to L19/L20)",
             },
             "screen_3x2": {
                 "label": "3:2 Rear LCD Fill & C2 Aspect Cycling",
@@ -124,7 +124,7 @@ def main() -> None:
                 "required": False,
                 "apply_steps": ["I19"],
                 "putback_steps": ["I20"],
-                "summary": "Orthogonal delta unlocking XAVC S-I 4K All-Intra 3840x2560 recording",
+                "summary": "Orthogonal delta unlocking XAVC S-I All-Intra 3840x2560 at 23.98p/25p/29.97p",
             },
         },
         "steps": steps,
