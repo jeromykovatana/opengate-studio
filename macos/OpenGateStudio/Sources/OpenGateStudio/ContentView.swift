@@ -17,6 +17,10 @@ public struct ContentView: View {
             mainBody
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .sheet(item: $appState.activeLiveSession) { _ in
+            LiveSessionSheetView()
+                .environmentObject(appState)
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task {
                 await appState.handleAppDidBecomeActive()
@@ -141,14 +145,14 @@ public struct ContentView: View {
     @ViewBuilder
     private var safetyStatusSummaryBadge: some View {
         HStack(spacing: 6) {
-            Image(systemName: appState.offlineMockCamera ? "desktopcomputer" : "terminal.fill")
-                .foregroundStyle(appState.offlineMockCamera ? .blue : .orange)
+            Image(systemName: appState.offlineMockCamera ? "desktopcomputer" : "cable.connector")
+                .foregroundStyle(appState.offlineMockCamera ? .blue : .green)
             Text(
                 appState.offlineMockCamera
                     ? "Mock Simulation (\(appState.mockState.displayName)) — Volatile RAM Only"
                     : (appState.lastResultSource == .liveTerminal
-                        ? "Live USB Mode — Synced from Terminal.app"
-                        : "Live USB Mode — Interactive Terminal.app")
+                        ? "Live USB Mode — Synced (Terminal Fallback)"
+                        : "Live USB Mode — Native In-App (Volatile RAM Only)")
             )
             .font(.caption)
             .foregroundStyle(.secondary)

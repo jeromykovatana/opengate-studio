@@ -13,7 +13,165 @@ public enum StudioTab: String, CaseIterable, Identifiable {
 
 public enum SessionResultSource: String, Sendable, Equatable {
     case mock = "Offline Mock Simulation"
+    case liveInApp = "Live USB (In-App)"
     case liveTerminal = "Live Terminal Session"
+}
+
+public enum PackPreset: String, CaseIterable, Identifiable, Sendable {
+    case safeDaily = "Safe Daily 3:2"
+    case cinemaFull = "Cinema + H.264/All-Intra + HDMI"
+    case reliabilityAudit = "Reliability Audit"
+
+    public var id: String { rawValue }
+}
+
+public enum LiveSessionPhase: Equatable, Sendable {
+    case confirming
+    case running
+    case finished
+    case cancelled
+    case failed
+}
+
+public enum LiveStepStatus: Equatable, Sendable {
+    case pending
+    case waitingDrive(first: Bool)
+    case active
+    case done(outcome: String)
+    case failed(message: String?)
+}
+
+public struct LiveStepItem: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let index: Int
+    public let summary: String
+    public var status: LiveStepStatus
+
+    public init(id: String, index: Int, summary: String, status: LiveStepStatus = .pending) {
+        self.id = id
+        self.index = index
+        self.summary = summary
+        self.status = status
+    }
+}
+
+public enum LiveActionBanner: Equatable, Sendable {
+    case awaitingAdminAuth
+    case connectInitialDrive(title: String, detail: String, stepId: String?)
+    case replugUsbDrive(title: String, detail: String, stepId: String?)
+    case switchToMovieMode(title: String, detail: String, hint: String?)
+}
+
+public struct LiveSessionPresentation: Identifiable, Equatable {
+    public let id: UUID
+    public let action: LiveCommandAction
+    public let bodyId: String
+    public let cameraDisplayName: String
+    public let requiredFirmware: String
+    public let selectedPacks: [String]
+    public let estimatedStepsPreview: [String]
+    public let estimatedStepCount: Int
+
+    public var phase: LiveSessionPhase = .confirming
+    public var confirmedFirmwareAndUsb: Bool = false
+    public var confirmedVolatileRam: Bool = false
+
+    public var steps: [LiveStepItem] = []
+    public var includesClosingDump: Bool = false
+    public var closingDumpStatus: LiveStepStatus? = nil
+    public var activeBanner: LiveActionBanner? = nil
+    public var isCancelling: Bool = false
+    public var logText: String = ""
+    public var isLogExpanded: Bool = false
+
+    public var completionVerdict: String? = nil
+    public var completionState: String? = nil
+    public var completionReady: Bool? = nil
+    public var completionSessionId: String? = nil
+    public var completionActivePacks: [String] = []
+
+    public var failureMessage: String? = nil
+    public var leftBehindWarning: Bool = false
+    public var cancelMessage: String? = nil
+    public var wasAdminAuthCancelled: Bool = false
+
+    public init(
+        id: UUID = UUID(),
+        action: LiveCommandAction,
+        bodyId: String,
+        cameraDisplayName: String,
+        requiredFirmware: String,
+        selectedPacks: [String],
+        estimatedStepsPreview: [String],
+        estimatedStepCount: Int
+    ) {
+        self.id = id
+        self.action = action
+        self.bodyId = bodyId
+        self.cameraDisplayName = cameraDisplayName
+        self.requiredFirmware = requiredFirmware
+        self.selectedPacks = selectedPacks
+        self.estimatedStepsPreview = estimatedStepsPreview
+        self.estimatedStepCount = estimatedStepCount
+    }
+
+    public var requiresVolatileRamConfirmation: Bool {
+        action == .apply || action == .putback
+    }
+
+    public var canAuthorizeAndStart: Bool {
+        confirmedFirmwareAndUsb && (!requiresVolatileRamConfirmation || confirmedVolatileRam)
+    }
+
+    public var actionTitle: String {
+        switch action {
+        case .preflight:
+            return "Read-Only Preflight"
+        case .dump:
+            return "Read-Only RAM Dump"
+        case .apply:
+            return "Apply Selected Packs"
+        case .putback:
+            return "Put Back to Stock"
+        }
+    }
+
+    public var totalProgressUnits: Int {
+        let base = max(steps.count, 1)
+        return base + (includesClosingDump ? 1 : 0)
+    }
+
+    public var completedProgressUnits: Int {
+        var count = steps.filter {
+            if case .done = $0.status { return true }
+            return false
+        }.count
+        if includesClosingDump, let cd = closingDumpStatus, case .done = cd {
+            count += 1
+        }
+        return count
+    }
+
+    public var progressFraction: Double {
+        if phase == .finished {
+            return 1.0
+        }
+        guard !steps.isEmpty || includesClosingDump else { return 0.0 }
+        let total = Double(steps.count + (includesClosingDump ? 1 : 0))
+        guard total > 0 else { return 0.0 }
+        var units = Double(completedProgressUnits)
+        let hasActive = steps.contains(where: {
+            if case .active = $0.status { return true }
+            return false
+        }) || {
+            if case .active = closingDumpStatus { return true }
+            return false
+        }()
+        if hasActive {
+            units += 0.35
+        }
+        return min(max(units / total, 0.0), 1.0)
+    }
 }
 
 @MainActor
@@ -88,7 +246,8 @@ public final class AppState: ObservableObject {
     @Published public var putbackResult: PutbackResult?
     @Published public var stepperError: String?
 
-    // Live Camera USB / Terminal bridge state
+    // Live Camera USB (In-App + Terminal fallback) state
+    @Published public var activeLiveSession: LiveSessionPresentation?
     @Published public var preparedLiveCommandPath: String?
     @Published public var preparedLiveCommandPreview: String?
     @Published public var liveStatusBanner: String?
@@ -104,17 +263,35 @@ public final class AppState: ObservableObject {
     // Console traces
     @Published public var consoleLogs: [CommandTrace] = []
 
-    // Tab 2: Clip Inspector
+    // Tab 3: Clip Inspector
     @Published public var selectedMP4URL: URL?
     @Published public var selectedXMLURL: URL?
+    @Published public var clipExpectMode: String = "open-gate"
     @Published public var clipResult: ClipCheckResult?
     @Published public var clipError: String?
     @Published public var isCheckingClip: Bool = false
+
+    // Tab 3: Field Test & Reliability Report Builder
+    @Published public var reportClipsFolderURL: URL?
+    @Published public var reportMediaCard: String = ""
+    @Published public var reportLens: String = ""
+    @Published public var reportAmbientC: String = ""
+    @Published public var reportSoakMinutes: String = ""
+    @Published public var reportThermalResult: String = ""
+    @Published public var reportReactivationSeconds: String = ""
+    @Published public var reportAfDesqueezeNotes: String = ""
+    @Published public var reportNotes: String = ""
+    @Published public var reportResult: BuildReportResult?
+    @Published public var reportError: String?
+    @Published public var isBuildingReport: Bool = false
+    @Published public var copiedReportConfirmation: Bool = false
 
     private var bridge: StudioBridge?
     private let sessionDir: URL
     private var mockSnapshot = SafetyResultsSnapshot()
     private var liveSnapshot = SafetyResultsSnapshot()
+    private var activeLiveRunHandle: LiveRunHandle?
+    private var activeLiveRunTask: Task<LiveRunResult, Error>?
 
     public static let modularPackOrder: [String] = [
         "mp4_3x2",
@@ -152,6 +329,24 @@ public final class AppState: ObservableObject {
         bodies.first(where: { $0.bodyId == selectedBodyId }) ?? bodies.first
     }
 
+    public var requiredFirmwareForSelectedBody: String {
+        if let fw = selectedBody?.firmware, !fw.isEmpty {
+            return fw
+        }
+        switch selectedBodyId {
+        case "a7s3_501": return "5.01"
+        case "fx3_702": return "7.02"
+        default: return "2.02"
+        }
+    }
+
+    public var orderedSelectedPacksToSend: [String] {
+        let ordered = Self.modularPackOrder.filter { packId in
+            selectedPacks.contains(packId) && (selectedBody == nil || selectedBody?.packs[packId] != nil)
+        }
+        return ordered.isEmpty ? ["core_open_gate"] : ordered
+    }
+
     public var isSetupWizardChecklistComplete: Bool {
         checkedFirmwareVersion
             && checkedSdCardSlot1
@@ -178,6 +373,10 @@ public final class AppState: ObservableObject {
             return pinResult.ok
         }
         return selectedBody?.pinsOk ?? false
+    }
+
+    public var isLiveSessionActive: Bool {
+        activeLiveSession != nil
     }
 
     public func bootstrapIfNeeded() async {
@@ -230,25 +429,14 @@ public final class AppState: ObservableObject {
     public func runPreflight() async {
         guard let bridge else { return }
         stepperError = nil
-        isRunningPreflight = true
-        defer { isRunningPreflight = false }
 
         if !offlineMockCamera {
-            do {
-                let (prep, trace) = try await bridge.prepareLiveCommand(
-                    action: .preflight,
-                    bodyId: selectedBodyId,
-                    packs: nil,
-                    sessionDir: sessionDir
-                )
-                appendLog(trace)
-                recordPreparedLiveCommand(prep, actionLabel: "Read-Only Preflight")
-                openLiveCommandInTerminalIfAllowed(prep.commandFile)
-            } catch {
-                captureError(error, target: .stepper)
-            }
+            presentLiveSession(action: .preflight)
             return
         }
+
+        isRunningPreflight = true
+        defer { isRunningPreflight = false }
 
         applyResult = nil
         putbackResult = nil
@@ -273,31 +461,16 @@ public final class AppState: ObservableObject {
     public func applySelectedPacks() async {
         guard let bridge, isApplyUnlocked else { return }
         stepperError = nil
-        isApplying = true
-        defer { isApplying = false }
-
-        let orderedPacks = Self.modularPackOrder.filter { packId in
-            selectedPacks.contains(packId) && (selectedBody == nil || selectedBody?.packs[packId] != nil)
-        }
-        let packsToSend = orderedPacks.isEmpty ? ["core_open_gate"] : orderedPacks
 
         if !offlineMockCamera {
-            do {
-                let (prep, trace) = try await bridge.prepareLiveCommand(
-                    action: .apply,
-                    bodyId: selectedBodyId,
-                    packs: packsToSend,
-                    sessionDir: sessionDir
-                )
-                appendLog(trace)
-                recordPreparedLiveCommand(prep, actionLabel: "Apply Selected Packs")
-                openLiveCommandInTerminalIfAllowed(prep.commandFile)
-            } catch {
-                captureError(error, target: .stepper)
-            }
+            presentLiveSession(action: .apply)
             return
         }
 
+        isApplying = true
+        defer { isApplying = false }
+
+        let packsToSend = orderedSelectedPacksToSend
         putbackResult = nil
         do {
             let (res, trace) = try await bridge.apply(
@@ -318,25 +491,14 @@ public final class AppState: ObservableObject {
     public func putBackToStock() async {
         guard let bridge else { return }
         stepperError = nil
-        isPuttingBack = true
-        defer { isPuttingBack = false }
 
         if !offlineMockCamera {
-            do {
-                let (prep, trace) = try await bridge.prepareLiveCommand(
-                    action: .putback,
-                    bodyId: selectedBodyId,
-                    packs: nil,
-                    sessionDir: sessionDir
-                )
-                appendLog(trace)
-                recordPreparedLiveCommand(prep, actionLabel: "Put Back to Stock")
-                openLiveCommandInTerminalIfAllowed(prep.commandFile)
-            } catch {
-                captureError(error, target: .stepper)
-            }
+            presentLiveSession(action: .putback)
             return
         }
+
+        isPuttingBack = true
+        defer { isPuttingBack = false }
 
         do {
             let (res, trace) = try await bridge.putback(
@@ -356,7 +518,412 @@ public final class AppState: ObservableObject {
         }
     }
 
-    public func syncLatestCameraSession(silentIfNotFound: Bool = false) async {
+    // MARK: - Native In-App Live USB Session Lifecycle
+
+    public func presentLiveSession(action: LiveCommandAction) {
+        guard activeLiveSession == nil else { return }
+        stepperError = nil
+
+        let displayName = selectedBody?.displayName ?? defaultDisplayName(for: selectedBodyId)
+        let fw = requiredFirmwareForSelectedBody
+        let packs = action == .apply ? orderedSelectedPacksToSend : []
+        let previewSteps = estimateStepsPreview(for: action, packs: packs)
+
+        activeLiveSession = LiveSessionPresentation(
+            action: action,
+            bodyId: selectedBodyId,
+            cameraDisplayName: displayName,
+            requiredFirmware: fw,
+            selectedPacks: packs,
+            estimatedStepsPreview: previewSteps,
+            estimatedStepCount: previewSteps.count
+        )
+    }
+
+    public func authorizeAndStartLiveSession() async {
+        guard let bridge,
+              var session = activeLiveSession,
+              session.phase == .confirming,
+              session.canAuthorizeAndStart else {
+            return
+        }
+
+        stepperError = nil
+        session.phase = .running
+        session.activeBanner = .awaitingAdminAuth
+        session.steps = []
+        session.includesClosingDump = (session.action == .apply)
+        session.closingDumpStatus = (session.action == .apply) ? .pending : nil
+        session.isCancelling = false
+        session.logText = ""
+        session.completionVerdict = nil
+        session.completionState = nil
+        session.completionReady = nil
+        session.completionSessionId = nil
+        session.completionActivePacks = []
+        session.failureMessage = nil
+        session.leftBehindWarning = false
+        session.cancelMessage = nil
+        session.wasAdminAuthCancelled = false
+        activeLiveSession = session
+
+        switch session.action {
+        case .preflight, .dump:
+            isRunningPreflight = true
+        case .apply:
+            isApplying = true
+        case .putback:
+            isPuttingBack = true
+        }
+        defer {
+            isRunningPreflight = false
+            isApplying = false
+            isPuttingBack = false
+            activeLiveRunHandle = nil
+            activeLiveRunTask = nil
+        }
+
+        let packsArg: [String]? = session.action == .apply ? session.selectedPacks : nil
+        let (handle, task) = bridge.startLiveInAppRun(
+            action: session.action,
+            bodyId: session.bodyId,
+            firmwareConfirmed: session.requiredFirmware,
+            confirmVolatileRam: session.requiresVolatileRamConfirmation ? session.confirmedVolatileRam : false,
+            packs: packsArg,
+            sessionDir: sessionDir,
+            dryRunSimulate: false,
+            noMovieSession: false,
+            onEvent: { [weak self] event in
+                Task { @MainActor [weak self] in
+                    self?.handleLiveRunEvent(event)
+                }
+            },
+            onLogChunk: { [weak self] chunk in
+                Task { @MainActor [weak self] in
+                    self?.appendLiveRunLogChunk(chunk)
+                }
+            }
+        )
+
+        activeLiveRunHandle = handle
+        activeLiveRunTask = task
+
+        do {
+            let result = try await task.value
+
+            let packsSuffix = packsArg.map { " --packs \($0.joined(separator: ","))" } ?? ""
+            let trace = CommandTrace(
+                command: "live-inapp \(session.action.rawValue) --body \(session.bodyId) --firmware-confirmed \(session.requiredFirmware)\(packsSuffix)",
+                exitCode: result.exitCode,
+                stdout: result.logOutput,
+                stderr: result.stderrOutput
+            )
+            appendLog(trace)
+
+            await finalizeLiveSessionResult(result, action: session.action, wasCancelRequestedByButton: handle.isCancelRequested)
+        } catch {
+            if var current = activeLiveSession {
+                current.phase = .failed
+                current.activeBanner = nil
+                current.isCancelling = false
+                current.failureMessage = error.localizedDescription
+                activeLiveSession = current
+            }
+            captureError(error, target: .stepper)
+        }
+    }
+
+    public func cancelActiveLiveSession() {
+        guard var current = activeLiveSession, current.phase == .running, !current.isCancelling else { return }
+        current.isCancelling = true
+        activeLiveSession = current
+        activeLiveRunHandle?.cancel()
+    }
+
+    public func retryActiveLiveSession() {
+        guard var current = activeLiveSession, current.phase != .running else { return }
+        current.phase = .confirming
+        current.steps = []
+        current.closingDumpStatus = nil
+        current.activeBanner = nil
+        current.isCancelling = false
+        current.logText = ""
+        current.completionVerdict = nil
+        current.completionState = nil
+        current.completionReady = nil
+        current.completionSessionId = nil
+        current.completionActivePacks = []
+        current.failureMessage = nil
+        current.leftBehindWarning = false
+        current.cancelMessage = nil
+        current.wasAdminAuthCancelled = false
+        activeLiveSession = current
+    }
+
+    public func dismissLiveSessionSheet() {
+        guard activeLiveSession?.phase != .running else { return }
+        activeLiveSession = nil
+    }
+
+    public func launchTerminalFallbackFromSheet() async {
+        guard let bridge,
+              let session = activeLiveSession,
+              session.phase != .running else {
+            return
+        }
+
+        let action = session.action
+        let packsToSend: [String]? = action == .apply ? session.selectedPacks : nil
+        activeLiveSession = nil
+
+        stepperError = nil
+        do {
+            let (prep, trace) = try await bridge.prepareLiveCommand(
+                action: action,
+                bodyId: session.bodyId,
+                packs: packsToSend,
+                sessionDir: sessionDir
+            )
+            appendLog(trace)
+            recordPreparedLiveCommand(prep, actionLabel: session.actionTitle)
+            openLiveCommandInTerminalIfAllowed(prep.commandFile)
+        } catch {
+            captureError(error, target: .stepper)
+        }
+    }
+
+    private func handleLiveRunEvent(_ event: LiveRunEvent) {
+        guard var session = activeLiveSession else { return }
+
+        switch event.type {
+        case "plan":
+            if case .awaitingAdminAuth = session.activeBanner {
+                session.activeBanner = nil
+            }
+            if let planSteps = event.steps, !planSteps.isEmpty {
+                session.steps = planSteps.enumerated().map { idx, step in
+                    LiveStepItem(id: step.id, index: idx + 1, summary: step.summary, status: .pending)
+                }
+            } else if session.steps.isEmpty {
+                let fallbackLabel = (session.action == .preflight || session.action == .dump)
+                    ? "Read-only volatile RAM verification"
+                    : session.actionTitle
+                session.steps = [
+                    LiveStepItem(id: session.action == .preflight ? "PREFLIGHT" : "STEP", index: 1, summary: fallbackLabel, status: .pending)
+                ]
+            }
+            if let closing = event.closingDump {
+                session.includesClosingDump = closing
+                session.closingDumpStatus = closing ? .pending : nil
+            }
+
+        case "wait_drive":
+            let isFirst = event.first ?? true
+            if isFirst {
+                session.activeBanner = .connectInitialDrive(
+                    title: event.title ?? "Connect USB-C in Stills Mode (Mass Storage)",
+                    detail: event.detail ?? "Make sure the camera is ON in Stills mode (USB Connection = Mass Storage), then plug in the USB-C cable.",
+                    stepId: event.stepId
+                )
+            } else {
+                session.activeBanner = .replugUsbDrive(
+                    title: event.title ?? "Unplug USB-C and Plug Right Back In — Keep Camera ON!",
+                    detail: event.detail ?? "Unplug the USB-C cable, pause 1–2 seconds, and plug it right back in without turning the camera off.",
+                    stepId: event.stepId
+                )
+            }
+            updateStepStatus(&session, stepId: event.stepId, stepIndex: event.stepIndex, summary: event.title) { current in
+                if case .done = current { return current }
+                return .waitingDrive(first: isFirst)
+            }
+
+        case "step_start":
+            session.activeBanner = nil
+            updateStepStatus(&session, stepId: event.stepId, stepIndex: event.stepIndex, summary: event.summary) { _ in
+                .active
+            }
+
+        case "step_done":
+            let isOk = event.ok ?? true
+            let outcomeText = event.outcome ?? (isOk ? "DONE" : "FAILED")
+            updateStepStatus(&session, stepId: event.stepId, stepIndex: event.stepIndex, summary: event.summary) { _ in
+                isOk ? .done(outcome: outcomeText) : .failed(message: outcomeText)
+            }
+
+        case "wait_movie_replug":
+            session.activeBanner = .switchToMovieMode(
+                title: event.title ?? "Unplug USB-C → Switch Camera to MOVIE Mode (24p/25p/30p) → Replug USB-C",
+                detail: event.detail ?? "Keep the camera ON, unplug USB-C, switch to Movie mode (24p / 25p / 30p), wait 2 seconds, then replug USB-C for the closing verification dump.",
+                hint: event.hint
+            )
+            session.includesClosingDump = true
+            session.closingDumpStatus = .waitingDrive(first: false)
+
+        case "closing_dump_start":
+            session.activeBanner = nil
+            session.includesClosingDump = true
+            session.closingDumpStatus = .active
+
+        case "closing_dump_done":
+            session.activeBanner = nil
+            session.includesClosingDump = true
+            let verdict = event.verdict ?? "VERIFIED"
+            if event.ready == false {
+                session.closingDumpStatus = .failed(message: verdict)
+            } else {
+                session.closingDumpStatus = .done(outcome: verdict)
+            }
+
+        case "complete":
+            session.activeBanner = nil
+            session.completionVerdict = event.verdict
+            session.completionState = event.state
+            session.completionReady = event.ready
+            session.completionSessionId = event.sessionId
+            session.completionActivePacks = event.activePacks ?? []
+            for idx in session.steps.indices {
+                if case .active = session.steps[idx].status {
+                    session.steps[idx].status = .done(outcome: "DONE")
+                }
+            }
+            if case .active = session.closingDumpStatus {
+                session.closingDumpStatus = .done(outcome: event.verdict ?? "DONE")
+            }
+
+        case "cancelled":
+            session.activeBanner = nil
+            session.cancelMessage = event.message ?? "Cancelled safely before the next step."
+
+        case "error":
+            session.activeBanner = nil
+            session.failureMessage = event.message ?? "Live USB step failed."
+            session.leftBehindWarning = event.leftBehind ?? false
+            if event.stepId != nil || event.stepIndex != nil {
+                updateStepStatus(&session, stepId: event.stepId, stepIndex: event.stepIndex, summary: nil) { _ in
+                    .failed(message: event.message)
+                }
+            }
+
+        default:
+            break
+        }
+
+        activeLiveSession = session
+    }
+
+    private func updateStepStatus(
+        _ session: inout LiveSessionPresentation,
+        stepId: String?,
+        stepIndex: Int?,
+        summary: String?,
+        transform: (LiveStepStatus) -> LiveStepStatus
+    ) {
+        if let stepId, let idx = session.steps.firstIndex(where: { $0.id == stepId }) {
+            session.steps[idx].status = transform(session.steps[idx].status)
+            return
+        }
+        if let stepIndex, stepIndex >= 1, stepIndex <= session.steps.count {
+            session.steps[stepIndex - 1].status = transform(session.steps[stepIndex - 1].status)
+            return
+        }
+        if let stepId, !stepId.isEmpty {
+            let nextIndex = stepIndex ?? (session.steps.count + 1)
+            let item = LiveStepItem(
+                id: stepId,
+                index: nextIndex,
+                summary: summary ?? stepId,
+                status: transform(.pending)
+            )
+            session.steps.append(item)
+        }
+    }
+
+    private func appendLiveRunLogChunk(_ chunk: String) {
+        guard !chunk.isEmpty, var session = activeLiveSession else { return }
+        session.logText.append(chunk)
+        if session.logText.count > 120_000 {
+            session.logText = String(session.logText.suffix(100_000))
+        }
+        activeLiveSession = session
+    }
+
+    private func finalizeLiveSessionResult(
+        _ result: LiveRunResult,
+        action: LiveCommandAction,
+        wasCancelRequestedByButton: Bool
+    ) async {
+        guard var session = activeLiveSession else { return }
+
+        if session.logText.isEmpty && !result.logOutput.isEmpty {
+            session.logText = result.logOutput
+        }
+        session.activeBanner = nil
+        session.isCancelling = false
+
+        let osascriptCancelled = StudioBridge.isOsascriptUserCancelled(
+            exitCode: result.exitCode,
+            stderr: result.stderrOutput
+        )
+
+        if result.wasUserCancelled || osascriptCancelled {
+            session.phase = .cancelled
+            if osascriptCancelled || (!wasCancelRequestedByButton && result.events.isEmpty && result.cancelledEvent == nil) {
+                session.wasAdminAuthCancelled = true
+                session.cancelMessage = "Administrator authorization cancelled — nothing was sent to the camera."
+            } else {
+                session.wasAdminAuthCancelled = false
+                session.cancelMessage = result.cancelledEvent?.message
+                    ?? session.cancelMessage
+                    ?? "Cancelled safely before the next step."
+            }
+            activeLiveSession = session
+            await syncLatestCameraSession(silentIfNotFound: true, source: .liveInApp)
+            return
+        }
+
+        if let complete = result.completeEvent, result.exitCode == 0, complete.ok != false {
+            session.phase = .finished
+            session.completionVerdict = complete.verdict ?? session.completionVerdict
+            session.completionState = complete.state ?? session.completionState
+            session.completionReady = complete.ready ?? session.completionReady
+            session.completionSessionId = complete.sessionId ?? session.completionSessionId
+            if let packs = complete.activePacks {
+                session.completionActivePacks = packs
+            }
+            for idx in session.steps.indices {
+                if case .active = session.steps[idx].status {
+                    session.steps[idx].status = .done(outcome: "DONE")
+                }
+            }
+            activeLiveSession = session
+
+            await syncLatestCameraSession(silentIfNotFound: true, source: .liveInApp)
+            return
+        }
+
+        session.phase = .failed
+        if let errEv = result.errorEvent, let msg = errEv.message, !msg.isEmpty {
+            session.failureMessage = msg
+            session.leftBehindWarning = errEv.leftBehind ?? session.leftBehindWarning
+        } else if let existing = session.failureMessage, !existing.isEmpty {
+            session.failureMessage = existing
+        } else {
+            let trimmedStderr = result.stderrOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedStderr.isEmpty {
+                session.failureMessage = trimmedStderr
+            } else {
+                session.failureMessage = "\(session.actionTitle) exited with status \(result.exitCode). Expand Live Output Log for details."
+            }
+        }
+        activeLiveSession = session
+
+        await syncLatestCameraSession(silentIfNotFound: true, source: .liveInApp)
+    }
+
+    public func syncLatestCameraSession(
+        silentIfNotFound: Bool = false,
+        source: SessionResultSource = .liveInApp
+    ) async {
         guard let bridge else { return }
         if isSyncingSession { return }
         isSyncingSession = true
@@ -368,7 +935,7 @@ public final class AppState: ObservableObject {
             if !silentIfNotFound || isNewSession {
                 appendLog(trace)
             }
-            applySyncedLiveSession(res, silentIfNotFound: silentIfNotFound)
+            applySyncedLiveSession(res, silentIfNotFound: silentIfNotFound, source: source)
         } catch {
             if !silentIfNotFound {
                 captureError(error, target: .stepper)
@@ -377,8 +944,9 @@ public final class AppState: ObservableObject {
     }
 
     public func handleAppDidBecomeActive() async {
-        guard !offlineMockCamera else { return }
-        await syncLatestCameraSession(silentIfNotFound: true)
+        guard !offlineMockCamera, activeLiveSession == nil else { return }
+        let preferredSource: SessionResultSource = preparedLiveCommandPath != nil ? .liveTerminal : .liveInApp
+        await syncLatestCameraSession(silentIfNotFound: true, source: preferredSource)
     }
 
     public func openPreparedLiveCommand() {
@@ -410,13 +978,80 @@ public final class AppState: ObservableObject {
         defer { isCheckingClip = false }
 
         do {
-            let (res, trace) = try await bridge.checkClip(mp4URL: mp4URL, xmlURL: selectedXMLURL)
+            let (res, trace) = try await bridge.checkClip(
+                mp4URL: mp4URL,
+                xmlURL: selectedXMLURL,
+                expect: clipExpectMode
+            )
             appendLog(trace)
             clipResult = res
         } catch {
             clipResult = nil
             captureError(error, target: .clip)
         }
+    }
+
+    public func buildFieldTestReport() async {
+        guard let bridge else { return }
+        reportError = nil
+        copiedReportConfirmation = false
+        isBuildingReport = true
+        defer { isBuildingReport = false }
+
+        do {
+            let (res, trace) = try await bridge.buildReport(
+                bodyId: selectedBodyId,
+                clipsDir: reportClipsFolderURL,
+                sessionDir: sessionDir,
+                mediaCard: reportMediaCard,
+                lens: reportLens,
+                ambientC: reportAmbientC,
+                soakMinutes: reportSoakMinutes,
+                thermalResult: reportThermalResult,
+                reactivationSeconds: reportReactivationSeconds,
+                afDesqueezeNotes: reportAfDesqueezeNotes,
+                notes: reportNotes
+            )
+            appendLog(trace)
+            reportResult = res
+        } catch {
+            reportResult = nil
+            if let bridgeError = error as? StudioBridgeError,
+               case let .cliFailed(_, _, trace) = bridgeError {
+                appendLog(trace)
+            }
+            reportError = error.localizedDescription
+        }
+    }
+
+    public func copyReportMarkdownToClipboard() {
+        guard let md = reportResult?.markdownPreview, !md.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(md, forType: .string)
+        copiedReportConfirmation = true
+    }
+
+    public func revealReportFolderInFinder() {
+        guard let dirPath = reportResult?.reportDir, !dirPath.isEmpty else { return }
+        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: dirPath)
+    }
+
+    public func applyPackPreset(_ preset: PackPreset) {
+        let desired: [String]
+        switch preset {
+        case .safeDaily:
+            desired = ["mp4_3x2", "screen_3x2"]
+        case .cinemaFull, .reliabilityAudit:
+            desired = ["mp4_3x2", "screen_3x2", "hdmi32", "high_bitrate", "xavc_si"]
+        }
+        var next = Set<String>()
+        for packId in desired {
+            if packId == "fx3_playback" { continue }
+            if selectedBody == nil || selectedBody?.packs[packId] != nil {
+                next.insert(packId)
+            }
+        }
+        selectedPacks = next
     }
 
     public func isPackEnabled(_ packId: String) -> Bool {
@@ -443,6 +1078,51 @@ public final class AppState: ObservableObject {
         liveStatusBanner = nil
         lastResultSource = nil
         stepperError = nil
+    }
+
+    private func defaultDisplayName(for bodyId: String) -> String {
+        switch bodyId {
+        case "a7s3_501": return "a7S III 5.01"
+        case "fx3_702": return "FX3 7.02"
+        default: return "ZV-E1 2.02"
+        }
+    }
+
+    private func estimateStepsPreview(for action: LiveCommandAction, packs: [String]) -> [String] {
+        switch action {
+        case .preflight, .dump:
+            return ["DUMP (Read-Only)"]
+        case .apply:
+            guard let body = selectedBody else {
+                return ["L13", "L5", "L16", "V19", "S16", "C19"]
+            }
+            var ordered: [String] = []
+            var seen = Set<String>()
+            let allPackIds = ["core_open_gate"] + packs.filter { $0 != "core_open_gate" }
+            for pid in allPackIds {
+                guard let pack = body.packs[pid] else { continue }
+                for step in pack.applySteps where !seen.contains(step) {
+                    seen.insert(step)
+                    ordered.append(step)
+                }
+            }
+            return ordered.isEmpty ? ["L13", "L5", "L16"] : ordered
+        case .putback:
+            guard let body = selectedBody else {
+                return ["C20", "S17", "V20", "L17", "L6", "L14"]
+            }
+            var ordered: [String] = []
+            var seen = Set<String>()
+            let reversePackIds = Self.modularPackOrder.reversed() + ["core_open_gate"]
+            for pid in reversePackIds {
+                guard let pack = body.packs[pid] else { continue }
+                for step in pack.putbackSteps where !seen.contains(step) {
+                    seen.insert(step)
+                    ordered.append(step)
+                }
+            }
+            return ordered.isEmpty ? ["L17", "L6", "L14"] : ordered
+        }
     }
 
     private func resetBodySpecificSetupConfirmations() {
@@ -487,9 +1167,9 @@ public final class AppState: ObservableObject {
         let terminalDisabled = ProcessInfo.processInfo.environment["OPENGATE_NO_TERMINAL_OPEN"] == "1"
         let status: String
         if terminalDisabled {
-            status = "Prepared \(actionLabel) command (\(fileName)) — Terminal auto-open suppressed (OPENGATE_NO_TERMINAL_OPEN=1)."
+            status = "Prepared Terminal fallback command for \(actionLabel) (\(fileName)) — auto-open suppressed."
         } else {
-            status = "Launched \(actionLabel) in Terminal.app (\(fileName)). Complete the prompts in Terminal, then return here or click Sync Latest Camera Session."
+            status = "Opened Terminal fallback for \(actionLabel) (\(fileName)). Complete prompts there, then return here or click Sync Latest Camera Session."
         }
         preparedLiveCommandPath = prep.commandFile
         preparedLiveCommandPreview = prep.preview
@@ -506,13 +1186,17 @@ public final class AppState: ObservableObject {
         NSWorkspace.shared.open(URL(fileURLWithPath: commandFile))
     }
 
-    private func applySyncedLiveSession(_ res: LatestSessionResult, silentIfNotFound: Bool) {
+    private func applySyncedLiveSession(
+        _ res: LatestSessionResult,
+        silentIfNotFound: Bool,
+        source: SessionResultSource
+    ) {
         liveSnapshot.latestSyncedSession = res
 
         guard res.found else {
             if !silentIfNotFound {
                 let bodyLabel = selectedBody?.displayName ?? selectedBodyId
-                liveSnapshot.liveStatusBanner = "No camera session recorded yet for \(bodyLabel). Run Read-Only Preflight in Terminal.app first."
+                liveSnapshot.liveStatusBanner = "No camera session recorded yet for \(bodyLabel). Click Run Read-Only Preflight to begin."
                 if !offlineMockCamera {
                     latestSyncedSession = res
                     liveStatusBanner = liveSnapshot.liveStatusBanner
@@ -534,7 +1218,7 @@ public final class AppState: ObservableObject {
             )
             liveSnapshot.applyResult = nil
             liveSnapshot.preflightResult = nil
-            liveSnapshot.lastResultSource = .liveTerminal
+            liveSnapshot.lastResultSource = source
             liveSnapshot.liveStatusBanner = "Synced Live Put Back session (\(sessionLabel)): state = \(res.state)"
 
         case "apply", "closing_dump":
@@ -546,7 +1230,7 @@ public final class AppState: ObservableObject {
                 bodyId: res.bodyId
             )
             liveSnapshot.putbackResult = nil
-            liveSnapshot.lastResultSource = .liveTerminal
+            liveSnapshot.lastResultSource = source
             liveSnapshot.liveStatusBanner = "Synced Live Apply session (\(sessionLabel)): \(res.verdict)"
 
         default:
@@ -563,7 +1247,7 @@ public final class AppState: ObservableObject {
                 liveSnapshot.applyResult = nil
             }
             liveSnapshot.putbackResult = nil
-            liveSnapshot.lastResultSource = .liveTerminal
+            liveSnapshot.lastResultSource = source
             let kindLabel = normalizedKind == "dump" ? "Dump" : "Preflight"
             liveSnapshot.liveStatusBanner = "Synced Live \(kindLabel) session (\(sessionLabel)): \(res.verdict)"
         }

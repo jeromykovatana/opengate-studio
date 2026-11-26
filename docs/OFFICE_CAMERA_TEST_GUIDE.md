@@ -18,14 +18,14 @@ Double-click **`setup_and_open_mac.command`** (or run from Terminal):
 
 ```bash
 cd "/path/to/opengate-studio"
-chmod +x setup_and_open_mac.command macos/run_live_terminal.sh
+chmod +x setup_and_open_mac.command macos/run_live_inapp.sh macos/run_live_terminal.sh
 ./setup_and_open_mac.command
 ```
 
 This creates `.venv` with `pyusb==1.3.1`, `pycryptodomex==3.24.2`, and `libusb-package==1.0.30.1` (bundled `libusb` — **no Homebrew or Zadig driver needed**), verifies all SHA-256 pins in `kits/`, builds `macos/OpenGateStudio/dist/OpenGate Studio.app` (if Swift is installed), and opens the app.
 
 > [!NOTE]
-> When running in **Live USB Mode**, macOS binds `iousbmassstorage` to the camera. `macos/run_live_terminal.sh` asks once for your macOS admin password (`sudo`) to unmount the SD/CFexpress card cleanly and release `iousbmassstorage`, then restores ownership of `sessions/` to your user account.
+> When running in **Live USB Mode**, macOS binds `iousbmassstorage` to the camera. Inside `OpenGate Studio.app`, the native in-app Live USB sheet runs `macos/run_live_inapp.sh` with a single macOS administrator prompt to unmount the SD/CFexpress card cleanly and release `iousbmassstorage`, then restores ownership of `sessions/` to your user account automatically (a **Use Terminal Instead** fallback to `macos/run_live_terminal.sh` is also available if you prefer CLI `sudo`).
 
 ---
 
@@ -62,16 +62,16 @@ Set these **once** on each camera before starting:
 ### Step B — Read-Only Preflight (Gate 2)
 1. Connect USB-C directly from Mac to camera (avoid unpowered hubs if possible).
 2. In **OpenGate Studio.app**, select your body (`ZV-E1 2.02`, `a7S III 5.01`, or `FX3 7.02`), toggle **Offline Mock Camera = OFF**, check both Gate 1 boxes, and click **Run Read-Only Preflight** (or run `./macos/run_live_terminal.sh preflight --body <body_id>`).
-3. In the Terminal window:
-   - Enter your macOS admin password if prompted.
-   - Type the exact firmware version (`2.02`, `5.01`, or `7.02`).
-4. Verify the output says **`VERDICT READY (stock preflight)`** (`ready=True, state="stock"`).
-   - If using `OpenGate Studio.app`, switch back to the app (or click **Sync Latest Camera Session**); Gate 3 (**Apply Selected Packs**) unlocks automatically.
+3. In the native in-app Live USB sheet (or Terminal fallback if chosen):
+   - Toggle the exact firmware + USB Mass Storage confirmation switch (`2.02`, `5.01`, or `7.02`), click **Authorize & Start Preflight**, and approve the macOS administrator prompt (Touch ID or password).
+   - *(CLI / Terminal fallback via `macos/run_live_terminal.sh`: enter your macOS admin password if prompted and type the exact firmware version.)*
+4. Verify the sheet reports **`VERDICT READY (stock preflight)`** (`ready=True, state="stock"`).
+   - `OpenGate Studio.app` syncs the session automatically on completion and unlocks Gate 3 (**Apply Selected Packs**).
    - If preflight reports **`VERDICT NOT READY`** (e.g., warm power-switch mixed state), **pull the battery for >= 10s**, power on in **Stills**, and re-run preflight.
 
 ### Step C — Apply Selected Packs (Gate 3)
 1. Select your desired modular packs in `OpenGate Studio.app` (recommended office test set: `mp4_3x2`, `screen_3x2`, `hdmi32`, `high_bitrate`, `xavc_si`) and click **Apply Selected Packs** (or run `./macos/run_live_terminal.sh apply --body <body_id> --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si`).
-2. Confirm exact firmware (`2.02` / `5.01` / `7.02`) and type **`YES`**.
+2. In the in-app confirmation sheet, toggle both confirmation switches (exact firmware `2.02` / `5.01` / `7.02` and volatile-RAM-only / keep camera ON), then click **Authorize & Start Apply** *(in Terminal fallback, confirm the exact firmware and type `YES`)*.
 3. **Between every step:** When prompted, **unplug the USB cable and plug it right back in** — **do NOT power the camera off**.
    - *macOS USB Note:* On macOS, after a step completes and sends the USB reset/stop request, the camera may re-enumerate automatically ~5 seconds later without requiring a physical cable replug — wait briefly or replug if it does not reappear.
    - **ZV-E1 (`zve1_202`):** Runs `L13` (`dmmwb_zv_v1` raw buffer resize **first**, before Movie mode!) -> `L5` -> `L16` -> `V19` -> `H16` -> `B19` -> `I19` -> `S16` -> `C19`.
@@ -105,7 +105,7 @@ Set these **once** on each camera before starting:
 
 ## 4. Verify Recorded Clips & Gyro Telemetry (`bionz_clip_check.py`)
 
-Copy the recorded `Cxxxx.MP4` and matching `CxxxxM01.XML` sidecar files to a folder on your Mac (keep card originals intact), then inspect via Tab 2 (**Clip, XML & Gyro Inspector**) in `OpenGate Studio.app` or CLI:
+Copy the recorded `Cxxxx.MP4` and matching `CxxxxM01.XML` sidecar files to a folder on your Mac (keep card originals intact), then inspect via Tab 3 (**Clip, XML & Gyro Inspector**) in `OpenGate Studio.app` or CLI:
 
 ```bash
 # Baseline stock clip (expects 3840x2160)

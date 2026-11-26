@@ -113,7 +113,7 @@ Requires **macOS 14+** and **Python 3.9+** (Apple Silicon `arm64` prebuilt bundl
    - **Tab 1 — Camera Setup Wizard:** Exact camera menu settings (`Mass Storage`, `Slot 1` card, `24p`, Stills cold-boot check).
    - **Tab 2 — Feature Packs & 5-Gate Stepper:** Verify SHA-256 pins, toggle modular packs, run read-only Preflight, Apply, and Put Back.
    - **Tab 3 — Clip, XML & Gyro Inspector:** Drag & drop any recorded `Cxxxx.MP4` + `CxxxxM01.XML` to verify `3840×2560` geometry, NRT XML aspect, and `rtmd` gyro samples.
-3. **Go Live Over USB-C:** Toggle **Offline Mock Camera = OFF**. Clicking Preflight, Apply, or Put Back launches an audited `Terminal.app` session via `macos/run_live_terminal.sh` (prompts once for `sudo` to detach `iousbmassstorage`), then syncs the verdict back into the app.
+3. **Go Live Over USB-C:** Toggle **Offline Mock Camera = OFF**. Clicking Preflight, Apply, or Put Back opens the native in-app Live USB sheet (`macos/run_live_inapp.sh`) with clickable safety confirmations, a single macOS administrator dialog to release `iousbmassstorage`, live step-by-step progress/replug banners, safe between-step Cancel, and automatic verdict sync back into the app (a subtle **Use Terminal Instead** fallback to `macos/run_live_terminal.sh` remains available inside the sheet).
 
 ### Option B — Live USB Terminal (macOS)
 
@@ -151,6 +151,9 @@ python3 cli/studio_cli.py putback --body zve1_202 --packs mp4_3x2,screen_3x2,hdm
 
 # Inspect an MP4 clip + optional M01.XML sidecar for 3:2 framing & rtmd gyro telemetry
 python3 cli/studio_cli.py check-clip /path/to/C0001.MP4 --xml /path/to/C0001M01.XML --json
+
+# Generate a Markdown + JSON Field Test & Reliability Report from a folder of test clips
+python3 cli/studio_cli.py build-report --body fx3_702 --clips-dir /path/to/test_clips --json
 
 # Run built-in clip checker self-test, clean-room audit, and unit tests
 python3 cli/bionz_clip_check.py --selftest
@@ -231,6 +234,15 @@ No. Leave a normal formatted SD or CFexpress card in **Slot 1** only so the came
 </details>
 
 <details>
+<summary><strong>Is Open Gate H.265 only, and what about Autofocus with anamorphic de-squeeze or False Color?</strong></summary>
+
+- **Not H.265 only:** Alongside `XAVC HS 4K` (H.265), `mp4_3x2` and `xavc_si` support **H.264 (`XAVC S 4K` Long-GOP + `XAVC S-I 4K` All-Intra)** with optional **`200M / 300M`** bitrates (`high_bitrate`).
+- **Anamorphic + Autofocus (`hdmi32`):** Sony's built-in *De-Squeeze Display* on FX3 forces Manual Focus by design. Use the **`hdmi32`** pack to output clean 3:2 to an external monitor and turn de-squeeze ON on the monitor while leaving in-camera De-Squeeze **OFF** so Sony autofocus remains active.
+- **False Color & Scopes:** None of `ZV-E1 2.02`, `a7S III 5.01`, or `FX3 7.02` contain working in-body False Color or Waveform DSP code. Use Sony's free **Monitor & Control** app or an external monitor via `hdmi32` for False Color / Waveform.
+
+</details>
+
+<details>
 <summary><strong>Does this unlock paid Sony licenses like Custom Grid Lines, C2PA, or paid DCI 4K/120p?</strong></summary>
 
 **Never.** Paid Sony license/DRM checks (`CUSTOM_GRID`, `C2PA`, `DIGITAL_SIGNATURE`, paid regional `DCI4K_24P`/`4K120P`) are strictly excluded by policy.
@@ -241,7 +253,7 @@ No. Leave a normal formatted SD or CFexpress card in **Slot 1** only so the came
 
 ## Documentation & Community
 
-- [Office Camera Test Guide (`ZV-E1 2.02` · `a7S III 5.01` · `FX3 7.02`)](docs/OFFICE_CAMERA_TEST_GUIDE.md) — exact camera menu setup & step-by-step checklist
+- [Office Camera Test Guide (`ZV-E1 2.02` · `a7S III 5.01` · `FX3 7.02`)](docs/OFFICE_CAMERA_TEST_GUIDE.md) · [Pressure-Test & Report Guide](docs/PRESSURE_TEST_AND_REPORT_GUIDE.md) · [Safety & Clean-Room](docs/SAFETY_AND_CLEANROOM.md)
 - [Safety, Volatile RAM & Clean-Room Policy](docs/SAFETY_AND_CLEANROOM.md) — 5-gate architecture & clean-room verification rules
 - [BIONZ XR 12.1MP Offset Audit & MP4 3:2 Muxer](docs/OFFSET_AUDIT.md) — cross-body memory architecture & Ghidra muxer analysis
 - [Feature Unlock Ranking & Verified Designs](docs/FEATURE_UNLOCK_RANKING.md) — offline readiness audit & hardware exclusions

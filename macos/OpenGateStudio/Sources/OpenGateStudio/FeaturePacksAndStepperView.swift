@@ -94,6 +94,22 @@ public struct FeaturePacksAndStepperView: View {
                 }
             }
 
+            HStack(spacing: 8) {
+                Text("Presets:")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Button("Safe Daily 3:2") {
+                    appState.applyPackPreset(.safeDaily)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+                Button("Cinema + H.264/All-Intra + HDMI") {
+                    appState.applyPackPreset(.cinemaFull)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+            }
+
             requiredCoreCard
 
             ForEach(modularCatalog, id: \.id) { meta in
@@ -146,6 +162,18 @@ public struct FeaturePacksAndStepperView: View {
         )
     }
 
+    private func displayTitle(for meta: PackMetadata) -> String {
+        guard meta.id == "screen_3x2" else { return meta.title }
+        switch appState.selectedBodyId {
+        case "fx3_702":
+            return "3:2 Rear LCD & Native De-Squeeze"
+        case "a7s3_501":
+            return "3:2 LCD / EVF & C3 Cycle"
+        default:
+            return "3:2 LCD Fill & C2 Cycle"
+        }
+    }
+
     private func modularPackCard(_ meta: PackMetadata) -> some View {
         let manifestPack = appState.selectedBody?.packs[meta.id]
         let isAvailable = appState.selectedBody == nil || manifestPack != nil
@@ -157,6 +185,7 @@ public struct FeaturePacksAndStepperView: View {
         } ?? meta.defaultStepsHint
 
         let isExperimentalFX3Playback = meta.id == "fx3_playback"
+        let showHdmiAfTip = meta.id == "hdmi32" && (isEnabled || appState.selectedBodyId == "fx3_702")
 
         return HStack(alignment: .top, spacing: 12) {
             Image(systemName: meta.icon)
@@ -166,7 +195,7 @@ public struct FeaturePacksAndStepperView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(meta.title)
+                    Text(displayTitle(for: meta))
                         .font(.subheadline.weight(.semibold))
                     if isExperimentalFX3Playback {
                         Text("UNTESTED ON HARDWARE")
@@ -194,6 +223,21 @@ public struct FeaturePacksAndStepperView: View {
                 Text(manifestPack?.summary ?? manifestPack?.description ?? meta.subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                if showHdmiAfTip {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "info.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.blue)
+                        Text("AF + Anamorphic Tip: Leave FX3 internal De-Squeeze OFF to keep Sony AF active and de-squeeze clean 3:2 on your external HDMI monitor.")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.blue)
+                    }
+                    .padding(6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.blue.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
 
                 if isExperimentalFX3Playback {
                     HStack(alignment: .top, spacing: 6) {
@@ -250,7 +294,7 @@ public struct FeaturePacksAndStepperView: View {
             }
 
             if !appState.offlineMockCamera {
-                liveTerminalBanner
+                liveUsbModeBanner
             }
 
             if let err = appState.stepperError {
@@ -319,7 +363,7 @@ public struct FeaturePacksAndStepperView: View {
                             }
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(!appState.isChecklistComplete || appState.isRunningPreflight)
+                        .disabled(!appState.isChecklistComplete || appState.isRunningPreflight || appState.isLiveSessionActive)
 
                         if !appState.offlineMockCamera {
                             Button {
@@ -413,13 +457,13 @@ public struct FeaturePacksAndStepperView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.green)
-                        .disabled(!appState.isApplyUnlocked || appState.isApplying)
+                        .disabled(!appState.isApplyUnlocked || appState.isApplying || appState.isLiveSessionActive)
 
                         if !appState.isApplyUnlocked {
                             Text(
                                 appState.offlineMockCamera
                                     ? "Requires Gate 2 preflight ready == true"
-                                    : "Requires Gate 1 + synced Live Preflight (ready == true)"
+                                    : "Requires Gate 1 + Live Read-Only Preflight (VERDICT READY)"
                             )
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -498,7 +542,7 @@ public struct FeaturePacksAndStepperView: View {
                         }
                     }
                     .buttonStyle(.bordered)
-                    .disabled(appState.isPuttingBack)
+                    .disabled(appState.isPuttingBack || appState.isLiveSessionActive)
 
                     if let putback = appState.putbackResult {
                         VStack(alignment: .leading, spacing: 4) {
@@ -590,17 +634,17 @@ public struct FeaturePacksAndStepperView: View {
         )
     }
 
-    private var liveTerminalBanner: some View {
+    private var liveUsbModeBanner: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "terminal.fill")
+                Image(systemName: "cable.connector")
                     .font(.title3)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.blue)
                     .frame(width: 24, height: 24)
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text("Live Camera USB Mode — Interactive Terminal.app")
+                        Text("Live Camera USB Mode — Native In-App")
                             .font(.subheadline.weight(.semibold))
                         Spacer()
                         Button {
@@ -612,15 +656,15 @@ public struct FeaturePacksAndStepperView: View {
                                 } else {
                                     Image(systemName: "arrow.triangle.2.circlepath")
                                 }
-                                Text("Sync Latest Camera Session")
+                                Text("Sync Latest Session")
                             }
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .disabled(appState.isSyncingSession)
+                        .disabled(appState.isSyncingSession || appState.isLiveSessionActive)
                     }
 
-                    Text("macOS USB camera takeover launches interactively in Terminal.app: it prompts once for your admin password to detach the macOS USB storage driver, asks for firmware confirmation, and guides you through USB unplug/replug prompts between steps. When Terminal finishes, return to OpenGate Studio or click Sync Latest Camera Session.")
+                    Text("Runs natively in OpenGate Studio with macOS administrator approval — no Terminal required. You'll confirm your firmware with clickable switches, follow visual USB replug banners, and sync results automatically.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -640,7 +684,7 @@ public struct FeaturePacksAndStepperView: View {
                                 .textSelection(.enabled)
                                 .lineLimit(2)
                             Spacer()
-                            Button("Open in Terminal") {
+                            Button("Open Terminal Fallback") {
                                 appState.openPreparedLiveCommand()
                             }
                             .buttonStyle(.bordered)
@@ -663,24 +707,30 @@ public struct FeaturePacksAndStepperView: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color.orange.opacity(0.08))
+                .fill(Color.blue.opacity(0.07))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+                .stroke(Color.blue.opacity(0.30), lineWidth: 1)
         )
     }
 
     @ViewBuilder
     private var resultSourceBadge: some View {
-        let source = appState.lastResultSource ?? (appState.offlineMockCamera ? .mock : .liveTerminal)
-        let isLive = source == .liveTerminal
+        let source = appState.lastResultSource ?? (appState.offlineMockCamera ? .mock : .liveInApp)
+        let badgeColor: Color = {
+            switch source {
+            case .mock: return .blue
+            case .liveInApp: return .green
+            case .liveTerminal: return .orange
+            }
+        }()
         Text(source.rawValue)
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
-            .background(isLive ? Color.orange.opacity(0.18) : Color.blue.opacity(0.14))
-            .foregroundStyle(isLive ? Color.orange : Color.blue)
+            .background(badgeColor.opacity(0.16))
+            .foregroundStyle(badgeColor)
             .clipShape(Capsule())
     }
 

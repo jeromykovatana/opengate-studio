@@ -376,6 +376,338 @@ struct OpenGateStudioTests {
         #expect(put.stepsRun.contains(where: { $0.step == "P30" }))
     }
 
+    @Test("LiveRunEvent decodes all 10 live orchestrator JSONL event schemas")
+    func testDecodeAllTenLiveRunEventPayloads() throws {
+        let decoder = JSONDecoder()
+        let samples: [String] = [
+            #"{"ts":"2026-01-01T00:00:01Z","type":"plan","action":"apply","body_id":"zve1_202","camera":"Sony ZV-E1","firmware":"2.02","steps":[{"id":"L13","summary":"Check clean state"},{"id":"L5","summary":"Enable open-gate sensor mode"}],"closing_dump":true}"#,
+            #"{"ts":"2026-01-01T00:00:02Z","type":"wait_drive","first":true,"step_index":1,"total_steps":2,"step_id":"L13","title":"Connect camera in Stills mode","detail":"USB Connection = Mass Storage"}"#,
+            #"{"ts":"2026-01-01T00:00:03Z","type":"step_start","step_index":1,"total_steps":2,"step_id":"L13","summary":"Check clean state"}"#,
+            #"{"ts":"2026-01-01T00:00:04Z","type":"step_done","step_index":1,"total_steps":2,"step_id":"L13","outcome":"DONE","ok":true}"#,
+            #"{"ts":"2026-01-01T00:00:05Z","type":"wait_movie_replug","hint":"MOVIE mode (24p/25p/30p)","title":"Switch camera to Movie mode","detail":"Unplug USB-C, switch to Movie mode, replug."}"#,
+            #"{"ts":"2026-01-01T00:00:06Z","type":"closing_dump_start"}"#,
+            #"{"ts":"2026-01-01T00:00:07Z","type":"closing_dump_done","verdict":"VERDICT READY (open gate applied)","ready":true}"#,
+            #"{"ts":"2026-01-01T00:00:08Z","type":"complete","ok":true,"action":"apply","body_id":"zve1_202","session_id":"20260101_000008","verdict":"VERDICT READY (open gate applied)","state":"applied","ready":true,"steps_run":["L13","L5"],"active_packs":["core_open_gate","mp4_3x2"]}"#,
+            #"{"ts":"2026-01-01T00:00:09Z","type":"cancelled","step_index":null,"step_id":null,"message":"Cancelled safely before step 2."}"#,
+            #"{"ts":"2026-01-01T00:00:10Z","type":"error","step_index":2,"step_id":"L5","message":"Step L5 failed","left_behind":true}"#
+        ]
+
+        let decoded = try samples.map { line in
+            try decoder.decode(LiveRunEvent.self, from: Data(line.utf8))
+        }
+        #expect(decoded.count == 10)
+
+        let plan = decoded[0]
+        #expect(plan.type == "plan")
+        #expect(plan.action == "apply")
+        #expect(plan.bodyId == "zve1_202")
+        #expect(plan.camera == "Sony ZV-E1")
+        #expect(plan.firmware == "2.02")
+        #expect(plan.steps == [
+            LivePlanStep(id: "L13", summary: "Check clean state"),
+            LivePlanStep(id: "L5", summary: "Enable open-gate sensor mode")
+        ])
+        #expect(plan.closingDump == true)
+
+        let waitDrive = decoded[1]
+        #expect(waitDrive.type == "wait_drive")
+        #expect(waitDrive.first == true)
+        #expect(waitDrive.stepIndex == 1)
+        #expect(waitDrive.totalSteps == 2)
+        #expect(waitDrive.stepId == "L13")
+        #expect(waitDrive.title == "Connect camera in Stills mode")
+        #expect(waitDrive.detail == "USB Connection = Mass Storage")
+
+        let stepStart = decoded[2]
+        #expect(stepStart.type == "step_start")
+        #expect(stepStart.stepId == "L13")
+        #expect(stepStart.summary == "Check clean state")
+
+        let stepDone = decoded[3]
+        #expect(stepDone.type == "step_done")
+        #expect(stepDone.outcome == "DONE")
+        #expect(stepDone.ok == true)
+
+        let waitMovie = decoded[4]
+        #expect(waitMovie.type == "wait_movie_replug")
+        #expect(waitMovie.hint == "MOVIE mode (24p/25p/30p)")
+        #expect(waitMovie.title == "Switch camera to Movie mode")
+
+        let closingStart = decoded[5]
+        #expect(closingStart.type == "closing_dump_start")
+
+        let closingDone = decoded[6]
+        #expect(closingDone.type == "closing_dump_done")
+        #expect(closingDone.verdict == "VERDICT READY (open gate applied)")
+        #expect(closingDone.ready == true)
+
+        let complete = decoded[7]
+        #expect(complete.type == "complete")
+        #expect(complete.ok == true)
+        #expect(complete.sessionId == "20260101_000008")
+        #expect(complete.state == "applied")
+        #expect(complete.ready == true)
+        #expect(complete.stepsRun?.map(\.step) == ["L13", "L5"])
+        #expect(complete.activePacks == ["core_open_gate", "mp4_3x2"])
+
+        let cancelled = decoded[8]
+        #expect(cancelled.type == "cancelled")
+        #expect(cancelled.stepIndex == nil)
+        #expect(cancelled.stepId == nil)
+        #expect(cancelled.message == "Cancelled safely before step 2.")
+
+        let errorEvent = decoded[9]
+        #expect(errorEvent.type == "error")
+        #expect(errorEvent.stepIndex == 2)
+        #expect(errorEvent.stepId == "L5")
+        #expect(errorEvent.leftBehind == true)
+    }
+
+    @Test("Shell single-quoting and AppleScript escaping neutralize special characters safely")
+    func testShellAndAppleScriptQuotingSafety() throws {
+        let trickyPayload = #"dir with spaces/O'Brien "quoted" $(echo PWNED) `id` ; \backslash"#
+        let quoted = StudioBridge.shellSingleQuote(trickyPayload)
+        #expect(quoted == #"'dir with spaces/O'\''Brien "quoted" $(echo PWNED) `id` ; \backslash'"#)
+
+        // Verify /bin/bash parses the single-quoted argument verbatim with zero expansion (unprivileged)
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/bash")
+        proc.arguments = ["-c", "printf '%s' \(quoted)"]
+        let stdoutPipe = Pipe()
+        proc.standardOutput = stdoutPipe
+        try proc.run()
+        proc.waitUntilExit()
+        #expect(proc.terminationStatus == 0)
+        let echoed = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+        #expect(echoed == trickyPayload)
+
+        let shellCmd = StudioBridge.buildLiveInAppShellCommand(
+            scriptPath: "/tmp/My Folder/run_live_inapp.sh",
+            arguments: ["--body", "zve1_202", "--session-dir", trickyPayload]
+        )
+        #expect(shellCmd.hasPrefix("'/bin/bash' '/tmp/My Folder/run_live_inapp.sh' '--body' 'zve1_202' '--session-dir' "))
+
+        let appleScript = StudioBridge.buildAdminAppleScript(
+            shellCommand: shellCmd,
+            prompt: "Confirm \"RAM\" \\ access\nline2"
+        )
+        #expect(appleScript.hasPrefix("do shell script \""))
+        #expect(appleScript.hasSuffix("with administrator privileges"))
+        #expect(appleScript.contains(#"\\\"quoted\\\""#) == false)
+        #expect(appleScript.contains(#"\"quoted\""#))
+        #expect(appleScript.contains(#"\\backslash"#))
+        #expect(appleScript.contains(#"Confirm \"RAM\" \\ access\nline2"#))
+
+        #expect(StudioBridge.isOsascriptUserCancelled(exitCode: 1, stderr: "execution error: User canceled. (-128)") == true)
+        #expect(StudioBridge.isOsascriptUserCancelled(exitCode: 1, stderr: "User cancelled by dialog") == true)
+        #expect(StudioBridge.isOsascriptUserCancelled(exitCode: 0, stderr: "(-128)") == false)
+        #expect(StudioBridge.isOsascriptUserCancelled(exitCode: 1, stderr: "command failed with status 2") == false)
+    }
+
+    @Test("startLiveInAppRun streams events and logs in dryRunSimulate mode for preflight and apply")
+    func testLiveInAppDryRunStreamingPreflightAndApply() async throws {
+        let sessionDir = try makeTempDir(prefix: "ogs-inapp-stream")
+        defer { try? FileManager.default.removeItem(at: sessionDir) }
+        let bridge = try makeBridge(sessionDir: sessionDir)
+
+        // 1. Simulated Preflight
+        let preEvents = ThreadSafeCollector<LiveRunEvent>()
+        let preLogs = ThreadSafeCollector<String>()
+        let (preHandle, preTask) = bridge.startLiveInAppRun(
+            action: .preflight,
+            bodyId: "zve1_202",
+            firmwareConfirmed: "2.02",
+            confirmVolatileRam: false,
+            packs: nil,
+            sessionDir: sessionDir,
+            dryRunSimulate: true,
+            noMovieSession: false,
+            onEvent: { preEvents.append($0) },
+            onLogChunk: { preLogs.append($0) }
+        )
+        defer { try? FileManager.default.removeItem(at: preHandle.runDirectory) }
+
+        let preResult = try await preTask.value
+        #expect(preResult.exitCode == 0)
+        #expect(preResult.wasUserCancelled == false)
+        #expect(FileManager.default.fileExists(atPath: preResult.eventsFile.path))
+        #expect(FileManager.default.fileExists(atPath: preResult.logFile.path))
+
+        let preEventTypes = preResult.events.map(\.type)
+        #expect(preEventTypes.contains("plan"))
+        #expect(preEventTypes.contains("step_start"))
+        #expect(preEventTypes.contains("step_done"))
+        #expect(preEventTypes.contains("complete"))
+        #expect(preEvents.snapshot() == preResult.events)
+        #expect(preLogs.snapshot().joined() == preResult.logOutput)
+        #expect(!preResult.logOutput.isEmpty)
+
+        // 2. Simulated Apply (with closing dump in Movie mode)
+        let appEvents = ThreadSafeCollector<LiveRunEvent>()
+        let appLogs = ThreadSafeCollector<String>()
+        let (appHandle, appTask) = bridge.startLiveInAppRun(
+            action: .apply,
+            bodyId: "zve1_202",
+            firmwareConfirmed: "2.02",
+            confirmVolatileRam: true,
+            packs: ["mp4_3x2", "screen_3x2"],
+            sessionDir: sessionDir,
+            dryRunSimulate: true,
+            noMovieSession: false,
+            onEvent: { appEvents.append($0) },
+            onLogChunk: { appLogs.append($0) }
+        )
+        defer { try? FileManager.default.removeItem(at: appHandle.runDirectory) }
+
+        let appResult = try await appTask.value
+        #expect(appResult.exitCode == 0)
+        #expect(appResult.wasUserCancelled == false)
+
+        let appEventTypes = appResult.events.map(\.type)
+        #expect(appEventTypes.contains("plan"))
+        #expect(appEventTypes.contains("step_start"))
+        #expect(appEventTypes.contains("step_done"))
+        #expect(appEventTypes.contains("wait_movie_replug"))
+        #expect(appEventTypes.contains("closing_dump_start"))
+        #expect(appEventTypes.contains("closing_dump_done"))
+        #expect(appEventTypes.contains("complete"))
+        #expect(appEvents.snapshot() == appResult.events)
+        #expect(appLogs.snapshot().joined() == appResult.logOutput)
+        #expect(!appResult.logOutput.isEmpty)
+    }
+
+    @Test("LiveRunHandle.cancel cleanly cancels simulated in-app run between steps")
+    func testLiveInAppSafeCancellation() async throws {
+        let sessionDir = try makeTempDir(prefix: "ogs-inapp-cancel")
+        defer { try? FileManager.default.removeItem(at: sessionDir) }
+        let bridge = try makeBridge(sessionDir: sessionDir)
+
+        let events = ThreadSafeCollector<LiveRunEvent>()
+        let (handle, task) = bridge.startLiveInAppRun(
+            action: .apply,
+            bodyId: "zve1_202",
+            firmwareConfirmed: "2.02",
+            confirmVolatileRam: true,
+            packs: ["mp4_3x2", "screen_3x2"],
+            sessionDir: sessionDir,
+            dryRunSimulate: true,
+            noMovieSession: false,
+            onEvent: { events.append($0) },
+            onLogChunk: { _ in }
+        )
+        defer { try? FileManager.default.removeItem(at: handle.runDirectory) }
+
+        // Request safe cancellation immediately so cancel.flag is present before steps finish
+        handle.cancel()
+        #expect(handle.isCancelRequested == true)
+        #expect(FileManager.default.fileExists(atPath: handle.cancelFile.path))
+
+        let result = try await task.value
+        #expect(result.wasUserCancelled == true)
+        let sawCancelled = result.events.contains(where: { $0.type == "cancelled" })
+        #expect(sawCancelled || result.exitCode == 130)
+    }
+
+    @Test("checkClip decodes telemetry and accepts A7 IV 5760x3840 fixture")
+    func testCheckClipTelemetryAndA7IV57K() async throws {
+        let tmpDir = try makeTempDir(prefix: "ogs-clip-57k")
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let bridge = try makeBridge(sessionDir: tmpDir)
+
+        let mp4URL = tmpDir.appendingPathComponent("C0099.MP4")
+        let xmlURL = tmpDir.appendingPathComponent("C0099M01.XML")
+        try generate57KClipFixture(repoRoot: bridge.repoRoot, mp4URL: mp4URL, xmlURL: xmlURL)
+
+        let (clipRes, trace) = try await bridge.checkClip(mp4URL: mp4URL, xmlURL: xmlURL, expect: "open-gate")
+        #expect(trace.exitCode == 0)
+        #expect(clipRes.ok == true)
+        #expect(clipRes.width == 5760)
+        #expect(clipRes.height == 3840)
+        #expect((clipRes.durationSec ?? 0.0) > 0.0)
+        #expect((clipRes.avgBitrateMbps ?? 0.0) > 0.0)
+        #expect(clipRes.cadenceConstant == true)
+    }
+
+    @Test("buildReport creates FIELD_REPORT.md, field_report.json, and manifest end-to-end")
+    func testBuildReportEndToEnd() async throws {
+        let tmpDir = try makeTempDir(prefix: "ogs-report")
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let sessionDir = tmpDir.appendingPathComponent("sessions", isDirectory: true)
+        let clipsDir = tmpDir.appendingPathComponent("clips", isDirectory: true)
+        let outDir = tmpDir.appendingPathComponent("out_report", isDirectory: true)
+        try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+
+        let bridge = try makeBridge(sessionDir: sessionDir)
+        _ = try await bridge.preflight(bodyId: "fx3_702", mockCamera: true, mockState: .stock, sessionDir: sessionDir)
+
+        let mp4URL = clipsDir.appendingPathComponent("B1_og_framing.MP4")
+        let xmlURL = clipsDir.appendingPathComponent("B1_og_framingM01.XML")
+        try generateValid3x2ClipFixture(repoRoot: bridge.repoRoot, mp4URL: mp4URL, xmlURL: xmlURL)
+
+        let (rep, trace) = try await bridge.buildReport(
+            bodyId: "fx3_702",
+            clipsDir: clipsDir,
+            outDir: outDir,
+            sessionDir: sessionDir,
+            mediaCard: "Sony CEA-G 160GB",
+            lens: "24mm GM",
+            ambientC: "23C",
+            soakMinutes: "45",
+            thermalResult: "No warning",
+            reactivationSeconds: "58",
+            afDesqueezeNotes: "hdmi32 + De-Squeeze OFF kept AF active"
+        )
+        #expect(trace.exitCode == 0)
+        #expect(rep.ok == true)
+        #expect(rep.bodyId == "fx3_702")
+        #expect(rep.clipsScanned == 1)
+        #expect(rep.clipsPassed == 1)
+        #expect(rep.clipsFailed == 0)
+        #expect(FileManager.default.fileExists(atPath: rep.markdownPath))
+        #expect(FileManager.default.fileExists(atPath: rep.jsonPath))
+        #expect(FileManager.default.fileExists(atPath: rep.manifestPath))
+        #expect(rep.markdownPreview.contains("Sony CEA-G 160GB"))
+    }
+
+    private func generate57KClipFixture(repoRoot: URL, mp4URL: URL, xmlURL: URL) throws {
+        let script = """
+        import pathlib, sys
+        cli_dir = pathlib.Path(sys.argv[1]) / "cli"
+        sys.path.insert(0, str(cli_dir))
+        import bionz_clip_check as bcc
+
+        mp4_path = pathlib.Path(sys.argv[2])
+        xml_path = pathlib.Path(sys.argv[3])
+        mp4_bytes = bcc.build_synthetic_mp4(
+            width=5760,
+            height=3840,
+            codec="hvc1",
+            timescale=24000,
+            sample_delta=1001,
+            vprf_width=5760,
+            vprf_height=3840,
+            rtmd_samples=12,
+            hvcc_level_idc=153,
+            mdat_bytes=65536,
+        )
+        mp4_path.write_bytes(mp4_bytes)
+        xml_path.write_text(bcc.build_synthetic_xml(5760, 3840, codec="hvc1", aspect_ratio="3:2"), encoding="utf-8")
+        """
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["python3", "-c", script, repoRoot.path, mp4URL.path, xmlURL.path]
+        let stderrPipe = Pipe()
+        process.standardError = stderrPipe
+        try process.run()
+        process.waitUntilExit()
+        if process.terminationStatus != 0 {
+            let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            let errText = String(data: errData, encoding: .utf8) ?? ""
+            throw StudioBridgeError.processLaunchFailed("5.7K fixture generator failed: \(errText)")
+        }
+    }
+
     /// Generates a minimal valid ISO BMFF MP4 + M01.XML + rtmd fixture using cli/bionz_clip_check.py helpers.
     private func generateValid3x2ClipFixture(repoRoot: URL, mp4URL: URL, xmlURL: URL) throws {
         let script = """
@@ -412,5 +744,22 @@ struct OpenGateStudioTests {
             let errText = String(data: errData, encoding: .utf8) ?? ""
             throw StudioBridgeError.processLaunchFailed("Fixture generator failed: \(errText)")
         }
+    }
+}
+
+private final class ThreadSafeCollector<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [T] = []
+
+    func append(_ item: T) {
+        lock.lock()
+        items.append(item)
+        lock.unlock()
+    }
+
+    func snapshot() -> [T] {
+        lock.lock()
+        defer { lock.unlock() }
+        return items
     }
 }

@@ -348,6 +348,13 @@ public struct ClipCheckResult: Codable, Equatable, Sendable {
     public let rtmdGyroPresent: Bool
     public let rtmdSamples: Int
     public let issues: [String]
+    public let durationSec: Double?
+    public let frameCount: Int?
+    public let avgBitrateMbps: Double?
+    public let cadenceConstant: Bool?
+    public let codecProfileLevel: String?
+    public let avcL51MbWarning: Bool?
+    public let warnings: [String]?
 
     private enum CodingKeys: String, CodingKey {
         case ok
@@ -361,6 +368,13 @@ public struct ClipCheckResult: Codable, Equatable, Sendable {
         case rtmdGyroPresent = "rtmd_gyro_present"
         case rtmdSamples = "rtmd_samples"
         case issues
+        case durationSec = "duration_sec"
+        case frameCount = "frame_count"
+        case avgBitrateMbps = "avg_bitrate_mbps"
+        case cadenceConstant = "cadence_constant"
+        case codecProfileLevel = "codec_profile_level"
+        case avcL51MbWarning = "avc_l51_mb_warning"
+        case warnings
     }
 
     public init(
@@ -374,7 +388,14 @@ public struct ClipCheckResult: Codable, Equatable, Sendable {
         xml3x2: Bool?,
         rtmdGyroPresent: Bool,
         rtmdSamples: Int,
-        issues: [String]
+        issues: [String],
+        durationSec: Double? = nil,
+        frameCount: Int? = nil,
+        avgBitrateMbps: Double? = nil,
+        cadenceConstant: Bool? = nil,
+        codecProfileLevel: String? = nil,
+        avcL51MbWarning: Bool? = nil,
+        warnings: [String]? = nil
     ) {
         self.ok = ok
         self.width = width
@@ -387,6 +408,85 @@ public struct ClipCheckResult: Codable, Equatable, Sendable {
         self.rtmdGyroPresent = rtmdGyroPresent
         self.rtmdSamples = rtmdSamples
         self.issues = issues
+        self.durationSec = durationSec
+        self.frameCount = frameCount
+        self.avgBitrateMbps = avgBitrateMbps
+        self.cadenceConstant = cadenceConstant
+        self.codecProfileLevel = codecProfileLevel
+        self.avcL51MbWarning = avcL51MbWarning
+        self.warnings = warnings
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.ok = try c.decode(Bool.self, forKey: .ok)
+        self.width = try c.decode(Int.self, forKey: .width)
+        self.height = try c.decode(Int.self, forKey: .height)
+        self.displayAspect = try c.decode(String.self, forKey: .displayAspect)
+        self.codec = try c.decode(String.self, forKey: .codec)
+        self.fps = try c.decode(String.self, forKey: .fps)
+        self.vprf3x2 = try c.decode(Bool.self, forKey: .vprf3x2)
+        self.xml3x2 = try c.decodeIfPresent(Bool.self, forKey: .xml3x2)
+        self.rtmdGyroPresent = try c.decode(Bool.self, forKey: .rtmdGyroPresent)
+        self.rtmdSamples = try c.decode(Int.self, forKey: .rtmdSamples)
+        self.issues = try c.decodeIfPresent([String].self, forKey: .issues) ?? []
+        self.durationSec = try c.decodeIfPresent(Double.self, forKey: .durationSec)
+        self.frameCount = try c.decodeIfPresent(Int.self, forKey: .frameCount)
+        self.avgBitrateMbps = try c.decodeIfPresent(Double.self, forKey: .avgBitrateMbps)
+        self.cadenceConstant = try c.decodeIfPresent(Bool.self, forKey: .cadenceConstant)
+        self.codecProfileLevel = try c.decodeIfPresent(String.self, forKey: .codecProfileLevel)
+        self.avcL51MbWarning = try c.decodeIfPresent(Bool.self, forKey: .avcL51MbWarning)
+        self.warnings = try c.decodeIfPresent([String].self, forKey: .warnings)
+    }
+}
+
+public struct BuildReportResult: Codable, Equatable, Sendable {
+    public let ok: Bool
+    public let bodyId: String
+    public let reportDir: String
+    public let markdownPath: String
+    public let jsonPath: String
+    public let manifestPath: String
+    public let clipsScanned: Int
+    public let clipsPassed: Int
+    public let clipsFailed: Int
+    public let markdownPreview: String
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case bodyId = "body_id"
+        case reportDir = "report_dir"
+        case markdownPath = "markdown_path"
+        case jsonPath = "json_path"
+        case manifestPath = "manifest_path"
+        case clipsScanned = "clips_scanned"
+        case clipsPassed = "clips_passed"
+        case clipsFailed = "clips_failed"
+        case markdownPreview = "markdown_preview"
+    }
+
+    public init(
+        ok: Bool,
+        bodyId: String,
+        reportDir: String,
+        markdownPath: String,
+        jsonPath: String,
+        manifestPath: String,
+        clipsScanned: Int,
+        clipsPassed: Int,
+        clipsFailed: Int,
+        markdownPreview: String
+    ) {
+        self.ok = ok
+        self.bodyId = bodyId
+        self.reportDir = reportDir
+        self.markdownPath = markdownPath
+        self.jsonPath = jsonPath
+        self.manifestPath = manifestPath
+        self.clipsScanned = clipsScanned
+        self.clipsPassed = clipsPassed
+        self.clipsFailed = clipsFailed
+        self.markdownPreview = markdownPreview
     }
 }
 
@@ -490,5 +590,208 @@ public struct PrepareLiveCommandResult: Codable, Equatable, Sendable {
         self.bodyId = bodyId
         self.commandFile = commandFile
         self.preview = preview
+    }
+}
+
+public struct LivePlanStep: Codable, Equatable, Hashable, Identifiable, Sendable {
+    public let id: String
+    public let summary: String
+
+    public init(id: String, summary: String) {
+        self.id = id
+        self.summary = summary
+    }
+}
+
+public struct LiveRunEvent: Codable, Equatable, Sendable {
+    public let ts: String?
+    public let type: String
+    public let action: String?
+    public let bodyId: String?
+    public let camera: String?
+    public let firmware: String?
+    public let steps: [LivePlanStep]?
+    public let closingDump: Bool?
+    public let first: Bool?
+    public let stepIndex: Int?
+    public let totalSteps: Int?
+    public let stepId: String?
+    public let title: String?
+    public let detail: String?
+    public let summary: String?
+    public let outcome: String?
+    public let ok: Bool?
+    public let hint: String?
+    public let verdict: String?
+    public let ready: Bool?
+    public let sessionId: String?
+    public let state: String?
+    public let stepsRun: [ExecutedStep]?
+    public let activePacks: [String]?
+    public let message: String?
+    public let leftBehind: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case ts
+        case type
+        case action
+        case bodyId = "body_id"
+        case camera
+        case firmware
+        case steps
+        case closingDump = "closing_dump"
+        case first
+        case stepIndex = "step_index"
+        case totalSteps = "total_steps"
+        case stepId = "step_id"
+        case title
+        case detail
+        case summary
+        case outcome
+        case ok
+        case hint
+        case verdict
+        case ready
+        case sessionId = "session_id"
+        case state
+        case stepsRun = "steps_run"
+        case activePacks = "active_packs"
+        case message
+        case leftBehind = "left_behind"
+    }
+
+    public init(
+        ts: String? = nil,
+        type: String,
+        action: String? = nil,
+        bodyId: String? = nil,
+        camera: String? = nil,
+        firmware: String? = nil,
+        steps: [LivePlanStep]? = nil,
+        closingDump: Bool? = nil,
+        first: Bool? = nil,
+        stepIndex: Int? = nil,
+        totalSteps: Int? = nil,
+        stepId: String? = nil,
+        title: String? = nil,
+        detail: String? = nil,
+        summary: String? = nil,
+        outcome: String? = nil,
+        ok: Bool? = nil,
+        hint: String? = nil,
+        verdict: String? = nil,
+        ready: Bool? = nil,
+        sessionId: String? = nil,
+        state: String? = nil,
+        stepsRun: [ExecutedStep]? = nil,
+        activePacks: [String]? = nil,
+        message: String? = nil,
+        leftBehind: Bool? = nil
+    ) {
+        self.ts = ts
+        self.type = type
+        self.action = action
+        self.bodyId = bodyId
+        self.camera = camera
+        self.firmware = firmware
+        self.steps = steps
+        self.closingDump = closingDump
+        self.first = first
+        self.stepIndex = stepIndex
+        self.totalSteps = totalSteps
+        self.stepId = stepId
+        self.title = title
+        self.detail = detail
+        self.summary = summary
+        self.outcome = outcome
+        self.ok = ok
+        self.hint = hint
+        self.verdict = verdict
+        self.ready = ready
+        self.sessionId = sessionId
+        self.state = state
+        self.stepsRun = stepsRun
+        self.activePacks = activePacks
+        self.message = message
+        self.leftBehind = leftBehind
+    }
+}
+
+public final class LiveRunHandle: @unchecked Sendable {
+    public let runDirectory: URL
+    public let cancelFile: URL
+    public let eventsFile: URL
+    public let logFile: URL
+
+    private let lock = NSLock()
+    private var _isCancelRequested = false
+
+    public var isCancelRequested: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _isCancelRequested
+    }
+
+    public init(
+        runDirectory: URL,
+        cancelFile: URL,
+        eventsFile: URL,
+        logFile: URL
+    ) {
+        self.runDirectory = runDirectory
+        self.cancelFile = cancelFile
+        self.eventsFile = eventsFile
+        self.logFile = logFile
+    }
+
+    /// Requests a safe cancellation by writing the cancel-file so Python stops cleanly
+    /// between steps without killing a process mid-DMA-write.
+    public func cancel() {
+        lock.lock()
+        _isCancelRequested = true
+        lock.unlock()
+
+        try? FileManager.default.createDirectory(at: runDirectory, withIntermediateDirectories: true)
+        try? Data("cancel\n".utf8).write(to: cancelFile, options: .atomic)
+    }
+}
+
+public struct LiveRunResult: Equatable, Sendable {
+    public let exitCode: Int32
+    public let wasUserCancelled: Bool
+    public let events: [LiveRunEvent]
+    public let logOutput: String
+    public let eventsFile: URL
+    public let logFile: URL
+    public let stderrOutput: String
+
+    public init(
+        exitCode: Int32,
+        wasUserCancelled: Bool,
+        events: [LiveRunEvent],
+        logOutput: String,
+        eventsFile: URL,
+        logFile: URL,
+        stderrOutput: String = ""
+    ) {
+        self.exitCode = exitCode
+        self.wasUserCancelled = wasUserCancelled
+        self.events = events
+        self.logOutput = logOutput
+        self.eventsFile = eventsFile
+        self.logFile = logFile
+        self.stderrOutput = stderrOutput
+    }
+
+    public var completeEvent: LiveRunEvent? {
+        events.last(where: { $0.type == "complete" })
+    }
+
+    public var errorEvent: LiveRunEvent? {
+        events.last(where: { $0.type == "error" })
+    }
+
+    public var cancelledEvent: LiveRunEvent? {
+        events.last(where: { $0.type == "cancelled" })
     }
 }

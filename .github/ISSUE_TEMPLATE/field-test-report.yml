@@ -52,12 +52,36 @@ body:
     validations:
       required: true
 
+  - type: input
+    id: media_and_lens
+    attributes:
+      label: Media Card & Lens Used
+      placeholder: "e.g., Sony CEA-G 160GB CFexpress Type A · Sony 24mm f/1.4 GM"
+    validations:
+      required: false
+
+  - type: input
+    id: codecs_and_fps
+    attributes:
+      label: Codecs & Frame Rates Tested
+      placeholder: "e.g., XAVC HS 23.98p 300M, XAVC S H.264 23.98p, XAVC S-I 23.98p/29.97p"
+    validations:
+      required: false
+
+  - type: input
+    id: thermal_soak
+    attributes:
+      label: Thermal Soak Duration & Result (Plus Field Re-Activation Time)
+      placeholder: "e.g., 45 min @ 23C ambient — no warning; field re-apply took 58s"
+    validations:
+      required: false
+
   - type: textarea
     id: clip_check
     attributes:
-      label: Clip, XML & Gyro Check (`bionz_clip_check.py`)
-      description: Paste output from Tab 3 (Clip Inspector) or `python3 cli/studio_cli.py check-clip ... --json`
-      render: json
+      label: Generated Field Report (`FIELD_REPORT.md`) or `bionz_clip_check.py` JSON
+      description: Paste `FIELD_REPORT.md` from `OpenGate Studio.app` Tab 3 (`Copy Markdown Report`) or `python3 cli/studio_cli.py build-report ...`
+      render: markdown
 
   - type: textarea
     id: observations

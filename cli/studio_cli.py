@@ -21,6 +21,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import bionz_clip_check as bcc  # noqa: E402
+import studio_report  # noqa: E402
 
 BODY_ORDER = ("zve1_202", "a7s3_501", "fx3_702")
 OPTIONAL_PACK_ORDER = ("mp4_3x2", "hdmi32", "high_bitrate", "xavc_si", "screen_3x2", "fx3_playback")
@@ -538,6 +539,28 @@ def cmd_check_clip(mp4_path: Path, xml_path: Path | None, body: str | None, expe
         return 2, {"ok": False, "error": str(err)}
 
 
+def cmd_build_report(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
+    manifests = _load_manifests()
+    return studio_report.build_field_report(
+        body_id=args.body,
+        manifests=manifests,
+        verify_pins_fn=verify_body_pins,
+        session_dir=args.session_dir,
+        clips_dir=args.clips_dir,
+        out_dir=args.out_dir,
+        media_card=args.media_card,
+        lens=args.lens,
+        ambient_c=args.ambient_c,
+        soak_minutes=args.soak_minutes,
+        thermal_result=args.thermal_result,
+        reactivation_seconds=args.reactivation_seconds,
+        af_desqueeze_notes=args.af_desqueeze_notes,
+        gyro_app=args.gyro_app,
+        editor_app=args.editor_app,
+        notes=args.notes,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--json", action="store_true", help="Output JSON")
@@ -593,6 +616,23 @@ def main(argv: list[str] | None = None) -> int:
     p_clip.add_argument("--expect", choices=("open-gate", "stock"), default="open-gate")
     p_clip.add_argument("--json", action="store_true")
 
+    p_rep = sub.add_parser("build-report", help="Generate Markdown + JSON field-test & reliability report")
+    p_rep.add_argument("--body", required=True)
+    p_rep.add_argument("--session-dir", type=Path, default=DEFAULT_SESSION_DIR)
+    p_rep.add_argument("--clips-dir", type=Path, default=None)
+    p_rep.add_argument("--out-dir", type=Path, default=None)
+    p_rep.add_argument("--media-card", default="")
+    p_rep.add_argument("--lens", default="")
+    p_rep.add_argument("--ambient-c", default="")
+    p_rep.add_argument("--soak-minutes", default="")
+    p_rep.add_argument("--thermal-result", default="")
+    p_rep.add_argument("--reactivation-seconds", default="")
+    p_rep.add_argument("--af-desqueeze-notes", default="")
+    p_rep.add_argument("--gyro-app", default="")
+    p_rep.add_argument("--editor-app", default="")
+    p_rep.add_argument("--notes", default="")
+    p_rep.add_argument("--json", action="store_true")
+
     args = ap.parse_args(argv)
     if args.cmd == "list-bodies":
         rc, payload = cmd_list_bodies()
@@ -610,6 +650,8 @@ def main(argv: list[str] | None = None) -> int:
         rc, payload = cmd_prepare_live_command(args.action, args.body, args.packs, args.session_dir)
     elif args.cmd == "check-clip":
         rc, payload = cmd_check_clip(args.mp4_path, args.xml, args.body, args.expect)
+    elif args.cmd == "build-report":
+        rc, payload = cmd_build_report(args)
     else:
         rc, payload = 2, {"ok": False, "error": f"Unsupported command {args.cmd}"}
 

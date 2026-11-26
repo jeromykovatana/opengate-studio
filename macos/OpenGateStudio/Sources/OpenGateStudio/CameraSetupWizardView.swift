@@ -324,6 +324,14 @@ public struct CameraSetupWizardView: View {
                     detail: "Flipping only the power switch leaves half the patch active (mixed_powerswitch), which blocks Apply. Always pull the battery for >= 10 seconds to restore stock RAM."
                 )
 
+                // Field Re-Activation & False Color / Scopes note
+                warningCallout(
+                    icon: "arrow.clockwise.circle.fill",
+                    color: .blue,
+                    title: "Field Re-Activation & False Color / Scopes",
+                    detail: "Powering off or swapping batteries clears volatile RAM; use the 'Safe Daily 3:2' preset in Step 2 for the fastest re-apply over USB-C. None of these firmware builds include in-body False Color DSP — use Sony Monitor & Control or an external monitor via hdmi32 for False Color / Waveform."
+                )
+
                 Divider()
 
                 Toggle(
@@ -344,11 +352,16 @@ public struct CameraSetupWizardView: View {
     // MARK: - Action Footer
 
     private var actionFooter: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Ready to Proceed to Step 2: Apply & Packs")
-                    .font(.headline)
-                Text("You can complete or adjust checkboxes in Gate 1 at any time before Preflight.")
+        let readyForLive = appState.isSetupWizardChecklistComplete && appState.isChecklistComplete
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Image(systemName: readyForLive ? "checkmark.circle.fill" : "cable.connector")
+                        .foregroundStyle(readyForLive ? .green : .accentColor)
+                    Text(readyForLive ? "Setup Confirmed — Ready for Step 2: Apply & Packs" : "Proceed to Step 2: Apply & Packs")
+                        .font(.headline)
+                }
+                Text("Runs natively in OpenGate Studio with macOS administrator approval — no Terminal required. Gate 1 checks stay editable anytime.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -359,7 +372,7 @@ public struct CameraSetupWizardView: View {
                 appState.offlineMockCamera = true
                 appState.selectedTab = .packsAndSafety
             } label: {
-                Text("Preview in Offline Mock Mode ->")
+                Text("Preview in Offline Mock")
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
@@ -368,9 +381,15 @@ public struct CameraSetupWizardView: View {
                 appState.offlineMockCamera = false
                 appState.selectedTab = .packsAndSafety
             } label: {
-                Label("Use Real Camera (Live USB) -> Next: Apply & Packs", systemImage: "cable.connector")
+                Label(
+                    appState.isSetupWizardChecklistComplete
+                        ? "Continue to Apply & Packs ->"
+                        : "Use Real Camera (Live USB) ->",
+                    systemImage: appState.isSetupWizardChecklistComplete ? "arrow.right.circle.fill" : "cable.connector"
+                )
             }
             .buttonStyle(.borderedProminent)
+            .tint(readyForLive ? .green : .accentColor)
             .controlSize(.large)
         }
         .padding(16)
@@ -380,7 +399,7 @@ public struct CameraSetupWizardView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.accentColor.opacity(0.30), lineWidth: 1)
+                .stroke(readyForLive ? Color.green.opacity(0.45) : Color.accentColor.opacity(0.30), lineWidth: 1)
         )
     }
 

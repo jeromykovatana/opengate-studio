@@ -26,6 +26,7 @@ STUDIO_CLI = CLI_DIR / "studio_cli.py"
 STEP_RUN = CLI_DIR / "studio_step_run.py"
 LIVE_APPLY = CLI_DIR / "studio_live_apply.py"
 RUN_LIVE_SH = REPO_ROOT / "macos" / "run_live_terminal.sh"
+RUN_LIVE_INAPP_SH = REPO_ROOT / "macos" / "run_live_inapp.sh"
 SETUP_CMD = REPO_ROOT / "setup_and_open_mac.command"
 
 
@@ -107,6 +108,35 @@ class ClipCheckTests(unittest.TestCase):
             rep4, _ = bcc.inspect_clip(p4, body="zve1")
             self.assertFalse(rep4["ok"])
             self.assertFalse(rep4["rtmd_gyro_present"])
+
+            # 5. 29.970p + AVC L5.1 MB warning + duration/bitrate/cadence telemetry
+            p5 = root / "C0005.MP4"
+            p5.write_bytes(
+                bcc.build_synthetic_mp4(
+                    3840, 2560, "avc1", 30000, 1001,
+                    frame_count=30, avcc_level_idc=51, mdat_bytes=100000,
+                )
+            )
+            rep5, _ = bcc.inspect_clip(p5, body="fx3")
+            self.assertTrue(rep5["ok"])
+            self.assertEqual(rep5["fps"], "29.970p")
+            self.assertEqual(rep5["frame_count"], 30)
+            self.assertGreater(rep5["duration_sec"], 0.9)
+            self.assertGreater(rep5["avg_bitrate_mbps"], 0.0)
+            self.assertTrue(rep5["cadence_constant"])
+            self.assertTrue(rep5["avc_l51_mb_warning"])
+            self.assertIn("L5.1", rep5["codec_profile_level"])
+
+            # 6. Directory batch scan with stock + open-gate clips
+            batch_dir = root / "batch"
+            batch_dir.mkdir()
+            (batch_dir / "A1_stock.MP4").write_bytes(bcc.build_synthetic_mp4(3840, 2160, "hvc1", 24000, 1001))
+            (batch_dir / "B1_og.MP4").write_bytes(bcc.build_synthetic_mp4(3840, 2560, "hvc1", 24000, 1001))
+            batch = bcc.inspect_directory(batch_dir, expect="auto", body="fx3")
+            self.assertTrue(batch["ok"])
+            self.assertEqual(batch["clips_scanned"], 2)
+            self.assertEqual(batch["clips_passed"], 2)
+            self.assertEqual(batch["clips_failed"], 0)
 
 
 class StudioCliTests(unittest.TestCase):
@@ -599,6 +629,407 @@ class SyncAndRecoveryTests(unittest.TestCase):
             self.assertIn("MULTI_REC", steps["L5"]["summary"])
             for k in ("L19", "L20", "V19", "V20", "I19", "I20"):
                 self.assertIn("23.98p/25p/29.97p", steps[k]["summary"], f"{body_id} {k}")
+
+
+class LiveInAppOrchestratorTests(unittest.TestCase):
+    @staticmethod
+    def _read_jsonl(path: Path) -> list[dict]:
+        return [
+            json.loads(line)
+            for line in path.read_text(encoding="utf8").splitlines()
+            if line.strip()
+        ]
+
+    @staticmethod
+    def _extract_stdout_events(stdout: str) -> list[dict]:
+        events = []
+        for line in stdout.splitlines():
+            if line.startswith("@OG_EVENT "):
+                events.append(json.loads(line[len("@OG_EVENT "):]))
+        return events
+
+    def test_firmware_confirmed_mismatch_and_volatile_ram_guard(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # 1. Mismatched --firmware-confirmed refuses with error event
+            ev_fw = root / "fw_err.jsonl"
+            log_fw = root / "fw_err.log"
+            proc_fw = subprocess.run(
+                [
+                    TRANSPORT_PYTHON, "-B", str(LIVE_APPLY),
+                    "preflight", "--body", "zve1_202",
+                    "--session-dir", str(root / "sess"),
+                    "--firmware-confirmed", "1.00",
+                    "--json-events",
+                    "--events-file", str(ev_fw),
+                    "--log-file", str(log_fw),
+                    "--dry-run",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(proc_fw.returncode, 0)
+            self.assertIn("Not 2.02. Nothing was sent.", proc_fw.stderr)
+            evs = self._read_jsonl(ev_fw)
+            self.assertEqual(len(evs), 1)
+            self.assertEqual(evs[0]["type"], "error")
+            self.assertIn("Not 2.02. Nothing was sent.", evs[0]["message"])
+            self.assertFalse(evs[0]["left_behind"])
+            self.assertEqual(self._extract_stdout_events(proc_fw.stdout), evs)
+            self.assertIn("Not 2.02. Nothing was sent.", log_fw.read_text(encoding="utf8"))
+
+            # 2. apply & putback with --firmware-confirmed but without --confirm-volatile-ram refuse immediately
+            for action in ("apply", "putback"):
+                ev_ram = root / f"ram_err_{action}.jsonl"
+                proc_ram = subprocess.run(
+                    [
+                        TRANSPORT_PYTHON, "-B", str(LIVE_APPLY),
+                        action, "--body", "zve1_202",
+                        "--session-dir", str(root / "sess"),
+                        "--firmware-confirmed", "2.02",
+                        "--events-file", str(ev_ram),
+                        "--dry-run",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertNotEqual(proc_ram.returncode, 0, f"{action} should refuse without --confirm-volatile-ram")
+                evs_ram = self._read_jsonl(ev_ram)
+                self.assertEqual(len(evs_ram), 1)
+                self.assertEqual(evs_ram[0]["type"], "error")
+                self.assertIn("--confirm-volatile-ram", evs_ram[0]["message"])
+                self.assertFalse(evs_ram[0]["left_behind"])
+
+            # 3. --simulate-events without --dry-run refuses immediately
+            ev_sim = root / "sim_err.jsonl"
+            proc_sim = subprocess.run(
+                [
+                    TRANSPORT_PYTHON, "-B", str(LIVE_APPLY),
+                    "preflight", "--body", "zve1_202",
+                    "--session-dir", str(root / "sess"),
+                    "--firmware-confirmed", "2.02",
+                    "--events-file", str(ev_sim),
+                    "--simulate-events",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(proc_sim.returncode, 0)
+            evs_sim = self._read_jsonl(ev_sim)
+            self.assertEqual(len(evs_sim), 1)
+            self.assertEqual(evs_sim[0]["type"], "error")
+            self.assertIn("--dry-run", evs_sim[0]["message"])
+
+    def test_simulate_events_preflight_apply_putback_schemas_and_logs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # 1. Preflight simulation
+            ev_pre = root / "pre.jsonl"
+            log_pre = root / "pre.log"
+            proc_pre = subprocess.run(
+                [
+                    TRANSPORT_PYTHON, "-B", str(LIVE_APPLY),
+                    "preflight", "--body", "zve1_202",
+                    "--session-dir", str(root / "sess"),
+                    "--firmware-confirmed", "2.02",
+                    "--json-events",
+                    "--events-file", str(ev_pre),
+                    "--log-file", str(log_pre),
+                    "--dry-run", "--simulate-events",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc_pre.returncode, 0, proc_pre.stderr + proc_pre.stdout)
+            evs_pre = self._read_jsonl(ev_pre)
+            self.assertEqual(self._extract_stdout_events(proc_pre.stdout), evs_pre)
+            self.assertEqual([e["type"] for e in evs_pre], ["plan", "wait_drive", "step_start", "step_done", "complete"])
+            for e in evs_pre:
+                self.assertTrue(str(e["ts"]).endswith("Z"))
+            self.assertEqual(evs_pre[0]["action"], "preflight")
+            self.assertEqual(evs_pre[0]["body_id"], "zve1_202")
+            self.assertEqual(evs_pre[0]["firmware"], "2.02")
+            self.assertFalse(evs_pre[0]["closing_dump"])
+            self.assertEqual(evs_pre[0]["steps"][0]["id"], "check")
+            self.assertTrue(evs_pre[1]["first"])
+            self.assertEqual(evs_pre[3]["outcome"], "DONE")
+            self.assertTrue(evs_pre[3]["ok"])
+            self.assertTrue(evs_pre[4]["ok"])
+            self.assertTrue(evs_pre[4]["ready"])
+            self.assertEqual(evs_pre[4]["state"], "stock")
+            self.assertEqual(evs_pre[4]["steps_run"], ["check"])
+            log_pre_txt = log_pre.read_text(encoding="utf8")
+            self.assertIn("Dry run only: nothing was sent to any device.", log_pre_txt)
+            self.assertNotIn("@OG_EVENT ", log_pre_txt)
+
+            # 2. Apply simulation with Movie-mode closing dump
+            ev_app = root / "app.jsonl"
+            log_app = root / "app.log"
+            proc_app = subprocess.run(
+                [
+                    TRANSPORT_PYTHON, "-B", str(LIVE_APPLY),
+                    "apply", "--body", "zve1_202",
+                    "--packs", "mp4_3x2,hdmi32",
+                    "--session-dir", str(root / "sess"),
+                    "--firmware-confirmed", "2.02",
+                    "--confirm-volatile-ram",
+                    "--json-events",
+                    "--events-file", str(ev_app),
+                    "--log-file", str(log_app),
+                    "--dry-run", "--simulate-events",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc_app.returncode, 0, proc_app.stderr + proc_app.stdout)
+            evs_app = self._read_jsonl(ev_app)
+            types_app = [e["type"] for e in evs_app]
+            self.assertEqual(types_app[0], "plan")
+            self.assertTrue(evs_app[0]["closing_dump"])
+            self.assertEqual(types_app[-4:], ["wait_movie_replug", "closing_dump_start", "closing_dump_done", "complete"])
+            wait_drives = [e for e in evs_app if e["type"] == "wait_drive"]
+            self.assertGreaterEqual(len(wait_drives), 4)
+            self.assertTrue(wait_drives[0]["first"])
+            self.assertTrue(all(not wd["first"] for wd in wait_drives[1:]))
+            self.assertEqual(evs_app[-4]["title"], "Switch camera to Movie mode")
+            self.assertTrue(evs_app[-2]["ready"])
+            self.assertEqual(evs_app[-1]["state"], "applied")
+            self.assertIn("mp4_3x2", evs_app[-1]["active_packs"])
+            self.assertIn("hdmi32", evs_app[-1]["active_packs"])
+            self.assertIn("V19", evs_app[-1]["steps_run"])
+            self.assertIn("H16", evs_app[-1]["steps_run"])
+            self.assertIn("Dry run only: nothing was sent to any device.", log_app.read_text(encoding="utf8"))
+
+            # 3. Apply simulation with --no-movie-session omits movie replug / closing dump
+            ev_nomov = root / "app_nomov.jsonl"
+            proc_nomov = subprocess.run(
+                [
+                    TRANSPORT_PYTHON, "-B", str(LIVE_APPLY),
+                    "apply", "--body", "zve1_202",
+                    "--packs", "mp4_3x2",
+                    "--session-dir", str(root / "sess"),
+                    "--firmware-confirmed", "2.02",
+                    "--confirm-volatile-ram",
+                    "--no-movie-session",
+                    "--events-file", str(ev_nomov),
+                    "--dry-run", "--simulate-events",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc_nomov.returncode, 0, proc_nomov.stderr + proc_nomov.stdout)
+            evs_nomov = self._read_jsonl(ev_nomov)
+            self.assertFalse(evs_nomov[0]["closing_dump"])
+            self.assertNotIn("wait_movie_replug", [e["type"] for e in evs_nomov])
+            self.assertEqual(evs_nomov[-1]["type"], "complete")
+
+            # 4. Putback simulation
+            ev_put = root / "put.jsonl"
+            log_put = root / "put.log"
+            proc_put = subprocess.run(
+                [
+                    TRANSPORT_PYTHON, "-B", str(LIVE_APPLY),
+                    "putback", "--body", "fx3_702",
+                    "--packs", "mp4_3x2,fx3_playback",
+                    "--session-dir", str(root / "sess"),
+                    "--firmware-confirmed", "7.02",
+                    "--confirm-volatile-ram",
+                    "--events-file", str(ev_put),
+                    "--log-file", str(log_put),
+                    "--dry-run", "--simulate-events",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc_put.returncode, 0, proc_put.stderr + proc_put.stdout)
+            evs_put = self._read_jsonl(ev_put)
+            self.assertEqual(evs_put[0]["type"], "plan")
+            self.assertEqual(evs_put[0]["action"], "putback")
+            self.assertFalse(evs_put[0]["closing_dump"])
+            self.assertEqual(evs_put[-1]["type"], "complete")
+            self.assertEqual(evs_put[-1]["state"], "stock")
+            self.assertEqual(evs_put[-1]["active_packs"], [])
+            self.assertIn("P30", evs_put[-1]["steps_run"])
+            self.assertIn("Dry run only: nothing was sent to any device.", log_put.read_text(encoding="utf8"))
+
+    def test_cancel_file_triggers_clean_cancelled_event_exit_130(self) -> None:
+        import studio_live_apply as sla
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cancel_flag = root / "cancel.flag"
+            cancel_flag.write_text("cancel\n", encoding="utf8")
+            ev_path = root / "cancelled.jsonl"
+            log_path = root / "cancelled.log"
+
+            proc = subprocess.run(
+                [
+                    TRANSPORT_PYTHON, "-B", str(LIVE_APPLY),
+                    "apply", "--body", "zve1_202",
+                    "--packs", "mp4_3x2",
+                    "--session-dir", str(root / "sess"),
+                    "--firmware-confirmed", "2.02",
+                    "--confirm-volatile-ram",
+                    "--json-events",
+                    "--events-file", str(ev_path),
+                    "--log-file", str(log_path),
+                    "--cancel-file", str(cancel_flag),
+                    "--dry-run", "--simulate-events",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 130, proc.stderr + proc.stdout)
+            evs = self._read_jsonl(ev_path)
+            self.assertEqual([e["type"] for e in evs], ["plan", "cancelled"])
+            self.assertEqual(evs[-1]["step_index"], 1)
+            self.assertEqual(evs[-1]["step_id"], "L13")
+            self.assertTrue(bool(evs[-1]["message"]))
+            self.assertEqual(self._extract_stdout_events(proc.stdout), evs)
+
+            # Also verify wait_for_drive and wait_for_replug check cancel_file cleanly without touching USB
+            orig_usb_state = sla.usb_state
+            sla.usb_state = lambda: "other"
+            try:
+                ctx = sla.RunContext(cancel_file=cancel_flag)
+                with self.assertRaises(sla.CancelledRun):
+                    sla.wait_for_drive("zve1_202", first=True, timeout=5, ctx=ctx, step_index=1, total_steps=4, step_id="L13")
+                with self.assertRaises(sla.CancelledRun):
+                    sla.wait_for_replug(timeout=5, ctx=ctx)
+            finally:
+                sla.usb_state = orig_usb_state
+
+    def test_run_live_inapp_shell_wrapper(self) -> None:
+        self.assertTrue(RUN_LIVE_INAPP_SH.is_file())
+        self.assertTrue(bool(RUN_LIVE_INAPP_SH.stat().st_mode & stat.S_IXUSR), "run_live_inapp.sh not executable")
+        chk = subprocess.run(["bash", "-n", str(RUN_LIVE_INAPP_SH)], capture_output=True, text=True)
+        self.assertEqual(chk.returncode, 0, chk.stderr)
+
+        # Wrapper must never invoke sudo itself
+        for line in RUN_LIVE_INAPP_SH.read_text(encoding="utf8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            self.assertNotRegex(stripped, r"(^|\s)sudo(\s|$)", f"run_live_inapp.sh must not invoke sudo: {line}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ev_path = root / "inapp" / "events.jsonl"
+            log_path = root / "inapp" / "output.log"
+            proc = subprocess.run(
+                [
+                    "/bin/bash",
+                    str(RUN_LIVE_INAPP_SH),
+                    "--owner-uid", str(os.getuid()),
+                    "--owner-gid", str(os.getgid()),
+                    "apply",
+                    "--body", "a7s3_501",
+                    "--packs", "mp4_3x2",
+                    "--session-dir", str(root / "sess"),
+                    "--firmware-confirmed", "5.01",
+                    "--confirm-volatile-ram",
+                    "--events-file", str(ev_path),
+                    "--log-file", str(log_path),
+                    "--dry-run",
+                    "--simulate-events",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+            self.assertTrue(ev_path.is_file())
+            self.assertTrue(log_path.is_file())
+            evs = self._read_jsonl(ev_path)
+            self.assertEqual(evs[0]["type"], "plan")
+            self.assertEqual(evs[-1]["type"], "complete")
+            self.assertEqual(evs[-1]["body_id"], "a7s3_501")
+            self.assertEqual(self._extract_stdout_events(proc.stdout), evs)
+            self.assertIn("Dry run only: nothing was sent to any device.", log_path.read_text(encoding="utf8"))
+
+            # Verify exit code 130 propagates cleanly through run_live_inapp.sh on cancellation
+            cancel_flag = root / "cancel.flag"
+            cancel_flag.write_text("1", encoding="utf8")
+            ev_can = root / "inapp_cancel.jsonl"
+            proc_can = subprocess.run(
+                [
+                    "/bin/bash",
+                    str(RUN_LIVE_INAPP_SH),
+                    "--owner-uid", str(os.getuid()),
+                    "--owner-gid", str(os.getgid()),
+                    "preflight",
+                    "--body", "zve1_202",
+                    "--session-dir", str(root / "sess"),
+                    "--firmware-confirmed", "2.02",
+                    "--events-file", str(ev_can),
+                    "--cancel-file", str(cancel_flag),
+                    "--dry-run",
+                    "--simulate-events",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc_can.returncode, 130, proc_can.stderr + proc_can.stdout)
+            evs_can = self._read_jsonl(ev_can)
+            self.assertEqual(evs_can[-1]["type"], "cancelled")
+
+
+class FieldReportTests(unittest.TestCase):
+    def test_build_report_creates_bundle_and_excludes_camera_private(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sess_dir = root / "sessions"
+            sess_dir.mkdir()
+            priv_dir = sess_dir / "camera_private"
+            priv_dir.mkdir()
+            (priv_dir / "secret_dump.txt").write_text("PRIVATE_DUMP_TOKEN_DO_NOT_COPY", encoding="utf8")
+
+            rc_pre, _ = run_cli(
+                "preflight", "--body", "fx3_702", "--mock-camera", "--mock-state", "stock",
+                "--session-dir", str(sess_dir), "--json",
+            )
+            self.assertEqual(rc_pre, 0)
+
+            clips_dir = root / "clips"
+            clips_dir.mkdir()
+            (clips_dir / "A1_stock_framing.MP4").write_bytes(
+                bcc.build_synthetic_mp4(3840, 2160, "hvc1", 24000, 1001)
+            )
+            (clips_dir / "B1_og_framing.MP4").write_bytes(
+                bcc.build_synthetic_mp4(3840, 2560, "avc1", 24000, 1001, avcc_level_idc=51)
+            )
+            (clips_dir / "lcd_3x2.jpg").write_bytes(b"fakejpg")
+
+            out_dir = root / "out_report"
+            rc_rep, rep = run_cli(
+                "build-report",
+                "--body", "fx3_702",
+                "--session-dir", str(sess_dir),
+                "--clips-dir", str(clips_dir),
+                "--out-dir", str(out_dir),
+                "--media-card", "Sony CEA-G 160GB",
+                "--lens", "24mm GM",
+                "--ambient-c", "23C",
+                "--soak-minutes", "45",
+                "--thermal-result", "No warning",
+                "--reactivation-seconds", "58",
+                "--af-desqueeze-notes", "hdmi32 + De-Squeeze OFF kept AF active",
+                "--json",
+            )
+            self.assertEqual(rc_rep, 0, rep)
+            self.assertTrue(rep["ok"])
+            self.assertEqual(rep["clips_scanned"], 2)
+            self.assertEqual(rep["clips_passed"], 2)
+            self.assertEqual(rep["clips_failed"], 0)
+            self.assertTrue(Path(rep["markdown_path"]).is_file())
+            self.assertTrue(Path(rep["json_path"]).is_file())
+            self.assertTrue(Path(rep["manifest_path"]).is_file())
+
+            md_text = Path(rep["markdown_path"]).read_text(encoding="utf8")
+            self.assertIn("Sony CEA-G 160GB", md_text)
+            self.assertIn("VERDICT READY", md_text)
+            self.assertIn("3840x2560", md_text)
+            self.assertNotIn("PRIVATE_DUMP_TOKEN_DO_NOT_COPY", md_text)
+            self.assertNotIn("secret_dump", Path(rep["manifest_path"]).read_text(encoding="utf8"))
 
 
 class CleanRoomTests(unittest.TestCase):
