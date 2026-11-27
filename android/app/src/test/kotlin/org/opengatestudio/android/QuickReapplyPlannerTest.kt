@@ -51,6 +51,30 @@ class QuickReapplyPlannerTest {
     }
 
     @Test
+    fun offlineMockToggleNeverUnlocksApplyEvenWithPriorLiveSession() {
+        val liveStock = SessionSnapshot(
+            ok = true,
+            bodyId = "zve1_202",
+            kind = "preflight",
+            mode = "live_usb",
+            ready = true,
+            verified = true,
+            state = "stock"
+        )
+        assertEquals(
+            QuickReapplyDecision.RunPreflightThenSafeDailyApply,
+            QuickReapplyPlanner.plan(
+                pinsVerified = true,
+                selectedBodyId = "zve1_202",
+                offlineMockCamera = true,
+                preflightResult = liveStock,
+                latestSession = liveStock,
+                resultSource = "android_usb"
+            )
+        )
+    }
+
+    @Test
     fun liveStockPreflightUnlocksSafeDailyApply() {
         val liveStock = SessionSnapshot(
             ok = true,
@@ -69,6 +93,51 @@ class QuickReapplyPlannerTest {
                 offlineMockCamera = false,
                 preflightResult = liveStock,
                 latestSession = liveStock,
+                resultSource = "android_usb"
+            )
+        )
+    }
+
+    @Test
+    fun liveAppliedSessionReportsAlreadyApplied() {
+        val liveApplied = SessionSnapshot(
+            ok = true,
+            bodyId = "zve1_202",
+            kind = "closing_dump",
+            mode = "live_usb",
+            ready = true,
+            verified = true,
+            state = "applied"
+        )
+        assertEquals(
+            QuickReapplyDecision.AlreadyApplied,
+            QuickReapplyPlanner.plan(
+                pinsVerified = true,
+                selectedBodyId = "zve1_202",
+                offlineMockCamera = false,
+                latestSession = liveApplied,
+                resultSource = "android_usb"
+            )
+        )
+    }
+
+    @Test
+    fun unverifiedPutbackForcesRecoveryPreflight() {
+        val badPutback = SessionSnapshot(
+            ok = false,
+            bodyId = "a7s3_501",
+            kind = "putback",
+            mode = "live_usb",
+            ready = false,
+            verified = false,
+            state = "stock_unverified"
+        )
+        assertEquals(
+            QuickReapplyDecision.RunRecoveryPreflightFirst,
+            QuickReapplyPlanner.plan(
+                pinsVerified = true,
+                selectedBodyId = "a7s3_501",
+                latestSession = badPutback,
                 resultSource = "android_usb"
             )
         )

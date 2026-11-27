@@ -64,11 +64,14 @@ class UsbBridge(private val context: Context) {
                         "endpoints" to eps
                     )
                 }
+                val serial = runCatching {
+                    if (usbManager.hasPermission(dev)) dev.serialNumber ?: "" else ""
+                }.getOrDefault("")
                 mapOf(
                     "deviceId" to dev.deviceId,
                     "idVendor" to dev.vendorId,
                     "idProduct" to dev.productId,
-                    "serialNumber" to (dev.serialNumber ?: ""),
+                    "serialNumber" to serial,
                     "interfaces" to ifaces
                 )
             }
@@ -127,6 +130,53 @@ class UsbBridge(private val context: Context) {
         return n
     }
 
+    fun controlTransferIn(
+        handleId: Int,
+        requestType: Int,
+        request: Int,
+        value: Int,
+        index: Int,
+        length: Int,
+        timeoutMs: Int
+    ): ByteArray {
+        val handle = openHandles[handleId] ?: error("Unknown USB handle $handleId")
+        val buf = ByteArray(length)
+        val n = handle.connection.controlTransfer(
+            requestType,
+            request,
+            value,
+            index,
+            buf,
+            buf.size,
+            timeoutMs
+        )
+        if (n < 0) error("controlTransfer IN failed ($n)")
+        return buf.copyOf(n)
+    }
+
+    fun controlTransferOut(
+        handleId: Int,
+        requestType: Int,
+        request: Int,
+        value: Int,
+        index: Int,
+        data: ByteArray,
+        timeoutMs: Int
+    ): Int {
+        val handle = openHandles[handleId] ?: error("Unknown USB handle $handleId")
+        val n = handle.connection.controlTransfer(
+            requestType,
+            request,
+            value,
+            index,
+            data,
+            data.size,
+            timeoutMs
+        )
+        if (n < 0) error("controlTransfer OUT failed ($n)")
+        return n
+    }
+
     fun controlTransfer(
         handleId: Int,
         requestType: Int,
@@ -136,35 +186,9 @@ class UsbBridge(private val context: Context) {
         dataOrLength: Any,
         timeoutMs: Int
     ): Any {
-        val handle = openHandles[handleId] ?: error("Unknown USB handle $handleId")
         return when (dataOrLength) {
-            is Int -> {
-                val buf = ByteArray(dataOrLength)
-                val n = handle.connection.controlTransfer(
-                    requestType,
-                    request,
-                    value,
-                    index,
-                    buf,
-                    buf.size,
-                    timeoutMs
-                )
-                if (n < 0) error("controlTransfer IN failed ($n)")
-                buf.copyOf(n)
-            }
-            is ByteArray -> {
-                val n = handle.connection.controlTransfer(
-                    requestType,
-                    request,
-                    value,
-                    index,
-                    dataOrLength,
-                    dataOrLength.size,
-                    timeoutMs
-                )
-                if (n < 0) error("controlTransfer OUT failed ($n)")
-                n
-            }
+            is Int -> controlTransferIn(handleId, requestType, request, value, index, dataOrLength, timeoutMs)
+            is ByteArray -> controlTransferOut(handleId, requestType, request, value, index, dataOrLength, timeoutMs)
             else -> error("Unsupported controlTransfer payload: $dataOrLength")
         }
     }

@@ -34,11 +34,41 @@ class AndroidUsbError(Exception):
     """Raised when the Android USB host bridge reports an I/O or permission error."""
 
 
+class NoBackendError(AndroidUsbError):
+    """Compatibility exception matching ``usb.core.NoBackendError``."""
+
+
 class _BytePayload(bytes):
     """Bytes subclass providing pyusb's ``.tobytes()`` convenience method."""
 
     def tobytes(self) -> bytes:
         return bytes(self)
+
+
+def _to_bytes(raw: Any) -> bytes:
+    """Convert ``bytes``, buffer objects, or Chaquopy signed ``byte[]`` to ``bytes``."""
+    if raw is None:
+        return b""
+    if isinstance(raw, (bytes, bytearray)):
+        return bytes(raw)
+    try:
+        return bytes(raw)
+    except ValueError:
+        return bytes(int(b) & 0xFF for b in raw)
+
+
+def _map_get(mapping: Any, key: str, default: Any = None) -> Any:
+    """Read ``key`` from a Python ``dict`` or Chaquopy-wrapped ``java.util.Map``."""
+    if isinstance(mapping, dict):
+        return mapping.get(key, default)
+    try:
+        val = mapping.get(key)
+        return default if val is None else val
+    except Exception:
+        try:
+            return mapping[key]
+        except Exception:
+            return default
 
 
 @dataclass(frozen=True)
@@ -106,6 +136,7 @@ class AndroidUsbDevice:
         self.idVendor = int(id_vendor)
         self.idProduct = int(id_product)
         self.serial_number = serial_number
+        self.iSerialNumber = 1 if serial_number else 0
         self.default_timeout = int(default_timeout)
         self._cancel_check = cancel_check
         self._config = AndroidUsbConfiguration(interfaces)
@@ -152,7 +183,7 @@ class AndroidUsbDevice:
             raw = self._bridge.bulkRead(handle, int(ep_addr), int(length), eff_timeout)
         except Exception as exc:
             raise AndroidUsbError(f"bulkRead failed: {exc}") from exc
-        return _BytePayload(bytes(raw or b""))
+        return _BytePayload(_to_bytes(raw))
 
     def write(self, ep: Any, data: bytes | bytearray, timeout: int | None = None) -> int:
         ep_addr = ep.bEndpointAddress if hasattr(ep, "bEndpointAddress") else int(ep)
@@ -176,20 +207,43 @@ class AndroidUsbDevice:
     ) -> Any:
         eff_timeout = self.default_timeout if timeout is None else int(timeout)
         handle = self._ensure_open()
+        is_in = isinstance(data_or_wLength, int)
         try:
-            res = self._bridge.controlTransfer(
-                handle,
-                int(bmRequestType),
-                int(bRequest),
-                int(wValue),
-                int(wIndex),
-                data_or_wLength,
-                eff_timeout,
-            )
+            if is_in and hasattr(self._bridge, "controlTransferIn"):
+                res = self._bridge.controlTransferIn(
+                    handle,
+                    int(bmRequestType),
+                    int(bRequest),
+                    int(wValue),
+                    int(wIndex),
+                    int(data_or_wLength),
+                    eff_timeout,
+                )
+            elif not is_in and hasattr(self._bridge, "controlTransferOut"):
+                res = self._bridge.controlTransferOut(
+                    handle,
+                    int(bmRequestType),
+                    int(bRequest),
+                    int(wValue),
+                    int(wIndex),
+                    bytes(data_or_wLength),
+                    eff_timeout,
+                )
+            else:
+                payload: Any = int(data_or_wLength) if is_in else bytes(data_or_wLength)
+                res = self._bridge.controlTransfer(
+                    handle,
+                    int(bmRequestType),
+                    int(bRequest),
+                    int(wValue),
+                    int(wIndex),
+                    payload,
+                    eff_timeout,
+                )
         except Exception as exc:
             raise AndroidUsbError(f"controlTransfer failed: {exc}") from exc
-        if isinstance(data_or_wLength, int):
-            return _BytePayload(bytes(res or b""))
+        if is_in:
+            return _BytePayload(_to_bytes(res))
         return len(data_or_wLength) if res is None else int(res)
 
     def reset(self) -> None:
@@ -234,28 +288,28 @@ class AndroidUsbBackend:
         raw_devices = self.bridge.findDevices(idVendor)
         devices: list[AndroidUsbDevice] = []
         for desc in raw_devices or []:
-            vid = int(desc["idVendor"])
-            pid = int(desc["idProduct"])
+            vid = int(_map_get(desc, "idVendor"))
+            pid = int(_map_get(desc, "idProduct"))
             if idVendor is not None and vid != int(idVendor):
                 continue
             if idProduct is not None and pid != int(idProduct):
                 continue
 
             ifaces: list[AndroidUsbInterface] = []
-            for iface_d in desc.get("interfaces", []):
+            for iface_d in _map_get(desc, "interfaces", []) or []:
                 eps = [
                     AndroidUsbEndpoint(
-                        bEndpointAddress=int(ep_d["address"]),
-                        bmAttributes=int(ep_d.get("attributes", ENDPOINT_TYPE_BULK)),
-                        wMaxPacketSize=int(ep_d.get("maxPacketSize", 512)),
+                        bEndpointAddress=int(_map_get(ep_d, "address")),
+                        bmAttributes=int(_map_get(ep_d, "attributes", ENDPOINT_TYPE_BULK)),
+                        wMaxPacketSize=int(_map_get(ep_d, "maxPacketSize", 512)),
                     )
-                    for ep_d in iface_d.get("endpoints", [])
+                    for ep_d in (_map_get(iface_d, "endpoints", []) or [])
                 ]
                 ifaces.append(
                     AndroidUsbInterface(
-                        interface_number=int(iface_d.get("number", 0)),
-                        bInterfaceClass=int(iface_d["interfaceClass"]),
-                        bInterfaceProtocol=int(iface_d.get("interfaceProtocol", 0)),
+                        interface_number=int(_map_get(iface_d, "number", 0)),
+                        bInterfaceClass=int(_map_get(iface_d, "interfaceClass")),
+                        bInterfaceProtocol=int(_map_get(iface_d, "interfaceProtocol", 0)),
                         endpoints=eps,
                     )
                 )
@@ -263,11 +317,11 @@ class AndroidUsbBackend:
             devices.append(
                 AndroidUsbDevice(
                     self.bridge,
-                    desc["deviceId"],
+                    _map_get(desc, "deviceId"),
                     vid,
                     pid,
                     ifaces,
-                    serial_number=str(desc.get("serialNumber", "")),
+                    serial_number=str(_map_get(desc, "serialNumber", "") or ""),
                     default_timeout=self.default_timeout_ms,
                     cancel_check=self.cancel_check,
                 )
@@ -296,6 +350,7 @@ def install_usb_shim(
     usb_util = types.ModuleType("usb.util")
 
     usb_core.USBError = AndroidUsbError  # type: ignore[attr-defined]
+    usb_core.NoBackendError = NoBackendError  # type: ignore[attr-defined]
     usb_core.find = backend.find  # type: ignore[attr-defined]
 
     def _dispose_resources(dev: Any) -> None:
@@ -307,6 +362,12 @@ def install_usb_shim(
 
     def _endpoint_type(attributes: int) -> int:
         return int(attributes) & 0x03
+
+    def _get_string(dev: Any, index: int, langid: int | None = None) -> str:
+        del langid
+        if index and hasattr(dev, "serial_number"):
+            return str(dev.serial_number or "")
+        return ""
 
     def _find_descriptor(desc_iter: Any, **kwargs: Any) -> Any:
         custom_match = kwargs.pop("custom_match", None)
@@ -336,6 +397,7 @@ def install_usb_shim(
     usb_util.endpoint_direction = _endpoint_direction  # type: ignore[attr-defined]
     usb_util.endpoint_type = _endpoint_type  # type: ignore[attr-defined]
     usb_util.find_descriptor = _find_descriptor  # type: ignore[attr-defined]
+    usb_util.get_string = _get_string  # type: ignore[attr-defined]
 
     usb_mod.core = usb_core  # type: ignore[attr-defined]
     usb_mod.util = usb_util  # type: ignore[attr-defined]

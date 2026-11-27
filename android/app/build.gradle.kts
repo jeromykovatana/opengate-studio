@@ -1,7 +1,14 @@
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.chaquo.python")
 }
+
+val repoRootDir = rootProject.projectDir.parentFile
+val venvPython = File(repoRootDir, ".venv/bin/python")
+val buildPythonPath = if (venvPython.isFile) venvPython.absolutePath else "python3"
 
 android {
     namespace = "org.opengatestudio.android"
@@ -13,6 +20,10 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0-alpha"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
     }
 
     buildFeatures {
@@ -31,6 +42,34 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+chaquopy {
+    defaultConfig {
+        version = "3.10"
+        buildPython(buildPythonPath)
+    }
+    sourceSets {
+        getByName("main") {
+            srcDir("../python")
+        }
+    }
+}
+
+val generateOpenGateKitAssets by tasks.registering(Exec::class) {
+    description = "Package clean-room opengate_kit.zip and payload_manifest.json into assets/"
+    group = "opengate"
+    workingDir = projectDir
+    commandLine(
+        buildPythonPath,
+        "../../scripts/build_android_kit.py",
+        "--out-dir",
+        "src/main/assets",
+    )
+}
+
+tasks.named("preBuild") {
+    dependsOn(generateOpenGateKitAssets)
 }
 
 dependencies {
