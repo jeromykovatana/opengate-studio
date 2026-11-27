@@ -58,8 +58,11 @@ def find_one_box(buf: bytes, region: tuple[int, int], tag: bytes) -> tuple[int, 
     return found[0]
 
 
-def read_moov_bytes(path: Path) -> tuple[int, bytes]:
-    """Read the top-level 'moov' box payload without loading 'mdat'."""
+def scan_top_level_boxes(path: Path) -> tuple[int, bytes, list[tuple[int, int]]]:
+    """Read 'moov' payload and record top-level 'mdat' payload ranges without loading 'mdat'."""
+    moov_offset: int | None = None
+    moov_bytes: bytes | None = None
+    mdat_ranges: list[tuple[int, int]] = []
     with path.open("rb") as f:
         length = os.fstat(f.fileno()).st_size
         while f.tell() < length:
@@ -75,15 +78,28 @@ def read_moov_bytes(path: Path) -> tuple[int, bytes]:
                 (size,) = struct.unpack(">Q", ext)
             elif size == 0:
                 size = length - pos
-            payload_len = pos + size - f.tell()
+            payload_start = f.tell()
+            payload_len = pos + size - payload_start
             if payload_len < 0 or pos + size > length:
                 raise ValueError("Invalid top-level MP4 box length")
             if tag == b"moov":
                 if payload_len > 128 * 1024**2:
                     raise ValueError("moov box exceeds 128 MiB limit")
-                return f.tell(), f.read(payload_len)
-            f.seek(payload_len, os.SEEK_CUR)
-    raise ValueError("Missing 'moov' box")
+                moov_offset = payload_start
+                moov_bytes = f.read(payload_len)
+            else:
+                if tag == b"mdat":
+                    mdat_ranges.append((payload_start, pos + size))
+                f.seek(payload_len, os.SEEK_CUR)
+    if moov_offset is None or moov_bytes is None:
+        raise ValueError("Missing 'moov' box")
+    return moov_offset, moov_bytes, mdat_ranges
+
+
+def read_moov_bytes(path: Path) -> tuple[int, bytes]:
+    """Read the top-level 'moov' box payload without loading 'mdat'."""
+    moov_offset, moov_bytes, _ = scan_top_level_boxes(path)
+    return moov_offset, moov_bytes
 
 
 def _parse_tkhd(buf: bytes, a: int, b: int) -> dict[str, Any]:
@@ -159,6 +175,8 @@ def _parse_stts_stats(buf: bytes, a: int, b: int, timescale: int) -> dict[str, A
             "fps_exact": "0/1",
             "frame_count": 0,
             "duration_sec": 0.0,
+            "exact_duration_sec": 0.0,
+            "total_ticks": 0,
             "cadence_constant": True,
         }
     available_entries = (b - a - 8) // 8
@@ -177,12 +195,15 @@ def _parse_stts_stats(buf: bytes, a: int, b: int, timescale: int) -> dict[str, A
             deltas.add(sample_delta)
 
     fps_label, fps_exact = _fps_label_from_values(timescale, first_delta)
-    duration_sec = round(total_ticks / timescale, 2) if timescale > 0 else 0.0
+    exact_duration = (total_ticks / timescale) if timescale > 0 else 0.0
+    duration_sec = round(exact_duration, 2)
     return {
         "fps": fps_label,
         "fps_exact": fps_exact,
         "frame_count": total_frames,
         "duration_sec": duration_sec,
+        "exact_duration_sec": exact_duration,
+        "total_ticks": total_ticks,
         "cadence_constant": len(deltas) <= 1,
     }
 
@@ -242,17 +263,154 @@ def _parse_codec_config(
     }
 
 
-def _parse_stsz(buf: bytes, a: int, b: int) -> int:
+def _parse_stsz_stats(buf: bytes, a: int, b: int) -> dict[str, Any]:
     if b - a < 12:
         raise ValueError("Truncated 'stsz' box")
     sample_size, sample_count = struct.unpack_from(">II", buf, a + 4)
-    if sample_size == 0 and sample_count > 0:
-        available = (b - a - 12) // 4
-        if available < sample_count:
-            return available
-        sizes = struct.unpack_from(f">{sample_count}I", buf, a + 12)
-        return sum(1 for s in sizes if s > 0)
-    return sample_count
+    if sample_count == 0:
+        return {
+            "sample_count": 0,
+            "nonzero_samples": 0,
+            "zero_size_samples": 0,
+            "min_sample_bytes": 0,
+            "max_sample_bytes": 0,
+            "first_nonzero_bytes": 0,
+            "sample_sizes": [],
+            "truncated": False,
+        }
+    if sample_size > 0:
+        return {
+            "sample_count": sample_count,
+            "nonzero_samples": sample_count,
+            "zero_size_samples": 0,
+            "min_sample_bytes": sample_size,
+            "max_sample_bytes": sample_size,
+            "first_nonzero_bytes": sample_size,
+            "sample_sizes": [],
+            "truncated": False,
+        }
+    available = (b - a - 12) // 4
+    count_to_read = min(sample_count, available)
+    sizes = list(struct.unpack_from(f">{count_to_read}I", buf, a + 12)) if count_to_read > 0 else []
+    nonzero = [s for s in sizes if s > 0]
+    zero_count = sum(1 for s in sizes if s == 0)
+    return {
+        "sample_count": sample_count,
+        "nonzero_samples": len(nonzero),
+        "zero_size_samples": zero_count,
+        "min_sample_bytes": min(sizes) if sizes else 0,
+        "max_sample_bytes": max(sizes) if sizes else 0,
+        "first_nonzero_bytes": nonzero[0] if nonzero else 0,
+        "sample_sizes": sizes,
+        "truncated": available < sample_count,
+    }
+
+
+def _parse_stsz(buf: bytes, a: int, b: int) -> int:
+    return _parse_stsz_stats(buf, a, b)["nonzero_samples"]
+
+
+def _parse_chunk_offsets(buf: bytes, stbl: tuple[int, int]) -> list[int]:
+    """Parse chunk offsets from 'stco' or 'co64' inside 'stbl'."""
+    stco_boxes = find_boxes(buf, stbl[0], stbl[1], b"stco")
+    if stco_boxes:
+        a, b = stco_boxes[0]
+        if b - a < 8:
+            return []
+        (entry_count,) = struct.unpack_from(">I", buf, a + 4)
+        avail = (b - a - 8) // 4
+        n = min(entry_count, avail)
+        return list(struct.unpack_from(f">{n}I", buf, a + 8)) if n > 0 else []
+    co64_boxes = find_boxes(buf, stbl[0], stbl[1], b"co64")
+    if co64_boxes:
+        a, b = co64_boxes[0]
+        if b - a < 8:
+            return []
+        (entry_count,) = struct.unpack_from(">I", buf, a + 4)
+        avail = (b - a - 8) // 8
+        n = min(entry_count, avail)
+        return list(struct.unpack_from(f">{n}Q", buf, a + 8)) if n > 0 else []
+    return []
+
+
+def _parse_stsc_entries(buf: bytes, stbl: tuple[int, int]) -> list[tuple[int, int, int]]:
+    stsc_boxes = find_boxes(buf, stbl[0], stbl[1], b"stsc")
+    if not stsc_boxes:
+        return []
+    a, b = stsc_boxes[0]
+    if b - a < 8:
+        return []
+    (entry_count,) = struct.unpack_from(">I", buf, a + 4)
+    avail = (b - a - 8) // 12
+    n = min(entry_count, avail)
+    return [struct.unpack_from(">III", buf, a + 8 + i * 12) for i in range(n)]
+
+
+def _chunk_first_sample_index(stsc_entries: list[tuple[int, int, int]], chunk_idx_0: int) -> int:
+    """Return 0-based sample index for the first sample of 0-based chunk_idx_0."""
+    if not stsc_entries:
+        return chunk_idx_0
+    target_chunk_1 = chunk_idx_0 + 1
+    sample_idx = 0
+    for i, (first_chunk, samples_per_chunk, _) in enumerate(stsc_entries):
+        next_first = stsc_entries[i + 1][0] if i + 1 < len(stsc_entries) else target_chunk_1 + 1
+        if target_chunk_1 < next_first:
+            sample_idx += max(0, target_chunk_1 - first_chunk) * samples_per_chunk
+            return sample_idx
+        sample_idx += max(0, next_first - first_chunk) * samples_per_chunk
+    return sample_idx
+
+
+_SMPTE_KLV_PREFIX = b"\x06\x0e\x2b\x34"
+
+
+def _probe_rtmd_mdat_packets(
+    mp4_path: Path,
+    mdat_ranges: list[tuple[int, int]],
+    chunk_offsets: list[int],
+    stsc_entries: list[tuple[int, int, int]],
+    stsz_stats: dict[str, Any],
+) -> tuple[bool, bool]:
+    """Bounded-seek probe of up to 5 rtmd chunks inside 'mdat' for readability & SMPTE KLV."""
+    if not mdat_ranges or not chunk_offsets or stsz_stats["nonzero_samples"] <= 0:
+        return False, False
+
+    num_chunks = len(chunk_offsets)
+    probe_indices = sorted({0, num_chunks // 4, num_chunks // 2, (3 * num_chunks) // 4, num_chunks - 1})
+    sample_sizes = stsz_stats["sample_sizes"]
+    fallback_size = stsz_stats["first_nonzero_bytes"] or 64
+
+    readable_count = 0
+    klv_count = 0
+    checked_count = 0
+
+    with mp4_path.open("rb") as f:
+        for cidx in probe_indices:
+            offset = chunk_offsets[cidx]
+            sidx = _chunk_first_sample_index(stsc_entries, cidx)
+            if sample_sizes:
+                pkt_size = sample_sizes[sidx] if sidx < len(sample_sizes) else fallback_size
+            else:
+                pkt_size = fallback_size
+            if pkt_size <= 0:
+                continue
+            checked_count += 1
+            read_len = min(pkt_size, 256)
+            in_mdat = any(start <= offset and offset + read_len <= end for start, end in mdat_ranges)
+            if not in_mdat:
+                continue
+            f.seek(offset, os.SEEK_SET)
+            raw = f.read(read_len)
+            if len(raw) < min(pkt_size, 16):
+                continue
+            readable_count += 1
+            # Sony rtmd packets contain SMPTE UL 06 0e 2b 34 (at offset 0 or after a small packet header)
+            if _SMPTE_KLV_PREFIX in raw[:128]:
+                klv_count += 1
+
+    if checked_count == 0:
+        return False, False
+    return readable_count == checked_count, klv_count > 0
 
 
 def _parse_vprf_boxes(buf: bytes, moov_end: int) -> dict[str, Any] | None:
@@ -412,7 +570,7 @@ def inspect_clip(
     auto_xml: bool = True,
 ) -> tuple[dict[str, Any], list[tuple[int, bytes]]]:
     """Inspect a Sony MP4 clip + embedded/sidecar XML + rtmd track in pure Python."""
-    base_off, buf = read_moov_bytes(mp4_path)
+    base_off, buf, mdat_ranges = scan_top_level_boxes(mp4_path)
     moov_end = len(buf)
     issues: list[str] = []
 
@@ -460,10 +618,12 @@ def inspect_clip(
                 "pixel_aspect": list(pasp[0]) if pasp else None,
                 "identity_matrix": tkhd["identity_matrix"],
                 "aperture_box": aperture,
+                "timescale": timescale,
                 "fps": stts_stats["fps"],
                 "fps_exact": stts_stats["fps_exact"],
                 "frame_count": stts_stats["frame_count"],
                 "duration_sec": stts_stats["duration_sec"],
+                "exact_duration_sec": stts_stats["exact_duration_sec"],
                 "cadence_constant": stts_stats["cadence_constant"],
                 "codec_profile_level": codec_cfg["codec_profile_level"],
                 "codec_level_idc": codec_cfg["codec_level_idc"],
@@ -477,8 +637,26 @@ def inspect_clip(
             audio_tracks += 1
         elif handler_type == b"meta" or any(t == b"rtmd" for t, _, _ in entries):
             has_rtmd = any(t == b"rtmd" for t, _, _ in entries)
+            mdhd_boxes = find_boxes(buf, mdia[0], mdia[1], b"mdhd")
+            rtmd_timescale = _parse_mdhd_timescale(buf, mdhd_boxes[0][0], mdhd_boxes[0][1]) if mdhd_boxes else 0
+            stts_boxes = find_boxes(buf, stbl[0], stbl[1], b"stts")
+            rtmd_stts = (
+                _parse_stts_stats(buf, stts_boxes[0][0], stts_boxes[0][1], rtmd_timescale)
+                if stts_boxes
+                else {
+                    "fps": "unknown",
+                    "fps_exact": "0/1",
+                    "frame_count": 0,
+                    "duration_sec": 0.0,
+                    "exact_duration_sec": 0.0,
+                    "total_ticks": 0,
+                    "cadence_constant": False,
+                }
+            )
             stsz_a, stsz_b = find_one_box(buf, stbl, b"stsz")
-            samples = _parse_stsz(buf, stsz_a, stsz_b)
+            stsz_stats = _parse_stsz_stats(buf, stsz_a, stsz_b)
+            chunk_offsets = _parse_chunk_offsets(buf, stbl)
+            stsc_entries = _parse_stsc_entries(buf, stbl)
             cdsc_refs: list[int] = []
             for tref_a, tref_b in find_boxes(buf, a, b, b"tref"):
                 for cd_a, cd_b in find_boxes(buf, tref_a, tref_b, b"cdsc"):
@@ -487,7 +665,12 @@ def inspect_clip(
             rtmd_tracks.append({
                 "track_id": tkhd["track_id"],
                 "has_rtmd": has_rtmd,
-                "samples": samples,
+                "samples": stsz_stats["nonzero_samples"],
+                "stsz_stats": stsz_stats,
+                "timescale": rtmd_timescale,
+                "stts": rtmd_stts,
+                "chunk_offsets": chunk_offsets,
+                "stsc_entries": stsc_entries,
                 "cdsc_refs": cdsc_refs,
             })
 
@@ -590,8 +773,45 @@ def inspect_clip(
         r for r in rtmd_tracks
         if r["has_rtmd"] and r["samples"] > 0 and vinfo["track_id"] in r["cdsc_refs"]
     ]
-    rtmd_samples = sum(r["samples"] for r in matching_rtmd) if matching_rtmd else sum(r["samples"] for r in rtmd_tracks if r["has_rtmd"])
+    rtmd_fallback = [r for r in rtmd_tracks if r["has_rtmd"]]
+    primary_rtmd = matching_rtmd[0] if matching_rtmd else (rtmd_fallback[0] if rtmd_fallback else None)
+
+    rtmd_samples = sum(r["samples"] for r in matching_rtmd) if matching_rtmd else sum(r["samples"] for r in rtmd_fallback)
     rtmd_gyro_present = len(matching_rtmd) >= 1 and rtmd_samples > 0
+
+    rtmd_timescale = 0
+    rtmd_cadence_constant = False
+    rtmd_duration_sec = 0.0
+    rtmd_fps = "unknown"
+    rtmd_timestamp_drift_ms = 0.0
+    rtmd_min_sample_bytes = 0
+    rtmd_max_sample_bytes = 0
+    rtmd_zero_size_samples = 0
+    rtmd_payload_readable = False
+    rtmd_klv_detected = False
+
+    if primary_rtmd is not None:
+        rtmd_timescale = int(primary_rtmd["timescale"])
+        rtmd_stts = primary_rtmd["stts"]
+        rtmd_cadence_constant = bool(rtmd_stts["cadence_constant"])
+        rtmd_duration_sec = float(rtmd_stts["duration_sec"])
+        rtmd_fps = str(rtmd_stts["fps"])
+        rtmd_exact_dur = float(rtmd_stts.get("exact_duration_sec") or 0.0)
+        video_exact_dur = float(vinfo.get("exact_duration_sec") or 0.0)
+        rtmd_timestamp_drift_ms = round(abs(rtmd_exact_dur - video_exact_dur) * 1000.0, 2)
+        stsz_s = primary_rtmd["stsz_stats"]
+        rtmd_min_sample_bytes = int(stsz_s["min_sample_bytes"])
+        rtmd_max_sample_bytes = int(stsz_s["max_sample_bytes"])
+        rtmd_zero_size_samples = int(stsz_s["zero_size_samples"])
+        if rtmd_samples > 0:
+            rtmd_payload_readable, rtmd_klv_detected = _probe_rtmd_mdat_packets(
+                mp4_path,
+                mdat_ranges,
+                primary_rtmd["chunk_offsets"],
+                primary_rtmd["stsc_entries"],
+                stsz_s,
+            )
+
     if not rtmd_tracks:
         issues.append("Missing rtmd timed-metadata track")
     elif not any(r["has_rtmd"] for r in rtmd_tracks):
@@ -600,6 +820,19 @@ def inspect_clip(
         issues.append("rtmd track missing 'cdsc' reference to video track")
     elif rtmd_samples <= 0:
         issues.append("rtmd track has 0 samples in stsz")
+    else:
+        if rtmd_timescale <= 0:
+            issues.append("rtmd track has invalid or missing mdhd timescale")
+        if rtmd_zero_size_samples > 0:
+            issues.append(f"rtmd track has {rtmd_zero_size_samples} zero-size sample(s) in stsz")
+        if not rtmd_payload_readable:
+            issues.append("rtmd payload offsets in stco/co64 are unreadable or outside mdat")
+        elif not rtmd_klv_detected:
+            issues.append("rtmd mdat payload missing SMPTE KLV header (06 0e 2b 34)")
+        if rtmd_timestamp_drift_ms > 100.0:
+            issues.append(f"rtmd duration drifts {rtmd_timestamp_drift_ms:.1f} ms from video duration")
+        if not rtmd_cadence_constant:
+            warnings.append("Variable rtmd sample delta detected in stts table; verify gyro sync.")
 
     ok = (
         len(issues) == 0
@@ -637,6 +870,16 @@ def inspect_clip(
         "rtmd_gyro_present": rtmd_gyro_present,
         "rtmd_samples": rtmd_samples,
         "rtmd_rate_ratio": rtmd_rate_ratio,
+        "rtmd_timescale": rtmd_timescale,
+        "rtmd_cadence_constant": rtmd_cadence_constant,
+        "rtmd_duration_sec": rtmd_duration_sec,
+        "rtmd_fps": rtmd_fps,
+        "rtmd_timestamp_drift_ms": rtmd_timestamp_drift_ms,
+        "rtmd_min_sample_bytes": rtmd_min_sample_bytes,
+        "rtmd_max_sample_bytes": rtmd_max_sample_bytes,
+        "rtmd_zero_size_samples": rtmd_zero_size_samples,
+        "rtmd_payload_readable": rtmd_payload_readable,
+        "rtmd_klv_detected": rtmd_klv_detected,
         "audio_tracks": audio_tracks,
         "tkhd_identity_matrix": vinfo["identity_matrix"],
         "pasp": pasp,
@@ -755,6 +998,12 @@ def build_synthetic_mp4(
     avcc_level_idc: int | None = None,
     hvcc_level_idc: int | None = None,
     mdat_bytes: int = 64,
+    rtmd_sample_bytes: int = 512,
+    rtmd_drift_ms: float = 0.0,
+    rtmd_variable_cadence: bool = False,
+    rtmd_zero_size_samples: int = 0,
+    corrupt_rtmd: bool = False,
+    rtmd_bad_stco: bool = False,
 ) -> bytes:
     """Build a minimal valid ISOBMFF MP4 container for clip checker tests."""
     vw = width if vprf_width is None else vprf_width
@@ -775,6 +1024,7 @@ def build_synthetic_mp4(
     hdlr = _fullbox(b"hdlr", 0, 0, struct.pack(">4s4sIII", b"\x00\x00\x00\x00", b"vide", 0, 0, 0) + b"VideoHandler\x00")
     stts = _fullbox(b"stts", 0, 0, struct.pack(">III", 1, frame_count, sample_delta))
     stsz_v = _fullbox(b"stsz", 0, 0, struct.pack(">II", 1024, frame_count))
+    stsc_v = _fullbox(b"stsc", 0, 0, struct.pack(">IIII", 1, 1, frame_count, 1))
 
     # Visual sample entry: 78 bytes header + optional avcC/hvcC + pasp
     vis = bytearray(78)
@@ -796,25 +1046,6 @@ def build_synthetic_mp4(
     pasp = _box(b"pasp", struct.pack(">II", 1, 1))
     sample_entry = _box(codec.encode("ascii"), bytes(vis) + codec_cfg_box + pasp)
     stsd_v = _fullbox(b"stsd", 0, 0, struct.pack(">I", 1) + sample_entry)
-    stbl_v = _box(b"stbl", stsd_v + stts + stsz_v)
-    minf_v = _box(b"minf", stbl_v)
-    mdia_v = _box(b"mdia", mdhd + hdlr + minf_v)
-    trak_v = _box(b"trak", tkhd + mdia_v)
-
-    traks = [trak_v]
-    if include_rtmd:
-        tkhd_m = bytearray(80)
-        struct.pack_into(">I", tkhd_m, 8, 2)  # track_id = 2
-        struct.pack_into(">9i", tkhd_m, 36, *IDENTITY_MATRIX)
-        tkhd_m_box = _fullbox(b"tkhd", 0, 3, bytes(tkhd_m))
-        tref_box = _box(b"tref", _box(b"cdsc", struct.pack(">I", 1))) if rtmd_cdsc else b""
-        hdlr_m = _fullbox(b"hdlr", 0, 0, struct.pack(">4s4sIII", b"\x00\x00\x00\x00", b"meta", 0, 0, 0) + b"MetaHandler\x00")
-        rtmd_entry = _box(b"rtmd", b"\x00" * 8)
-        stsd_m = _fullbox(b"stsd", 0, 0, struct.pack(">I", 1) + rtmd_entry)
-        stts_m = _fullbox(b"stts", 0, 0, struct.pack(">III", 1, max(rtmd_samples, 1), sample_delta))
-        stsz_m = _fullbox(b"stsz", 0, 0, struct.pack(">II", 512, rtmd_samples))
-        mdia_m = _box(b"mdia", mdhd + hdlr_m + _box(b"minf", _box(b"stbl", stsd_m + stts_m + stsz_m)))
-        traks.append(_box(b"trak", tkhd_m_box + tref_box + mdia_m))
 
     # Sony uuid/PROF -> VPRF box (44B VPRF payload matching FUN_0020afb4 + FUN_001b8db4)
     vprf_struct = bytearray(40)
@@ -831,8 +1062,108 @@ def build_synthetic_mp4(
         meta_box = _fullbox(b"meta", 0, 0, hdlr_xml + xml_box)
 
     ftyp = _box(b"ftyp", b"XAVC\x00\x00\x00\x00XAVCmp42iso2")
-    moov = _box(b"moov", b"".join(traks) + prof_uuid + meta_box)
-    mdat = _box(b"mdat", b"\x00" * max(0, mdat_bytes))
+    video_mdat = b"\x00" * max(0, mdat_bytes)
+
+    # Build rtmd track metadata & payloads (stco offsets patched once moov size is known)
+    rtmd_payload_chunks: list[bytes] = []
+    rtmd_rel_offsets: list[int] = []
+    if include_rtmd:
+        total_video_ticks = max(1, frame_count) * max(1, sample_delta)
+        if rtmd_samples > 0:
+            g = math.gcd(total_video_ticks, rtmd_samples)
+            mul = rtmd_samples // g
+            rtmd_timescale = timescale * mul
+            rtmd_delta = total_video_ticks // g
+            if rtmd_drift_ms != 0.0:
+                target_dur = max(0.001, (total_video_ticks / max(timescale, 1)) + (rtmd_drift_ms / 1000.0))
+                rtmd_delta = max(1, int(round(target_dur * rtmd_timescale / rtmd_samples)))
+            if rtmd_variable_cadence and rtmd_samples >= 2:
+                d1 = max(1, rtmd_delta // 2)
+                d2 = max(1, rtmd_delta + max(1, (rtmd_delta - d1) // (rtmd_samples - 1)))
+                if d1 == d2:
+                    d2 = d1 + 100
+                stts_m = _fullbox(b"stts", 0, 0, struct.pack(">IIIII", 2, 1, d1, rtmd_samples - 1, d2))
+            else:
+                stts_m = _fullbox(b"stts", 0, 0, struct.pack(">III", 1, rtmd_samples, rtmd_delta))
+            rtmd_dur_ticks = rtmd_samples * rtmd_delta
+        else:
+            rtmd_timescale = timescale
+            rtmd_dur_ticks = 0
+            stts_m = _fullbox(b"stts", 0, 0, struct.pack(">I", 0))
+
+        mdhd_m = _fullbox(
+            b"mdhd", 0, 0,
+            struct.pack(">IIIIHH", 0, 0, rtmd_timescale, rtmd_dur_ticks, 0x55C4, 0),
+        )
+        tkhd_m = bytearray(80)
+        struct.pack_into(">I", tkhd_m, 8, 2)  # track_id = 2
+        struct.pack_into(">I", tkhd_m, 16, rtmd_dur_ticks)
+        struct.pack_into(">9i", tkhd_m, 36, *IDENTITY_MATRIX)
+        tkhd_m_box = _fullbox(b"tkhd", 0, 3, bytes(tkhd_m))
+        tref_box = _box(b"tref", _box(b"cdsc", struct.pack(">I", 1))) if rtmd_cdsc else b""
+        hdlr_m = _fullbox(b"hdlr", 0, 0, struct.pack(">4s4sIII", b"\x00\x00\x00\x00", b"meta", 0, 0, 0) + b"MetaHandler\x00")
+        rtmd_entry = _box(b"rtmd", b"\x00" * 8)
+        stsd_m = _fullbox(b"stsd", 0, 0, struct.pack(">I", 1) + rtmd_entry)
+
+        if rtmd_samples > 0 and rtmd_zero_size_samples > 0:
+            zero_n = min(rtmd_zero_size_samples, rtmd_samples)
+            sample_sizes = [0] * zero_n + [max(0, rtmd_sample_bytes)] * (rtmd_samples - zero_n)
+            stsz_m = _fullbox(
+                b"stsz", 0, 0,
+                struct.pack(f">II{len(sample_sizes)}I", 0, len(sample_sizes), *sample_sizes),
+            )
+        else:
+            sample_sizes = [max(0, rtmd_sample_bytes)] * max(0, rtmd_samples)
+            stsz_m = _fullbox(b"stsz", 0, 0, struct.pack(">II", max(0, rtmd_sample_bytes), rtmd_samples))
+
+        cursor = len(video_mdat)
+        for sz in sample_sizes:
+            rtmd_rel_offsets.append(cursor)
+            if sz <= 0:
+                continue
+            if corrupt_rtmd:
+                pkt = (b"\xde\xad\xbe\xef" * ((sz + 3) // 4))[:sz]
+            else:
+                klv_hdr = _SMPTE_KLV_PREFIX + b"\x02\x53\x01\x01\x0c\x02\x01\x01\x01\x01\x00\x00"
+                body_len = max(0, sz - 20)
+                pkt = (klv_hdr + struct.pack(">I", body_len) + (b"\x55" * body_len))[:sz]
+            rtmd_payload_chunks.append(pkt)
+            cursor += len(pkt)
+
+        stsc_m = (
+            _fullbox(b"stsc", 0, 0, struct.pack(">IIII", 1, 1, 1, 1))
+            if rtmd_samples > 0
+            else _fullbox(b"stsc", 0, 0, struct.pack(">I", 0))
+        )
+
+    def _assemble_moov(mdat_payload_start: int) -> bytes:
+        stco_v = _fullbox(b"stco", 0, 0, struct.pack(">II", 1, mdat_payload_start))
+        stbl_v = _box(b"stbl", stsd_v + stts + stsz_v + stsc_v + stco_v)
+        minf_v = _box(b"minf", stbl_v)
+        mdia_v = _box(b"mdia", mdhd + hdlr + minf_v)
+        trak_v = _box(b"trak", tkhd + mdia_v)
+        traks = [trak_v]
+        if include_rtmd:
+            if rtmd_samples > 0:
+                abs_offsets = [
+                    0x7FFFFFFF if rtmd_bad_stco else (mdat_payload_start + rel_off)
+                    for rel_off in rtmd_rel_offsets
+                ]
+                stco_m = _fullbox(
+                    b"stco", 0, 0,
+                    struct.pack(f">I{len(abs_offsets)}I", len(abs_offsets), *abs_offsets),
+                )
+            else:
+                stco_m = _fullbox(b"stco", 0, 0, struct.pack(">I", 0))
+            stbl_m = _box(b"stbl", stsd_m + stts_m + stsz_m + stsc_m + stco_m)
+            mdia_m = _box(b"mdia", mdhd_m + hdlr_m + _box(b"minf", stbl_m))
+            traks.append(_box(b"trak", tkhd_m_box + tref_box + mdia_m))
+        return _box(b"moov", b"".join(traks) + prof_uuid + meta_box)
+
+    moov_placeholder = _assemble_moov(0)
+    mdat_payload_start = len(ftyp) + len(moov_placeholder) + 8
+    moov = _assemble_moov(mdat_payload_start)
+    mdat = _box(b"mdat", video_mdat + b"".join(rtmd_payload_chunks))
     return ftyp + moov + mdat
 
 

@@ -7,6 +7,7 @@ public enum StudioTab: String, CaseIterable, Identifiable {
     case setupGuide = "1. Camera Setup"
     case packsAndSafety = "2. Apply & Packs"
     case clipInspector = "3. Clip & Gyro"
+    case creatorWorkflow = "4. Ingest & Proxies"
 
     public var id: String { rawValue }
 }
@@ -271,6 +272,41 @@ public final class AppState: ObservableObject {
     @Published public var clipResult: ClipCheckResult?
     @Published public var clipError: String?
     @Published public var isCheckingClip: Bool = false
+
+    // Tab 3: Compact Gyro Diagnostic
+    @Published public var gyroDiagResult: GyroDiagnosticResult?
+    @Published public var gyroDiagError: String?
+    @Published public var isRunningGyroDiag: Bool = false
+
+    // Tab 4: Creator Workflow (Batch Ingest, Framing Preview, Proxies, Gyroflow Presets)
+    @Published public var ingestRootURL: URL?
+    @Published public var ingestExpectMode: String = "auto"
+    @Published public var ingestRecursive: Bool = true
+    @Published public var ingestResult: BatchIngestResult?
+    @Published public var ingestError: String?
+    @Published public var isIngestingBatch: Bool = false
+    @Published public var selectedIngestedClipId: String?
+    @Published public var selectedProxyClipPaths: Set<String> = []
+
+    @Published public var previewAspect: DeliveryAspect = .aspect16x9
+    @Published public var previewShowActionSafe: Bool = true
+    @Published public var previewShowTitleSafe: Bool = true
+
+    @Published public var proxyOutDirURL: URL?
+    @Published public var proxyAspect: ProxyAspectOption = .ratio3x2
+    @Published public var proxyResolution: ProxyResolutionOption = .res1080p
+    @Published public var proxyCodec: ProxyCodecOption = .h264
+    @Published public var proxyPreserveSidecar: Bool = true
+    @Published public var proxyDryRun: Bool = false
+    @Published public var proxyResult: ProxyGenerationResult?
+    @Published public var proxyError: String?
+    @Published public var isGeneratingProxies: Bool = false
+
+    @Published public var gyroPresetList: GyroflowPresetListResult?
+    @Published public var gyroPresetInstallResult: InstallGyroflowPresetsResult?
+    @Published public var gyroPresetError: String?
+    @Published public var isLoadingGyroPresets: Bool = false
+    @Published public var isInstallingGyroPresets: Bool = false
 
     // Tab 3: Field Test & Reliability Report Builder
     @Published public var reportClipsFolderURL: URL?
@@ -972,6 +1008,8 @@ public final class AppState: ObservableObject {
 
     public func selectMP4File(_ url: URL) async {
         selectedMP4URL = url
+        gyroDiagResult = nil
+        gyroDiagError = nil
         if let autoXML = StudioBridge.autoDetectSidecarXML(for: url) {
             selectedXMLURL = autoXML
         } else {
@@ -982,6 +1020,8 @@ public final class AppState: ObservableObject {
 
     public func selectXMLFile(_ url: URL?) async {
         selectedXMLURL = url
+        gyroDiagResult = nil
+        gyroDiagError = nil
         if selectedMP4URL != nil {
             await inspectCurrentClip()
         }
@@ -1004,6 +1044,125 @@ public final class AppState: ObservableObject {
         } catch {
             clipResult = nil
             captureError(error, target: .clip)
+        }
+    }
+
+    public func runGyroDiagnosticForCurrentClip() async {
+        guard let bridge, let mp4URL = selectedMP4URL else { return }
+        gyroDiagError = nil
+        isRunningGyroDiag = true
+        defer { isRunningGyroDiag = false }
+
+        do {
+            let (res, trace) = try await bridge.gyroDiagnose(
+                mp4URL: mp4URL,
+                xmlURL: selectedXMLURL,
+                bodyId: selectedBodyId,
+                expect: clipExpectMode
+            )
+            appendLog(trace)
+            gyroDiagResult = res
+        } catch {
+            gyroDiagResult = nil
+            if let bridgeError = error as? StudioBridgeError,
+               case let .cliFailed(_, _, trace) = bridgeError {
+                appendLog(trace)
+            }
+            gyroDiagError = error.localizedDescription
+        }
+    }
+
+    public func runBatchIngest() async {
+        guard let bridge, let rootDir = ingestRootURL else { return }
+        ingestError = nil
+        isIngestingBatch = true
+        defer { isIngestingBatch = false }
+
+        do {
+            let (res, trace) = try await bridge.ingestBatch(
+                rootDir: rootDir,
+                expect: ingestExpectMode,
+                bodyId: selectedBodyId,
+                recursive: ingestRecursive
+            )
+            appendLog(trace)
+            ingestResult = res
+            selectedProxyClipPaths = Set(res.clips.filter(\.ok).map(\.file))
+            if selectedIngestedClipId == nil, let first = res.clips.first {
+                selectedIngestedClipId = first.id
+            }
+        } catch {
+            ingestResult = nil
+            if let bridgeError = error as? StudioBridgeError,
+               case let .cliFailed(_, _, trace) = bridgeError {
+                appendLog(trace)
+            }
+            ingestError = error.localizedDescription
+        }
+    }
+
+    public func generateProxiesForSelectedClips() async {
+        guard let bridge, let outDir = proxyOutDirURL else { return }
+        let inputURLs = selectedProxyClipPaths.sorted().map { URL(fileURLWithPath: $0) }
+        guard !inputURLs.isEmpty else { return }
+
+        proxyError = nil
+        isGeneratingProxies = true
+        defer { isGeneratingProxies = false }
+
+        do {
+            let (res, trace) = try await bridge.generateProxies(
+                inputs: inputURLs,
+                outDir: outDir,
+                aspect: proxyAspect,
+                resolution: proxyResolution,
+                codec: proxyCodec,
+                preserveGyroSidecar: proxyPreserveSidecar,
+                dryRun: proxyDryRun
+            )
+            appendLog(trace)
+            proxyResult = res
+        } catch {
+            proxyResult = nil
+            if let bridgeError = error as? StudioBridgeError,
+               case let .cliFailed(_, _, trace) = bridgeError {
+                appendLog(trace)
+            }
+            proxyError = error.localizedDescription
+        }
+    }
+
+    public func loadGyroflowPresets() async {
+        guard let bridge else { return }
+        gyroPresetError = nil
+        isLoadingGyroPresets = true
+        defer { isLoadingGyroPresets = false }
+
+        do {
+            let (res, trace) = try await bridge.listGyroflowPresets()
+            appendLog(trace)
+            gyroPresetList = res
+        } catch {
+            gyroPresetError = error.localizedDescription
+        }
+    }
+
+    public func installGyroflowPresets(targetDir: URL? = nil) async {
+        guard let bridge else { return }
+        gyroPresetError = nil
+        isInstallingGyroPresets = true
+        defer { isInstallingGyroPresets = false }
+
+        do {
+            let (res, trace) = try await bridge.installGyroflowPresets(targetDir: targetDir)
+            appendLog(trace)
+            gyroPresetInstallResult = res
+        } catch {
+            if let bridgeError = error as? StudioBridgeError,
+               case let .cliFailed(_, _, trace) = bridgeError {
+                appendLog(trace)
+            }
+            gyroPresetError = error.localizedDescription
         }
     }
 

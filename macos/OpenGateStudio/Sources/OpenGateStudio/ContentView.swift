@@ -111,7 +111,7 @@ public struct ContentView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 540)
+                .frame(maxWidth: 720)
 
                 Spacer()
 
@@ -187,6 +187,8 @@ public struct ContentView: View {
             FeaturePacksAndStepperView()
         case .clipInspector:
             ClipInspectorView()
+        case .creatorWorkflow:
+            CreatorWorkflowView()
         }
     }
 }

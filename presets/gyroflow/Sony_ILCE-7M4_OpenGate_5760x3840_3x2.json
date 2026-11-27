@@ -1,0 +1,43 @@
+{
+  "name": "Sony_ILCE-7M4_OpenGate_5760x3840_3x2",
+  "note": "ESTIMATED readout time (31.8 ms, evidence_level=estimated_from_imx710_line_ratio; NOT hardware_measured). Zero-distortion starter template — calibrate your specific lens in Gyroflow and turn SteadyShot OFF when shooting for Gyroflow/Catalyst.",
+  "calibrated_by": "OpenGate Studio (Starter Template - Needs Per-Lens Calibration)",
+  "camera_brand": "Sony",
+  "camera_model": "ILCE-7M4",
+  "lens_model": "Generic / Uncalibrated (Calibrate Your Lens in Gyroflow)",
+  "camera_setting": "3:2 Open Gate (5760x3840)",
+  "calib_dimension": {
+    "w": 5760,
+    "h": 3840
+  },
+  "orig_dimension": {
+    "w": 5760,
+    "h": 3840
+  },
+  "output_dimension": {
+    "w": 5760,
+    "h": 3840
+  },
+  "frame_readout_time": 31.8,
+  "frame_readout_direction": "TopToBottom",
+  "gyro_lpf": null,
+  "input_horizontal_stretch": 1.0,
+  "input_vertical_stretch": 1.0,
+  "num_images": 0,
+  "official": false,
+  "asymmetrical": false,
+  "fisheye_params": {
+    "RMS_error": 0.0,
+    "camera_matrix": [
+      [4800.0, 0.0, 2880.0],
+      [0.0, 4800.0, 1920.0],
+      [0.0, 0.0, 1.0]
+    ],
+    "distortion_coeffs": [0.0, 0.0, 0.0, 0.0],
+    "radial_distortion_limit": null
+  },
+  "identifier": "sony-ilce-7m4-opengate-5760x3840-3x2",
+  "calibrator_version": "OpenGateStudio-Starter-v1",
+  "date": "2026-11-26",
+  "compatible_settings": []
+}

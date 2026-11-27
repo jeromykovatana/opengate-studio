@@ -22,7 +22,13 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import bionz_clip_check as bcc  # noqa: E402
+import studio_creator  # noqa: E402
 import studio_report  # noqa: E402
+
+try:
+    import studio_gyro  # type: ignore[import-not-found]  # noqa: E402
+except ImportError:
+    studio_gyro = None  # type: ignore[assignment]
 
 BODY_ORDER = ("zve1_202", "a7s3_501", "fx3_702")
 OPTIONAL_PACK_ORDER = ("mp4_3x2", "hdmi32", "high_bitrate", "xavc_si", "screen_3x2", "fx3_playback")
@@ -694,6 +700,66 @@ def cmd_check_clip(mp4_path: Path, xml_path: Path | None, body: str | None, expe
         return 2, {"ok": False, "error": str(err)}
 
 
+def cmd_gyro_diagnose(mp4_path: Path, xml_path: Path | None, body: str | None, expect: str) -> tuple[int, dict[str, Any]]:
+    if studio_gyro is None:
+        return 2, {"ok": False, "error": "studio_gyro module is not available"}
+    try:
+        src = mp4_path.resolve(strict=True)
+        xml_p = xml_path.resolve(strict=True) if xml_path else None
+        report = studio_gyro.diagnose_clip_gyro(src, xml_path=xml_p, body=body, expect=expect)
+        return 0, report
+    except Exception as err:
+        return 2, {"ok": False, "error": str(err)}
+
+
+def cmd_install_gyroflow_presets(list_only: bool, target_dir: Path | None, body: str | None) -> tuple[int, dict[str, Any]]:
+    if studio_gyro is None:
+        return 2, {"ok": False, "error": "studio_gyro module is not available"}
+    try:
+        if list_only:
+            payload = studio_gyro.list_gyroflow_presets()
+            if body:
+                filtered = [p for p in payload.get("presets", []) if p.get("body_id") == body]
+                payload = {**payload, "presets": filtered}
+            return (0 if payload.get("ok", True) else 1), payload
+        payload = studio_gyro.install_gyroflow_presets(target_dir=target_dir, body_id=body)
+        return (0 if payload.get("ok", True) else 1), payload
+    except Exception as err:
+        return 2, {"ok": False, "error": str(err)}
+
+
+def cmd_ingest_batch(root_dir: Path, expect: str, body: str | None, recursive: bool) -> tuple[int, dict[str, Any]]:
+    try:
+        payload = studio_creator.ingest_card_batch(root_dir, expect=expect, body=body, recursive=recursive)
+        return (0 if payload.get("ok", False) else 1), payload
+    except Exception as err:
+        return 2, {"ok": False, "error": str(err)}
+
+
+def cmd_generate_proxies(
+    inputs: list[Path],
+    out_dir: Path,
+    aspect: str,
+    resolution: str,
+    codec: str,
+    preserve_gyro_sidecar: bool,
+    dry_run: bool,
+) -> tuple[int, dict[str, Any]]:
+    try:
+        payload = studio_creator.generate_proxies(
+            inputs=inputs,
+            out_dir=out_dir,
+            aspect=aspect,
+            resolution=resolution,
+            codec=codec,
+            preserve_gyro_sidecar=preserve_gyro_sidecar,
+            dry_run=dry_run,
+        )
+        return (0 if payload.get("ok", False) else 1), payload
+    except Exception as err:
+        return 2, {"ok": False, "error": str(err)}
+
+
 def cmd_build_report(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     manifests = _load_manifests()
     return studio_report.build_field_report(
@@ -789,6 +855,36 @@ def main(argv: list[str] | None = None) -> int:
     p_rep.add_argument("--notes", default="")
     p_rep.add_argument("--json", action="store_true")
 
+    p_gyro = sub.add_parser("gyro-diagnose", help="Diagnose Gyroflow & Catalyst readiness for an MP4 + XML clip")
+    p_gyro.add_argument("mp4_path", type=Path)
+    p_gyro.add_argument("--xml", type=Path, default=None)
+    p_gyro.add_argument("--body", default=None)
+    p_gyro.add_argument("--expect", choices=("open-gate", "stock"), default="open-gate")
+    p_gyro.add_argument("--json", action="store_true")
+
+    p_presets = sub.add_parser("install-gyroflow-presets", help="List or install starter 3:2 Gyroflow lens profiles")
+    p_presets.add_argument("--list-only", action="store_true")
+    p_presets.add_argument("--target-dir", type=Path, default=None)
+    p_presets.add_argument("--body", default=None)
+    p_presets.add_argument("--json", action="store_true")
+
+    p_ingest = sub.add_parser("ingest-batch", help="Batch-scan SD card folder for Sony clips and gyro readiness")
+    p_ingest.add_argument("root_dir", type=Path)
+    p_ingest.add_argument("--expect", choices=("auto", "open-gate", "stock"), default="auto")
+    p_ingest.add_argument("--body", default=None)
+    p_ingest.add_argument("--no-recursive", action="store_true")
+    p_ingest.add_argument("--json", action="store_true")
+
+    p_proxy = sub.add_parser("generate-proxies", help="Generate relink-verified editing proxies without altering originals")
+    p_proxy.add_argument("inputs", nargs="+", type=Path)
+    p_proxy.add_argument("--out-dir", type=Path, required=True)
+    p_proxy.add_argument("--aspect", choices=("3:2", "16:9", "1:1", "9:16", "2.39:1"), default="3:2")
+    p_proxy.add_argument("--resolution", choices=("720p", "1080p", "2160p", "4k"), default="1080p")
+    p_proxy.add_argument("--codec", choices=("h264", "hevc", "h265", "prores", "prores_proxy", "prores_lt"), default="h264")
+    p_proxy.add_argument("--dry-run", action="store_true")
+    p_proxy.add_argument("--no-sidecar", action="store_true")
+    p_proxy.add_argument("--json", action="store_true")
+
     args = ap.parse_args(argv)
     if args.cmd == "list-bodies":
         rc, payload = cmd_list_bodies()
@@ -808,6 +904,22 @@ def main(argv: list[str] | None = None) -> int:
         rc, payload = cmd_check_clip(args.mp4_path, args.xml, args.body, args.expect)
     elif args.cmd == "build-report":
         rc, payload = cmd_build_report(args)
+    elif args.cmd == "gyro-diagnose":
+        rc, payload = cmd_gyro_diagnose(args.mp4_path, args.xml, args.body, args.expect)
+    elif args.cmd == "install-gyroflow-presets":
+        rc, payload = cmd_install_gyroflow_presets(args.list_only, args.target_dir, args.body)
+    elif args.cmd == "ingest-batch":
+        rc, payload = cmd_ingest_batch(args.root_dir, args.expect, args.body, not args.no_recursive)
+    elif args.cmd == "generate-proxies":
+        rc, payload = cmd_generate_proxies(
+            args.inputs,
+            args.out_dir,
+            args.aspect,
+            args.resolution,
+            args.codec,
+            not args.no_sidecar,
+            args.dry_run,
+        )
     else:
         rc, payload = 2, {"ok": False, "error": f"Unsupported command {args.cmd}"}
 

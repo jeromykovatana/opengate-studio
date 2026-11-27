@@ -35,6 +35,8 @@ public struct ClipInspectorView: View {
                     emptyStatePlaceholder
                 }
 
+                gyroDiagnosticCard
+
                 reportBuilderCard
             }
             .padding(20)
@@ -274,6 +276,95 @@ public struct ClipInspectorView: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
         )
+    }
+
+    private var gyroDiagnosticCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Gyroflow & Catalyst Readiness Diagnostic", systemImage: "gyroscope")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    Task { await appState.runGyroDiagnosticForCurrentClip() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if appState.isRunningGyroDiag {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "waveform.path.ecg")
+                        }
+                        Text("Run Gyro Diagnostic")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(appState.selectedMP4URL == nil || appState.isRunningGyroDiag)
+            }
+
+            if let err = appState.gyroDiagError {
+                Label(err, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            } else if let diag = appState.gyroDiagResult {
+                HStack(spacing: 10) {
+                    diagPill(label: "Gyroflow", ready: diag.readyForGyroflow)
+                    diagPill(label: "Catalyst", ready: diag.readyForCatalyst)
+                    Text("Category: \(diag.failureCategory)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                    if let readout = diag.readoutTimeMs {
+                        Text(String(format: "Readout: %.2f ms (%@)", readout, diag.evidenceLevel ?? "estimated"))
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+
+                if !diag.summary.isEmpty {
+                    Text(diag.summary)
+                        .font(.callout)
+                }
+
+                if !diag.recommendedActions.isEmpty {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Recommended Actions:")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        ForEach(diag.recommendedActions, id: \.self) { act in
+                            Text("• \(act)")
+                                .font(.caption)
+                        }
+                    }
+                }
+            } else {
+                Text("Select an .MP4 clip above and click Run Gyro Diagnostic to classify rtmd cadence, crop geometry, and readout calibration.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private func diagPill(label: String, ready: Bool) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: ready ? "checkmark.circle.fill" : "xmark.circle.fill")
+            Text("\(label): \(ready ? "READY" : "NOT READY")")
+        }
+        .font(.caption.weight(.semibold))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(ready ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
+        .foregroundStyle(ready ? .green : .red)
+        .clipShape(Capsule())
     }
 
     private var reportBuilderCard: some View {
