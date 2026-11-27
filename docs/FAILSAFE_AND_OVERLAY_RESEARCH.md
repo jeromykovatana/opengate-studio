@@ -191,8 +191,88 @@ Static offline disassembly across unpacked `cpapp-b.bin` (`CPAPP_BASE = 0x108000
 
 ### 4.3 `50p`/`60p`/`120p` Option C Register Contracts (`picture_ratio` & `libmpr.so`)
 
-1. **`cpapp-b.bin` `picture_ratio` (`0x1e4f64` `a7S III`, `0x1df794` `FX3`, `0x1f5e5c` `ZV-E1`):** Receives packed `(width << 16) | height` in `r1`, unpacking width via `lsrs r3, r1, #0x10` and height via `uxth r2, r1`.
+1. **`cpapp-b.bin` `picture_ratio` (`0x1e4f64` `a7S III`, `0x1df794` `FX3`, `0x1f5e5c` `ZV-E1`):** Receives packed `(height << 16) | width` in `r1`, unpacking height via `lsrs r3, r1, #0x10` and width via `uxth r2, r1` (`RECT` output `{x, y, w, h}`). Note `a7S III` / `ZV-E1` accept 3 stack arguments (`fit`, `flag`, `out_rect`, with `flag & 1` selecting `100:235`), whereas `FX3` accepts 2 stack arguments (`fit`, `out_rect`) without the `100:235` branch.
 2. **`libmpr.so` (`a7s3_501`) HFR Frame-Rate Selectors:**
-   - `L2-mp4` (`0x223c4c`): loads the frame-rate selector from `[x1, #0x14]` at `0x223d34`.
-   - `L3-nrt-vline` (`0x1185f0`): loads the frame-rate selector from `[x20, #0x138]` at `0x118684`.
+   - `L2-mp4` (`0x223c4c` `a7s3_501`, `0x21fec4` `fx3_702`, `0x207d14` `zve1_202`): loads the **bitrate index** (`2..53`) from `[x1, #0x14]` and loads the **true frame-rate enum** (`0..11`: `0=23.98p, 1=24p, 2=25p, 3=29.97p, 4/5=50p, 6/7=59.94p, 8=100p, 9=119.88p, 10=200p, 11=239.76p`, Q16 table at `0x2dc848` `a7s3_501` / `0x2ba208` `zve1_202`) from **`[x1, #0x18]`**.
+   - `L3-nrt-vline` (`0x1185f0` `a7s3_501`): loads the HFR sensor frame-rate scalar from `[x20, #0x138]` at `0x118684`.
+   - `NrtMetaWrapper::Init` (`0x253f64` `a7s3_501`, `0x2500d0` `fx3_702`, `0x237f5c` `zve1_202`): copies `RecAttribute.height` (`[x20, #0x5e]`) to `[x29, #0x74]` and unconditionally sets `b_aspectValid = 1` into `[x29, #0x78]`.
+
+---
+
+## 5. Unicorn Emulation & Candidate Volatile-RAM Prototypes
+
+All Track 3A, 3B, and 3C candidate volatile-RAM patches below were verified **100% offline** in Unicorn (`ARM Thumb-2 + VFP` with `CPACR = 0x00F00000`, `FPEXC = 0x40000000` for `cpapp-b.bin`, and `AArch64` for `libmpr.so`) against unpacked `zve1_202`, `a7s3_501`, and `fx3_702` targets. Every trampoline fits inside a zero-filled `.text` tail cave verified unused in each image.
+
+### 5.1 Read-Only `CT6` Inspection Targets (Verify Before Any Write)
+
+| Subsystem / Check Target | `zve1_202` (`ZV-E1 2.02`) | `a7s3_501` (`a7S III 5.01`) | `fx3_702` (`FX3 7.02`) | Expected Stock State / Note |
+| :--- | :--- | :--- | :--- | :--- |
+| Active drive mode (`u16` global) | `0x11d70d0` | `0x1032940` | `0x100d740` | Open-gate low-bit13: `0x8c0`/`0x820`; HFR: `0xae0`/`0x7e0`/`0xaa0` |
+| Sensor/MIPI `r4_outer` singleton ptr | `0x17f1f64` -> `0x17f21f4` | `0x12a41f0` -> `0x12a4678` | `0x127ab68` -> `0x127aff0` | Vtable ref `0xdcc3e4+8` / `0xc7050c+8` / `0xc53678+8` |
+| Sensor/MIPI `r4_inner` (`r4` in `start`) | `0x17f26e0` (`+0x4ec`) | `0x12a4b60` (`+0x4e8`) | `0x127b4d8` (`+0x4e8`) | Sub-object passed as `r4` to `CetusSlvsecDriver::start` |
+| Cached lane / PHY `[r4_inner, #0x1c]` | `0x17f26fc` | `0x12a4b7c` | `0x127b4f4` | `7` after Stills init (`fullinit` skipped if `[r4,#0x2c]==7`) |
+| Cached lane / PHY `[r4_inner, #0x2c]` | `0x17f270c` | `0x12a4b8c` | `0x127b504` | `7` after Stills init (`P2[1]`) |
+| Queued `new_drv` (`[r4_inner, #0x48]`) | `0x17f2728` (`[r4_outer,#0x534]`) | `0x12a4ba8` (`[r4_outer,#0x530]`) | `0x127b520` (`[r4_outer,#0x530]`) | `drv_mode` pending during `start` (`#0x530..#0x548` block) |
+| `Size Class 3` packed `(h<<16)\|w` | `0x199655c` | `0x13ec2e4` | `0x13c31c8` | Stock `0x08700f00` (`3840x2160`); Option C reads conditionally |
+| `cpapp-b.bin` `.text`-tail zero cave | `0xc0fc98` (3A) / `0xc0fd20` (3B) / `0xc0fd80` (3C) | `0xae2f5c` (3A) / `0xae3000` (3B) / `0xae3200` (3C) | `0xaca944` (3A) / `0xacaa00` (3B) / `0xacac00` (3C) | All-zero bytes at end of `.text` |
+| `libmpr.so` `PT_LOAD[0]` zero-tail cave | `0x2c7ee4` (284 B free) | `0x2eafa4` (92 B free) | `0x2e192c` (1748 B free) | Coupled 3C AArch64 trampolines use `48 B` (`32 B + 16 B`) |
+
+### 5.2 Track 3A: `cpActTrackingFrame` Vertical Tracking-Box Un-Stretch (`ZV-E1` & `a7S III`)
+
+Disassembly of `cpActTrackingFrame` (`0x129288` `zve1_202`, `0x129608` `a7s3_501`) and `VDF` getters (`0x63b3da`/`0x63b448` `zve1_202`, `0x58c432`/`0x58c4a0` `a7s3_501`) confirms Stage 1 scales vertical coordinates from the `640x360` tracking grid only when `raw_vdf.h == 360`, and Stage 2 gates `y_center`/`h` scaling via `0x129384` (`zve1_202`) / `0x129704` (`a7s3_501`):
+
+- **Un-stretch candidate trampoline:**
+  - **`zve1_202` (`0x1293bc -> 0xc0fc98`, `720x480` panel, PAR `9:8`):** Hooks the Stage-2 height store when `raw_vdf.h == 360` and `disp_vdf.h == 480` (`lcdfill_zv_v2` active). Replaces the stretched height `h_s` with `h_new = (orig_h * 9 + 4) >> 3` (matching `720x480` panel pixel aspect so a `64x64` sensor-grid square renders `72x72` physical px) and recenters `y_new = y_s + ((h_s - h_new) >> 1)`.
+  - **`a7s3_501` (`0x1297c0 -> 0xae2f5c`, `800x600` panel, PAR `1:1`):** Hooks `vstr s0, [sb]` when `disp_vdf.h == 428` (`0x1ac`, `lcdratio32_s3_v1` active) and restores `h_new = orig_h`, `y_new = y_s + ((h_s - h_new) >> 1)`.
+
+Unicorn VFP emulation results (`64x36` box at `10%` / `50%` / `90%` sensor Y, plus `64x64` 1:1 square at `50%`):
+
+| Model (Panel / PAR) | Input Box (`640x360` grid) | Stock `16:9` `(y, h)` | Unpatched 3:2 `(y, h)` | Patched 3:2 `(y, h)` | Aspect Verification |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`zve1_202`** (`720x480`, `9:8`) | `10%` (`y=18, h=36`) | `(58, 40)` | `(24, 48)` | **`(27, 41)`** | Matches `9:8` stock height (`40`/`41`) |
+| **`zve1_202`** (`720x480`, `9:8`) | `50%` (`y=162, h=36`) | `(219, 40)` | `(216, 48)` | **`(219, 41)`** | Centered across `480px` panel |
+| **`zve1_202`** (`720x480`, `9:8`) | `90%` (`y=306, h=36`) | `(381, 40)` | `(408, 48)` | **`(411, 41)`** | Eliminates `4/3` (`+20%`) stretch |
+| **`zve1_202`** (`720x480`, `9:8`) | `50%` `64x64` square | — | `(w=64, y=197, h=85)` (`1.18x`) | **`(w=64, y=203, h=72)`** | `64*(720/640)=72px` wide by `72px` tall (`1:1`) |
+| **`a7s3_501`** (`800x600`, `1:1`) | `10%` (`y=18, h=36`) | `(78, 36)` | `(47, 42)` | **`(50, 36)`** | Eliminates `428/360` (`+18.9%`) stretch |
+| **`a7s3_501`** (`800x600`, `1:1`) | `50%` (`y=162, h=36`) | `(222, 36)` | `(218, 42)` | **`(221, 36)`** | Centered inside `428px` active 3:2 frame |
+| **`a7s3_501`** (`800x600`, `1:1`) | `90%` (`y=306, h=36`) | `(366, 36)` | `(389, 42)` | **`(392, 36)`** | Symmetrical near bottom of 3:2 frame |
+| **`a7s3_501`** (`800x600`, `1:1`) | `50%` `64x64` square | — | `(w=64, y=201, h=76)` (`1.19x`) | **`(w=64, y=207, h=64)`** | `64*(800/640)=80px` wide by `80px` tall (`1:1`) |
+
+Stock-mode regression checks (`disp = (0, 38, 640, 404)` on `zve1_202` and `(0, 60, 640, 360)` on `a7s3_501`) pass identically without entering the 3:2 un-stretch branch.
+
+### 5.3 Track 3B: Stills-to-Movie `fullinit` Cache Guard
+
+Trace of the mode-switch dispatcher (`0x335a94` `a7s3_501`, `0x330d70` `fx3_702`, `0x390994` `zve1_202`) and call site (`0x335e74` / `0x331150` / `0x390d70`) shows `CetusSlvsecDriver::start` (`0x332624` / `0x32d900` / `0x38d4b4`) is invoked directly without a preceding `fullinit` flush. Because `P1[1]` and `P2[1]` cached inside `[r4, #0x1c]` and `[r4, #0x2c]` are both `7` after Stills mode, stock skips `fullinit` (`cmp r1, #7; it eq; cmpeq r2, #7; beq skip`).
+
+- **Candidate volatile-RAM guard (`0x33263e -> 0xae3000` `a7s3_501`, `0x32d91a -> 0xacaa00` `fx3_702`, `0x38d4ce -> 0xc0fd20` `zve1_202`):**
+  Reads `ubfx r0, [r4, #0x48], #0, #13` (`new_drv & 0x1fff`) and forces the `fullinit` branch whenever the low 13 bits match `0x8c0` (23.98p / 24p) or `0x820` (25p / 29.97p), falling back to stock `(r1 == 7 && r2 == 7)` cache-skip behavior for all Stills and non-open-gate transitions.
+- **Unicorn results (identical across `a7s3_501`, `fx3_702`, `zve1_202`):**
+  - Stock `0x8c0` with cached `(7, 7)`: `fullinit_calls = 0` (reproduces Stills->Movie black/half-frame glitch).
+  - Patched `0x8c0` (`23.98p`), `0x820` (`29.97p`), `0x28c0` (`24.00p` / PAL mask): `fullinit_calls = 1` even when cached `(7, 7)`.
+  - Patched Stills `0xe011` / `0xa002` with cached `(7, 7)`: `fullinit_calls = 0` (cached Stills transitions unaltered); cold `(0, 0)` Stills `0xe011`: `fullinit_calls = 1`.
+
+### 5.4 Track 3C: Coupled AArch32 + AArch64 Option C Frame-Rate Auto-Fallback (`23.98p-29.97p -> 3:2`, `50p-120p -> 16:9`)
+
+Rather than writing static `0x0a000f00` (`3840x2560`) and unconditional `b_aspectValid = 0` across all rates, the candidate Option C design hooks both CPUs in volatile RAM:
+
+1. **`cpapp-b.bin` (AArch32 Thumb-2):**
+   - `Size Class 3` consumer (`0x42685c -> 0xae3200` `a7s3_501`, `0x41c214 -> 0xacac00` `fx3_702`, `0x4c7b28 -> 0xc0fd80` `zve1_202`): reads `drv_mode & 0x1fff` and returns `0x0a000f00` (`3840x2560`) iff `mode in {0x8c0, 0x820}`, else `0x08700f00` (`3840x2160`).
+   - `picture_ratio` (`0x1e4f96` `a7s3_501`, `0x1df7b8` `fx3_702`, `0x1f5e8e` `zve1_202`): returns `2:3` (`lr=2, r0=3` -> `640x428` letterbox) iff `drv_mode & 0x1fff in {0x8c0, 0x820}`, else stock `9:16` (`lr=9, r0=16` -> `640x360`).
+2. **`libmpr.so` (AArch64 leaf-safe `b` / `b` trampolines — preserves caller `x30`/`LR`!):**
+   - `L2-mp4` (`strh w6, [x0, #0x40]` at `0x223d40` `a7s3_501`, `0x21ff9c` `fx3_702`, `0x207e08` `zve1_202` -> 32-byte cave): promotes `w6 == 0x870` to `0xa00` iff `ldr w9, [x1, #0x18]` (`fps_code`) is `<= 3` (`23.98p..29.97p`), leaving `50p..120p` (`fps_code >= 4`) at `0x870` (`2160`).
+   - `NrtMetaWrapper::Init` (`mov w0, #1` at `0x25411c` `a7s3_501`, `0x250288` `fx3_702`, `0x238114` `zve1_202` -> 16-byte cave): reads `w9 = [x29, #0x74]` (`nrt_vline`) and outputs `b_aspectValid = (w9 != 0xa00) ? 1 : 0`, so `2560`-line clips clear `b_aspectValid` while `2160`-line HFR clips preserve stock `16:9` aspect signaling.
+
+Coupled Unicorn emulation results across all 8 rates (`zve1_202`, `a7s3_501`, `fx3_702` identical):
+
+| Rate | `fps_code` | `drv_mode` | `cpapp` Size Class 3 | `picture_ratio` (`640x480` LCD) | `libmpr` `L2-mp4` | `NrtMetaWrapper` `nrt_vline` | `b_aspectValid` |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `23.98p` | `0` | `0x08c0` | `3840x2560` | `(0, 26, 640, 428)` (`3:2`) | `3840x2560` | `2560` | `0` (`3:2` square px) |
+| `24.00p` | `1` | `0x28c0` | `3840x2560` | `(0, 26, 640, 428)` (`3:2`) | `3840x2560` | `2560` | `0` |
+| `25.00p` | `2` | `0x2820` | `3840x2560` | `(0, 26, 640, 428)` (`3:2`) | `3840x2560` | `2560` | `0` |
+| `29.97p` | `3` | `0x0820` | `3840x2560` | `(0, 26, 640, 428)` (`3:2`) | `3840x2560` | `2560` | `0` |
+| `50.00p` | `4` | `0x27e0` | `3840x2160` | `(0, 60, 640, 360)` (`16:9`) | `3840x2160` | `2160` | `1` (`16:9` fallback) |
+| `59.94p` | `6` | `0x0ae0` | `3840x2160` | `(0, 60, 640, 360)` (`16:9`) | `3840x2160` | `2160` | `1` |
+| `100.0p` | `8` | `0x2aa0` | `3840x2160` | `(0, 60, 640, 360)` (`16:9`) | `3840x2160` | `2160` | `1` |
+| `120.0p` | `9` | `0x0aa0` | `3840x2160` | `(0, 60, 640, 360)` (`16:9`) | `3840x2160` | `2160` | `1` |
+
 
