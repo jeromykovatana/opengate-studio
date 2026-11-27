@@ -270,7 +270,7 @@ class ConformanceKitTests(unittest.TestCase):
             self.assertFalse(res["matrix_recommendations"]["matrix_mutated"])
             self.assertTrue(promos)
             promo_pairs = {(p["pack"], p["dimension"], p["to"]) for p in promos}
-            self.assertIn(("mp4_3x2", "clip_xml_validated", "yes"), promo_pairs)
+            self.assertIn(("core_open_gate + mp4_3x2", "clip_xml_validated", "yes"), promo_pairs)
             self.assertIn(("mp4_3x2", "catalyst_verified", "yes"), promo_pairs)
             self.assertIn(("mp4_3x2", "nle_verified", "yes"), promo_pairs)
             self.assertIn(("mp4_3x2", "playback_verified", "yes"), promo_pairs)
@@ -365,6 +365,11 @@ class ConformanceKitTests(unittest.TestCase):
             self.assertTrue(data["conformance_ready"])
             self.assertEqual(data["metadata"]["body_id"], "a7s3_501")
             self.assertEqual(data["calibration_patch"]["new_evidence_level"], "hardware_measured")
+            cli_promo_pairs = {
+                (p["pack"], p["dimension"], p["to"])
+                for p in data["matrix_recommendations"]["eligible_promotions"]
+            }
+            self.assertIn(("mp4_3x2", "clip_xml_validated", "yes"), cli_promo_pairs)
             self.assertTrue((out_dir / "CONFORMANCE_REPORT.md").is_file())
             self.assertTrue((out_dir / "conformance_manifest.json").is_file())
 

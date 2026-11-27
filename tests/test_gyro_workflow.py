@@ -134,8 +134,8 @@ class GyroDiagnosticTests(unittest.TestCase):
             self.assertTrue(d_ok["ready_for_catalyst"])
             self.assertEqual(d_ok["body_id"], "zve1_202")
             self.assertEqual(d_ok["failure_category"], "none")
-            self.assertEqual(d_ok["readout_calibration"]["frame_readout_time_ms"], 10.3)
-            self.assertEqual(d_ok["readout_calibration"]["evidence_level"], "estimated_from_imx510_line_ratio")
+            self.assertEqual(d_ok["readout_calibration"]["frame_readout_time_ms"], 12.336)
+            self.assertEqual(d_ok["readout_calibration"]["evidence_level"], "hardware_measured")
             self.assertIn("OFF", d_ok["ibis_guidance"]["active_steadyshot_warning"])
 
             # 2. crop_geometry: 16:9 XML or 2160 VPRF mismatch
@@ -230,7 +230,10 @@ class GyroflowPresetTests(unittest.TestCase):
             self.assertEqual(float(data["frame_readout_time"]), p["frame_readout_time_ms"])
             self.assertEqual(data["num_images"], 0)
             self.assertFalse(data["official"])
-            if p["body_id"] == "a7iv_602":
+            if p["body_id"] == "zve1_202":
+                self.assertEqual(p["evidence_level"], "hardware_measured")
+                self.assertAlmostEqual(p["frame_readout_time_ms"], 12.336, places=3)
+            elif p["body_id"] == "a7iv_602":
                 self.assertEqual(p["evidence_level"], "estimated_from_imx710_line_ratio")
             else:
                 self.assertEqual(p["evidence_level"], "estimated_from_imx510_line_ratio")

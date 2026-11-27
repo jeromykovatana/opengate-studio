@@ -289,8 +289,8 @@ struct CreatorWorkflowTests {
         #expect(diag.readyForGyroflow == true)
         #expect(diag.readyForCatalyst == true)
         #expect(diag.failureCategory == "none")
-        #expect(diag.readoutTimeMs == 10.3)
-        #expect(diag.evidenceLevel == "estimated_from_imx510_line_ratio")
+        #expect(diag.readoutTimeMs == 12.336)
+        #expect(diag.evidenceLevel == "hardware_measured")
         #expect(diag.checkPairs.count == 5)
 
         let (presetList, listTrace) = try await bridge.listGyroflowPresets()

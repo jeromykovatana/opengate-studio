@@ -82,7 +82,7 @@ All 62 `.so` helper binaries across `kits/` are compiled reproducibly with `zigl
 | Body | FPS | Pack | Tier | Bytes | Emu | HW Rec | MP4/XML | Gyroflow | Catalyst | NLE | Playback | Soak | Field Ready |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `zve1_202` | `23.98p` | `core_open_gate + screen_3x2` | `recommended` | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| `zve1_202` | `23.98p` | `mp4_3x2` | `recommended` | ✅ | ✅ | ✅ | 🟡 | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `zve1_202` | `23.98p` | `mp4_3x2` | `recommended` | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | `zve1_202` | `25p / 29.97p` | `core_open_gate + mp4_3x2` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | `zve1_202` | `23.98p / 25p / 29.97p` | `hdmi32` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | — | — | — | — | ⬜ | ⬜ |
 | `zve1_202` | `23.98p / 25p` | `high_bitrate` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |

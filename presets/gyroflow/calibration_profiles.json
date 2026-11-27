@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generated_by": "OpenGate Studio",
-  "honesty_notice": "Starter frame_readout_time_ms values are estimated from sensor active-row line ratios (IMX510 ~10.3ms for 12.1MP 3:2; IMX710 ~31.8ms for 33MP 3:2), NOT hardware_measured on open-gate card originals. Lens distortion coefficients are zeroed starter placeholders; perform per-lens checkerboard calibration in Gyroflow before final production delivery.",
+  "honesty_notice": "zve1_202 (12.336 ms at 23.976p) is hardware_measured from Sony rtmd tag 0xe40e across untouched ZV-E1 2.02 3840x2560 camera originals (C6433-C6436, C6438). a7s3_501/fx3_702 (10.3 ms) and a7iv_602 (31.8 ms) remain estimated_from_*_line_ratio until measured on untouched clips. Lens distortion coefficients are zeroed starter placeholders; perform per-lens checkerboard calibration in Gyroflow before final production delivery.",
   "default_install_subdir": "OpenGateStudio",
   "profiles": [
     {
@@ -13,13 +13,16 @@
       "height": 2560,
       "dimension": "3840x2560",
       "aspect_ratio": "3:2",
-      "frame_readout_time_ms": 10.3,
+      "frame_readout_time_ms": 12.336,
       "stock_16x9_readout_ms": 8.7,
       "line_ratio_basis": "8.7 ms * (2832 / 2392 active lines) = 10.30 ms",
-      "evidence_level": "estimated_from_imx510_line_ratio",
+      "evidence_level": "hardware_measured",
       "lens_calibration_status": "starter_zero_distortion_template",
       "ibis_default_recommendation": "Turn SteadyShot OFF (and lens OSS OFF) for Gyroflow/Catalyst; Active/Dynamic Active SteadyShot introduces electronic warp not modeled in rtmd.",
-      "notes": "Starter 3:2 Open Gate template for Sony ZV-E1 (2.02). Calibrate your specific E-mount or anamorphic lens in Gyroflow."
+      "notes": "Starter 3:2 Open Gate template for Sony ZV-E1 (2.02). Calibrate your specific E-mount or anamorphic lens in Gyroflow.",
+      "measured_fps": "23.976p",
+      "measurement_evidence_note": "Hardware-measured via Sony rtmd tag 0xe40e (12.336 ms) across untouched ZV-E1 2.02 3840x2560 originals (C6433-C6436, C6438; docs/conformance/zve1_202).",
+      "measured_utc": "2026-11-27T16:35:00Z"
     },
     {
       "body_id": "a7s3_501",

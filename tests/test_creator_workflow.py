@@ -253,7 +253,8 @@ class CreatorWorkflowTests(unittest.TestCase):
             diag_data = json.loads(diag_proc.stdout)
             self.assertTrue(diag_data["ready_for_gyroflow"])
             self.assertEqual(diag_data["failure_category"], "none")
-            self.assertEqual(diag_data["readout_calibration"]["evidence_level"], "estimated_from_imx510_line_ratio")
+            self.assertEqual(diag_data["readout_calibration"]["evidence_level"], "hardware_measured")
+            self.assertEqual(diag_data["readout_calibration"]["frame_readout_time_ms"], 12.336)
 
             list_proc = subprocess.run(
                 [sys.executable, str(cli_path), "install-gyroflow-presets", "--list-only", "--json"],

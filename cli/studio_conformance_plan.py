@@ -238,7 +238,7 @@ def _build_body_runbook(
         priorities.append({
             "priority": 1,
             "id": "zve1_v19_nrt_xml_promotion",
-            "title": "Fresh 23.98p V19 Capture to Verify Non-Truncated NRT XML & Promote mp4_3x2",
+            "title": "ZV-E1 2.02 V19 NRT XML Verified on C6438.MP4 (Remaining: Catalyst / NLE / Playback / Soak -> field_ready)",
             "target_pack": "mp4_3x2",
             "target_step": "V19",
             "target_design": "ogfile2560_hs_s_zv_v3",
@@ -248,6 +248,7 @@ def _build_body_runbook(
             "matrix_promotion": {
                 "entry": "zve1_202 / 23.98p / XAVC HS / S 4K / mp4_3x2",
                 "dimension": "clip_xml_validated",
+                "status": "verified_on_C6438",
                 "from": "partial",
                 "to": "yes",
                 "additional_dimensions": [
@@ -259,13 +260,13 @@ def _build_body_runbook(
                 ],
             },
             "steps": [
-                f"Verify kit integrity: run `.venv/bin/python -B cli/studio_cli.py verify-pins --body {body_id} --json` (confirm V19 `{v19.get('file')}` prefix `{v19_prefix}` and `ok: true`).",
+                f"Hardware baseline already verified on C6438.MP4 + C6438M01.XML (`V19` `{v19_prefix}`, complete embedded + sidecar NRT XML without `repair-nrt-xml`, `clip_xml_validated = yes`, `0xe40e` readout `12.336 ms`).",
+                f"Verify kit integrity before additional field runs: run `.venv/bin/python -B cli/studio_cli.py verify-pins --body {body_id} --json` (confirm V19 `{v19.get('file')}` prefix `{v19_prefix}` and `ok: true`).",
                 f"In `OpenGate Studio.app` -> `Camera` workspace, select `{ui_name}` and click `Setup Guide…` to confirm 2.02 firmware, formatted Slot 1 card, `Mass Storage` USB mode, `USB Power Supply = Off`, `Smartphone Conn = Off`, and `XAVC HS 4K` / `24p (23.98p)` Full Frame.",
                 "Pull camera battery >= 10s, boot straight into Stills mode, tick both `Before Connecting` toggles, then click `Check Camera (Read-Only)` (or tap `Check Camera (Read-Only)` in Android `OpenGate Field Companion`). Confirm `VERDICT READY (stock preflight)` (`mode=\"live_usb\"`).",
                 f"Select `Safe Daily 3:2` (`{' -> '.join(safe_apply)}`, applying `V19` `{v19_prefix}`) and click `Apply Open-Gate (3:2)` (Android: `Apply Safe Daily 3:2`). Keep camera ON during replugs; switch to Movie mode for closing `dump` (`VERDICT READY (open gate applied)`).",
-                "Record untouched `23.98p` framing + handheld gyro clips (`Cxxxx.MP4` + `CxxxxM01.XML`) plus a `Putback` (`Restore Stock RAM`) or `>= 10s` battery-pull `3840x2160` stock baseline clip.",
-                f"Inspect untouched originals directly WITHOUT `repair-nrt-xml`: `.venv/bin/python -B cli/studio_cli.py check-clip <CLIP.MP4> --body {body_id} --json` and drop folder into `OpenGate Studio.app` -> `Clips` workspace. Confirm `ok: true`, `vprf_3x2: true`, `xml_3x2: true`, and complete `<Device>`, `<VideoLayout>`, `<VideoFrame>` tags in both embedded and `M01.XML` sidecar.",
-                f"Verify in Gyroflow, Sony Catalyst Browse, DaVinci Resolve/Premiere, and in-camera playback, then run `conformance-audit` + `Diagnostics & Field Tools` -> `Field Report` (`build-report`) to promote `mp4_3x2` `clip_xml_validated` from partial to yes.",
+                "Capture extended Catalyst Browse / NLE / in-camera playback / `>= 30 min` thermal soak clips (`Cxxxx.MP4` + `CxxxxM01.XML`) plus a `Putback` (`Restore Stock RAM`) or `>= 10s` battery-pull `3840x2160` stock baseline clip.",
+                f"Verify untouched clips with `.venv/bin/python -B cli/studio_cli.py check-clip <CLIP.MP4> --body {body_id} --json` (or `OpenGate Studio.app` -> `Clips` workspace), then confirm Sony Catalyst Browse, DaVinci Resolve/Premiere NLE import, in-camera playback, and `>= 30 min` thermal soak to unlock `field_ready`.",
             ],
         })
     elif body_id == "a7s3_501":

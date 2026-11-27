@@ -1,6 +1,6 @@
 {
   "name": "Sony_ZV-E1_OpenGate_3840x2560_3x2",
-  "note": "ESTIMATED readout time (10.3 ms, evidence_level=estimated_from_imx510_line_ratio; NOT hardware_measured). Zero-distortion starter template — calibrate your specific lens in Gyroflow and turn SteadyShot OFF when shooting for Gyroflow/Catalyst.",
+  "note": "HARDWARE_MEASURED readout time (12.336 ms at 23.976p via Sony rtmd tag 0xe40e on untouched ZV-E1 2.02 3840x2560 originals; docs/conformance/zve1_202). Zero-distortion starter template — calibrate your specific lens in Gyroflow and turn SteadyShot OFF when shooting for Gyroflow/Catalyst.",
   "calibrated_by": "OpenGate Studio (Starter Template - Needs Per-Lens Calibration)",
   "camera_brand": "Sony",
   "camera_model": "ZV-E1",
@@ -18,7 +18,7 @@
     "w": 3840,
     "h": 2560
   },
-  "frame_readout_time": 10.3,
+  "frame_readout_time": 12.336,
   "frame_readout_direction": "TopToBottom",
   "gyro_lpf": null,
   "input_horizontal_stretch": 1.0,
@@ -38,6 +38,6 @@
   },
   "identifier": "sony-zve1-opengate-3840x2560-3x2",
   "calibrator_version": "OpenGateStudio-Starter-v1",
-  "date": "2026-11-26",
+  "date": "2026-11-27",
   "compatible_settings": []
 }
