@@ -170,13 +170,13 @@
  "lm_sites": 12,
  "av_sites": 101,
  "mp4_hdr_offsets": [
-  "0x118634",
   "0x223884",
   "0x2239e0",
   "0x223cc4",
   "0x223d10",
   "0x2260cc",
   "0x2260d0",
+  "0x254110",
   "0x25411c"
  ],
  "av_guards": [
@@ -255,6 +255,6 @@
   "ogsq_s3_v5": "aae0e8c3c93627bb85ac5be183764474d778f28101f750a3248d006150589b00",
   "outsz2560_s3_v1": "2617bfbc7d843cce96a9203928378ca32243611ed0cc968ab0912afcdebbe16f",
   "ogfile2560_hs_s_s3_v1": "e5fa6b1e04b6288cbdb4b8bd97ea65d3fdf0f9b73bbd2e5899838dc0ae385afd",
-  "mp4_3x2_s3_501": "6c8b9687236b733a9d73185eea7bf80ad2a31fdfba6299c61e2cf8478fd28904"
+  "mp4_3x2_s3_501": "5256e5c42555d6965cbb4f88529e96e80a642c6e346ed34a2b20b60b45005bd3"
  }
 }

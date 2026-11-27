@@ -198,6 +198,55 @@ struct OpenGateStudioTests {
         }
     }
 
+    @Test("decodeStructuredFailureReport extracts ClipCheckResult on exit 1 and returns nil on exit 2")
+    func testDecodeStructuredFailureReport() async throws {
+        let tmpDir = try makeTempDir(prefix: "ogs-clip-decode-fail")
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let bridge = try makeBridge(sessionDir: tmpDir)
+
+        let mp4URL = tmpDir.appendingPathComponent("C0003.MP4")
+        let xmlURL = tmpDir.appendingPathComponent("C0003M01.XML")
+        try generateValid3x2ClipFixture(repoRoot: bridge.repoRoot, mp4URL: mp4URL, xmlURL: xmlURL)
+
+        let badXML = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <NonRealTimeMeta xmlns="urn:schemas-professionalDisc:nonRealTimeMeta:ver.2.20">
+          <VideoFormat>
+            <VideoFrame videoCodec="HEVC_3840_2560_H420P@L51" captureFps="23.976p" formatFps="23.976p"/>
+            <VideoLayout pixel="3840" numOfVerticalLine="2560" aspectRatio="16:9"/>
+          </VideoFormat>
+        </NonRealTimeMeta>
+        """
+        try badXML.write(to: xmlURL, atomically: true, encoding: .utf8)
+
+        do {
+            _ = try await bridge.checkClip(mp4URL: mp4URL, xmlURL: xmlURL)
+            Issue.record("Expected checkClip to exit non-zero for 16:9 VideoLayout XML")
+        } catch {
+            let structured = StudioBridge.decodeStructuredFailureReport(ClipCheckResult.self, from: error)
+            #expect(structured != nil)
+            #expect(structured?.result.ok == false)
+            #expect(!(structured?.result.issues.isEmpty ?? true))
+        }
+
+        let (diag, diagTrace) = try await bridge.gyroDiagnose(mp4URL: mp4URL, xmlURL: xmlURL, bodyId: "zve1_202")
+        #expect(diagTrace.exitCode == 0)
+        #expect(diag.readyForGyroflow == false)
+        #expect(diag.failureCategory == "crop_geometry")
+
+        let err2 = StudioBridgeError.cliFailed(
+            exitCode: 2,
+            message: "missing file",
+            trace: CommandTrace(
+                command: "check-clip",
+                exitCode: 2,
+                stdout: #"{"ok":false,"error":"missing file"}"#,
+                stderr: ""
+            )
+        )
+        #expect(StudioBridge.decodeStructuredFailureReport(ClipCheckResult.self, from: err2) == nil)
+    }
+
     @Test("All three camera bodies pass preflight -> apply -> putback round-trip")
     func testAllThreeBodiesRoundTrip() async throws {
         let sessionDir = try makeTempDir(prefix: "ogs-all-bodies")

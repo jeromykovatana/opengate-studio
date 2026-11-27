@@ -58,11 +58,12 @@ def find_one_box(buf: bytes, region: tuple[int, int], tag: bytes) -> tuple[int, 
     return found[0]
 
 
-def scan_top_level_boxes(path: Path) -> tuple[int, bytes, list[tuple[int, int]]]:
-    """Read 'moov' payload and record top-level 'mdat' payload ranges without loading 'mdat'."""
+def read_mp4_metadata_boxes(path: Path) -> tuple[int, bytes, list[tuple[int, int]], bytes]:
+    """Read 'moov' payload, record 'mdat' ranges, and capture top-level metadata boxes without loading 'mdat'."""
     moov_offset: int | None = None
     moov_bytes: bytes | None = None
     mdat_ranges: list[tuple[int, int]] = []
+    aux_boxes = bytearray()
     with path.open("rb") as f:
         length = os.fstat(f.fileno()).st_size
         while f.tell() < length:
@@ -87,12 +88,21 @@ def scan_top_level_boxes(path: Path) -> tuple[int, bytes, list[tuple[int, int]]]
                     raise ValueError("moov box exceeds 128 MiB limit")
                 moov_offset = payload_start
                 moov_bytes = f.read(payload_len)
+            elif tag in (b"uuid", b"PROF", b"VPRF", b"meta", b"udta", b"xml ") and size <= 32 * 1024**2:
+                f.seek(pos, os.SEEK_SET)
+                aux_boxes.extend(f.read(size))
             else:
                 if tag == b"mdat":
                     mdat_ranges.append((payload_start, pos + size))
                 f.seek(payload_len, os.SEEK_CUR)
     if moov_offset is None or moov_bytes is None:
         raise ValueError("Missing 'moov' box")
+    return moov_offset, moov_bytes, mdat_ranges, bytes(aux_boxes)
+
+
+def scan_top_level_boxes(path: Path) -> tuple[int, bytes, list[tuple[int, int]]]:
+    """Read 'moov' payload and record top-level 'mdat' payload ranges without loading 'mdat'."""
+    moov_offset, moov_bytes, mdat_ranges, _ = read_mp4_metadata_boxes(path)
     return moov_offset, moov_bytes, mdat_ranges
 
 
@@ -364,16 +374,52 @@ def _chunk_first_sample_index(stsc_entries: list[tuple[int, int, int]], chunk_id
 _SMPTE_KLV_PREFIX = b"\x06\x0e\x2b\x34"
 
 
+def _extract_rtmd_frame_readout_ms(sample0: bytes) -> float | None:
+    """Parse Sony rtmd tag 0xe40e (FrameReadoutTime in microseconds -> ms) from sample 0."""
+    n = len(sample0)
+    pos = sample0.find(_SMPTE_KLV_PREFIX)
+    while pos >= 0 and pos + 17 <= n:
+        if sample0[pos : pos + 4] != _SMPTE_KLV_PREFIX:
+            pos = sample0.find(_SMPTE_KLV_PREFIX, pos + 1)
+            continue
+        ber = sample0[pos + 16]
+        if ber < 0x80:
+            ln = ber
+            hdr = 17
+        else:
+            nb = ber & 0x7F
+            if nb == 0 or nb > 4 or pos + 17 + nb > n:
+                break
+            ln = int.from_bytes(sample0[pos + 17 : pos + 17 + nb], "big")
+            hdr = 17 + nb
+        val_start = pos + hdr
+        val_end = min(n, val_start + ln)
+        p2 = val_start
+        while p2 + 4 <= val_end:
+            t, tl = struct.unpack_from(">HH", sample0, p2)
+            if tl == 0 or p2 + 4 + tl > val_end:
+                break
+            if t == 0xE40E and tl == 4:
+                (us_val,) = struct.unpack_from(">i", sample0, p2 + 4)
+                if us_val > 0:
+                    return round(us_val / 1000.0, 3)
+            p2 += 4 + tl
+        if pos + hdr + ln > n or ln <= 0:
+            break
+        pos = pos + hdr + ln
+    return None
+
+
 def _probe_rtmd_mdat_packets(
     mp4_path: Path,
     mdat_ranges: list[tuple[int, int]],
     chunk_offsets: list[int],
     stsc_entries: list[tuple[int, int, int]],
     stsz_stats: dict[str, Any],
-) -> tuple[bool, bool]:
-    """Bounded-seek probe of up to 5 rtmd chunks inside 'mdat' for readability & SMPTE KLV."""
+) -> tuple[bool, bool, float | None]:
+    """Bounded-seek probe of up to 5 rtmd chunks inside 'mdat' for readability, KLV, and 0xe40e readout."""
     if not mdat_ranges or not chunk_offsets or stsz_stats["nonzero_samples"] <= 0:
-        return False, False
+        return False, False, None
 
     num_chunks = len(chunk_offsets)
     probe_indices = sorted({0, num_chunks // 4, num_chunks // 2, (3 * num_chunks) // 4, num_chunks - 1})
@@ -383,6 +429,7 @@ def _probe_rtmd_mdat_packets(
     readable_count = 0
     klv_count = 0
     checked_count = 0
+    frame_readout_ms: float | None = None
 
     with mp4_path.open("rb") as f:
         for cidx in probe_indices:
@@ -395,8 +442,9 @@ def _probe_rtmd_mdat_packets(
             if pkt_size <= 0:
                 continue
             checked_count += 1
-            read_len = min(pkt_size, 256)
-            in_mdat = any(start <= offset and offset + read_len <= end for start, end in mdat_ranges)
+            read_len = min(pkt_size, 2048 if cidx == 0 else 256)
+            min_len = min(pkt_size, 256)
+            in_mdat = any(start <= offset and offset + min_len <= end for start, end in mdat_ranges)
             if not in_mdat:
                 continue
             f.seek(offset, os.SEEK_SET)
@@ -407,10 +455,12 @@ def _probe_rtmd_mdat_packets(
             # Sony rtmd packets contain SMPTE UL 06 0e 2b 34 (at offset 0 or after a small packet header)
             if _SMPTE_KLV_PREFIX in raw[:128]:
                 klv_count += 1
+            if cidx == 0 and frame_readout_ms is None:
+                frame_readout_ms = _extract_rtmd_frame_readout_ms(raw)
 
     if checked_count == 0:
-        return False, False
-    return readable_count == checked_count, klv_count > 0
+        return False, False, None
+    return readable_count == checked_count, klv_count > 0, frame_readout_ms
 
 
 def _parse_vprf_boxes(buf: bytes, moov_end: int) -> dict[str, Any] | None:
@@ -506,11 +556,15 @@ def _inspect_xml_text(xml_text: str, exp_w: int, exp_h: int, expect_open_gate: b
     root = ET.fromstring(xml_text)
     layouts = [e.attrib for e in root.iter() if e.tag.split("}")[-1] == "VideoLayout"]
     frames = [e.attrib for e in root.iter() if e.tag.split("}")[-1] == "VideoFrame"]
+    devices = [e.attrib for e in root.iter() if e.tag.split("}")[-1] == "Device"]
     codecs = [e.get("videoCodec") for e in root.iter() if e.get("videoCodec")]
     issues: list[str] = []
 
-    if not layouts and not frames:
-        issues.append("XML contains neither <VideoLayout> nor <VideoFrame>")
+    if not layouts:
+        issues.append("XML missing <VideoLayout> (NrtMetaWrapper::Init truncated before VideoLayout/Device)")
+    if not any(d.get("manufacturer") == "Sony" for d in devices):
+        issues.append("XML missing <Device manufacturer='Sony'/> (breaks Gyroflow Sony telemetry auto-detection)")
+
     for r in layouts:
         px = r.get("pixel")
         vl = r.get("numOfVerticalLine")
@@ -526,21 +580,29 @@ def _inspect_xml_text(xml_text: str, exp_w: int, exp_h: int, expect_open_gate: b
             if ar not in (None, "16:9"):
                 issues.append(f"XML VideoLayout unexpected stock aspectRatio={ar!r}")
 
+    if frames and all(not f for f in frames):
+        issues.append("XML <VideoFrame/> has empty attributes (SetVideoFrame failed)")
+
+    allowed_codec_dims = {(exp_w, exp_h)}
+    if expect_open_gate and (exp_w, exp_h) == (3840, 2560):
+        allowed_codec_dims.add((3840, 2160))
+
     for f in frames:
         vc = f.get("videoCodec", "")
         for m in re.finditer(r"(\d{4})[_x](\d{4})", vc):
-            if int(m.group(1)) != exp_w or int(m.group(2)) != exp_h:
+            if (int(m.group(1)), int(m.group(2))) not in allowed_codec_dims:
                 issues.append(f"XML VideoFrame videoCodec={vc!r} mismatches {exp_w}x{exp_h}")
 
     for c in codecs:
         for m in re.finditer(r"(\d{4})[_x](\d{4})", c):
-            if int(m.group(1)) != exp_w or int(m.group(2)) != exp_h:
+            if (int(m.group(1)), int(m.group(2))) not in allowed_codec_dims:
                 issues.append(f"XML videoCodec={c!r} mismatches {exp_w}x{exp_h}")
 
     return {
         "ok": len(issues) == 0,
         "layouts": layouts,
         "frames": frames,
+        "devices": devices,
         "video_codec": codecs,
         "issues": issues,
     }
@@ -570,8 +632,9 @@ def inspect_clip(
     auto_xml: bool = True,
 ) -> tuple[dict[str, Any], list[tuple[int, bytes]]]:
     """Inspect a Sony MP4 clip + embedded/sidecar XML + rtmd track in pure Python."""
-    base_off, buf, mdat_ranges = scan_top_level_boxes(mp4_path)
+    base_off, buf, mdat_ranges, aux_boxes = read_mp4_metadata_boxes(mp4_path)
     moov_end = len(buf)
+    meta_buf = buf + aux_boxes
     issues: list[str] = []
 
     video_tracks: list[tuple[dict[str, Any], list[tuple[int, bytes]]]] = []
@@ -732,7 +795,7 @@ def inspect_clip(
         display_aspect = "non-square"
 
     # Sony PROF / VPRF inspection
-    vprf = _parse_vprf_boxes(buf, moov_end)
+    vprf = _parse_vprf_boxes(meta_buf, len(meta_buf))
     if vprf is None:
         vprf_3x2 = False
         issues.append("Missing Sony PROF/VPRF box")
@@ -753,7 +816,7 @@ def inspect_clip(
         resolved_xml = detect_sidecar_xml(mp4_path)
 
     xml_checks: list[bool] = []
-    embedded_xml_text = _extract_embedded_xml(buf, moov_end)
+    embedded_xml_text = _extract_embedded_xml(meta_buf, len(meta_buf))
     embedded_xml_info: dict[str, Any] | None = None
     sidecar_xml_info: dict[str, Any] | None = None
     if embedded_xml_text is not None:
@@ -789,6 +852,7 @@ def inspect_clip(
     rtmd_zero_size_samples = 0
     rtmd_payload_readable = False
     rtmd_klv_detected = False
+    rtmd_frame_readout_ms: float | None = None
 
     if primary_rtmd is not None:
         rtmd_timescale = int(primary_rtmd["timescale"])
@@ -804,7 +868,7 @@ def inspect_clip(
         rtmd_max_sample_bytes = int(stsz_s["max_sample_bytes"])
         rtmd_zero_size_samples = int(stsz_s["zero_size_samples"])
         if rtmd_samples > 0:
-            rtmd_payload_readable, rtmd_klv_detected = _probe_rtmd_mdat_packets(
+            rtmd_payload_readable, rtmd_klv_detected, rtmd_frame_readout_ms = _probe_rtmd_mdat_packets(
                 mp4_path,
                 mdat_ranges,
                 primary_rtmd["chunk_offsets"],
@@ -880,6 +944,7 @@ def inspect_clip(
         "rtmd_zero_size_samples": rtmd_zero_size_samples,
         "rtmd_payload_readable": rtmd_payload_readable,
         "rtmd_klv_detected": rtmd_klv_detected,
+        "rtmd_frame_readout_ms": rtmd_frame_readout_ms,
         "audio_tracks": audio_tracks,
         "tkhd_identity_matrix": vinfo["identity_matrix"],
         "pasp": pasp,
@@ -950,6 +1015,271 @@ def inspect_directory(
     }
 
 
+_REPAIR_BODY_MODEL_NAMES = {
+    "zve1": "ZV-E1",
+    "zve1_202": "ZV-E1",
+    "zv-e1": "ZV-E1",
+    "a7s3": "ILCE-7SM3",
+    "a7s3_501": "ILCE-7SM3",
+    "a7siii": "ILCE-7SM3",
+    "s3": "ILCE-7SM3",
+    "ilce-7sm3": "ILCE-7SM3",
+    "fx3": "ILME-FX3",
+    "fx3_702": "ILME-FX3",
+    "ilme-fx3": "ILME-FX3",
+    "a7iv": "ILCE-7M4",
+    "a7iv_602": "ILCE-7M4",
+    "ilce-7m4": "ILCE-7M4",
+}
+
+_SONY_NRT_FPS_MAP = {
+    "23.976p": "23.98p",
+    "24.000p": "24p",
+    "25.000p": "25p",
+    "29.970p": "29.97p",
+    "50.000p": "50p",
+    "59.940p": "59.94p",
+}
+
+
+def _reconstruct_sony_nrt_xml(
+    xml_text: str,
+    *,
+    width: int,
+    height: int,
+    codec: str,
+    fps_label: str,
+    model_name: str,
+    expect_open_gate: bool = True,
+) -> str:
+    """Repair truncated Sony NonRealTimeMeta XML while keeping exact XML namespaces."""
+    updated = xml_text.strip("\x00\r\n\t ") + "\n"
+    nrt_fps = _SONY_NRT_FPS_MAP.get(fps_label, "23.98p")
+    codec_tag = (
+        f"HEVC_{width}_2160_M10P@L5HT"
+        if codec in ("hvc1", "hev1")
+        else f"AVC_{width}_2160_H422P@L51"
+    )
+    vframe_tag = f'<VideoFrame videoCodec="{codec_tag}" captureFps="{nrt_fps}" formatFps="{nrt_fps}"/>'
+
+    if re.search(r"<VideoFrame\s*/>", updated):
+        updated = re.sub(r"<VideoFrame\s*/>", vframe_tag, updated, count=1)
+
+    has_layout = "<VideoLayout" in updated
+    vlayout_tag = (
+        f'<VideoLayout pixel="{width}" numOfVerticalLine="{height}"/>'
+        if expect_open_gate
+        else f'<VideoLayout pixel="{width}" numOfVerticalLine="{height}" aspectRatio="16:9"/>'
+    )
+    if has_layout:
+        updated = re.sub(
+            r"<VideoLayout\b[^>]*/>",
+            vlayout_tag,
+            updated,
+            count=1,
+        )
+    elif "</VideoFormat>" in updated:
+        updated = updated.replace(
+            "</VideoFormat>",
+            f"\t{vlayout_tag}\n\t</VideoFormat>",
+            1,
+        )
+
+    if 'manufacturer="Sony"' not in updated:
+        dev_tag = f'<Device manufacturer="Sony" modelName="{model_name}" serialNo="4294967295"/>'
+        if "<Lens " in updated:
+            updated = updated.replace("<Lens ", f"{dev_tag}\n\t<Lens ", 1)
+        elif "<AcquisitionRecord>" in updated:
+            updated = updated.replace("<AcquisitionRecord>", f"{dev_tag}\n\t<AcquisitionRecord>", 1)
+        elif "</NonRealTimeMeta>" in updated:
+            updated = updated.replace("</NonRealTimeMeta>", f"\t{dev_tag}\n</NonRealTimeMeta>", 1)
+
+    return updated
+
+
+def repair_nrt_xml_copy(
+    mp4_path: Path,
+    out_mp4_path: Path,
+    *,
+    body: str | None = None,
+    out_xml_path: Path | None = None,
+) -> dict[str, Any]:
+    """Create a non-destructive copy with repaired trailing meta->xml and sidecar M01.XML."""
+    src = Path(mp4_path).resolve(strict=True)
+    dst = Path(out_mp4_path).resolve()
+    if src == dst:
+        raise ValueError("Refusing to overwrite original camera MP4 in place; choose a separate output path.")
+
+    # Inspect video parameters (tolerate truncated XML on input clip)
+    _, moov_buf, _, aux_boxes = read_mp4_metadata_boxes(src)
+    meta_buf = moov_buf + aux_boxes
+    w, h, codec, fps_label = 3840, 2560, "hvc1", "23.976p"
+    for tag, a, b in iter_boxes(moov_buf, 0, len(moov_buf)):
+        if tag != b"trak":
+            continue
+        mdia = find_one_box(moov_buf, (a, b), b"mdia")
+        hdlr_a, hdlr_b = find_one_box(moov_buf, mdia, b"hdlr")
+        if moov_buf[hdlr_a + 8 : hdlr_a + 12] != b"vide":
+            continue
+        minf = find_one_box(moov_buf, mdia, b"minf")
+        stbl = find_one_box(moov_buf, minf, b"stbl")
+        stsd_a, stsd_b = find_one_box(moov_buf, stbl, b"stsd")
+        entries = list(iter_boxes(moov_buf, stsd_a + 8, stsd_b))
+        if entries:
+            codec_tag, e, _ = entries[0]
+            codec = codec_tag.decode("ascii", "replace")
+            w, h = struct.unpack_from(">HH", moov_buf, e + 24)
+        mdhd_a, mdhd_b = find_one_box(moov_buf, mdia, b"mdhd")
+        timescale = _parse_mdhd_timescale(moov_buf, mdhd_a, mdhd_b)
+        stts_a, stts_b = find_one_box(moov_buf, stbl, b"stts")
+        fps_label = _parse_stts_stats(moov_buf, stts_a, stts_b, timescale)["fps"]
+        break
+
+    # Walk top-level boxes on disk without buffering mdat in RAM
+    top_boxes: list[tuple[bytes, int, int]] = []
+    with src.open("rb") as f:
+        total_len = os.fstat(f.fileno()).st_size
+        while f.tell() < total_len:
+            pos = f.tell()
+            hdr = f.read(8)
+            if len(hdr) < 8:
+                raise ValueError("Truncated top-level MP4 box")
+            sz, typ = struct.unpack(">I4s", hdr)
+            if sz == 1:
+                (sz,) = struct.unpack(">Q", f.read(8))
+            elif sz == 0:
+                sz = total_len - pos
+            if sz < 8 or pos + sz > total_len:
+                raise ValueError(f"Invalid top-level {typ!r} box length ({sz})")
+            top_boxes.append((typ, pos, sz))
+            f.seek(pos + sz, os.SEEK_SET)
+
+    if not top_boxes or top_boxes[-1][0] != b"meta":
+        last_tag = top_boxes[-1][0] if top_boxes else None
+        raise ValueError(f"Expected final top-level box to be 'meta', found {last_tag!r}")
+
+    _, meta_off, meta_size = top_boxes[-1]
+    with src.open("rb") as f:
+        f.seek(meta_off, os.SEEK_SET)
+        meta_bytes = f.read(meta_size)
+
+    if len(meta_bytes) < 12:
+        raise ValueError("Truncated 'meta' FullBox")
+    meta_hdr = meta_bytes[8:12]  # version + flags of 'meta'
+    sub_boxes: list[tuple[bytes, int, int]] = []
+    pos = 12
+    while pos < len(meta_bytes):
+        if len(meta_bytes) - pos < 8:
+            raise ValueError("Truncated child box inside 'meta'")
+        bsz, btyp = struct.unpack_from(">I4s", meta_bytes, pos)
+        if bsz < 8 or pos + bsz > len(meta_bytes):
+            raise ValueError(f"Invalid child box {btyp!r} inside 'meta'")
+        sub_boxes.append((btyp, pos, pos + bsz))
+        pos += bsz
+
+    if not sub_boxes or sub_boxes[-1][0] != b"xml ":
+        last_sub = sub_boxes[-1][0] if sub_boxes else None
+        raise ValueError(f"Expected final sub-box inside 'meta' to be 'xml ', found {last_sub!r}")
+
+    _, xml_start, xml_end = sub_boxes[-1]
+    xml_flags = struct.unpack_from(">I", meta_bytes, xml_start + 8)[0]
+    embedded_xml = meta_bytes[xml_start + 12 : xml_end].decode("utf8", "replace")
+
+    model_name: str | None = None
+    if body:
+        model_name = _REPAIR_BODY_MODEL_NAMES.get(body.strip().lower())
+    if model_name is None:
+        try:
+            root_xml = ET.fromstring(embedded_xml.strip("\x00\r\n\t "))
+            for el in root_xml.iter():
+                if el.tag.split("}")[-1] == "Device":
+                    m = el.attrib.get("modelName") or el.attrib.get("model")
+                    if m:
+                        model_name = m
+                        break
+        except ET.ParseError:
+            pass
+    if model_name is None:
+        model_name = "ZV-E1"
+
+    expect_open_gate = (w, h) in VALID_OPEN_GATE_SIZES
+    repaired_xml = _reconstruct_sony_nrt_xml(
+        embedded_xml,
+        width=w,
+        height=h,
+        codec=codec,
+        fps_label=fps_label,
+        model_name=model_name,
+        expect_open_gate=expect_open_gate,
+    )
+    repaired_xml_bytes = repaired_xml.encode("utf8")
+    new_xml_box = struct.pack(">I4sI", 12 + len(repaired_xml_bytes), b"xml ", xml_flags) + repaired_xml_bytes
+    new_meta_inner = meta_hdr + meta_bytes[12:xml_start] + new_xml_box
+    new_meta_box = struct.pack(">I4s", 8 + len(new_meta_inner), b"meta") + new_meta_inner
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src_prefix_hash = hashlib.sha256()
+    with src.open("rb") as f_in, dst.open("wb") as f_out:
+        remaining = meta_off
+        while remaining > 0:
+            chunk = f_in.read(min(1024 * 1024, remaining))
+            if not chunk:
+                raise ValueError("Unexpected EOF reading source MP4 prefix")
+            src_prefix_hash.update(chunk)
+            f_out.write(chunk)
+            remaining -= len(chunk)
+        f_out.write(new_meta_box)
+
+    # Verify byte-for-byte prefix equality between source and copy up to meta_off
+    dst_prefix_hash = hashlib.sha256()
+    with dst.open("rb") as f_chk:
+        remaining = meta_off
+        while remaining > 0:
+            chunk = f_chk.read(min(1024 * 1024, remaining))
+            if not chunk:
+                raise ValueError("Unexpected EOF verifying repaired MP4 prefix")
+            dst_prefix_hash.update(chunk)
+            remaining -= len(chunk)
+
+    prefix_identical = src_prefix_hash.hexdigest() == dst_prefix_hash.hexdigest()
+    if not prefix_identical:
+        raise ValueError("Prefix verification failed after writing repaired MP4 copy")
+
+    # Sidecar XML (write next to dst by default)
+    resolved_out_xml = Path(out_xml_path).resolve() if out_xml_path is not None else (dst.parent / f"{dst.stem}M01.XML")
+    resolved_out_xml.parent.mkdir(parents=True, exist_ok=True)
+    sidecar_src = detect_sidecar_xml(src)
+    if sidecar_src is not None and sidecar_src.is_file():
+        sidecar_base = sidecar_src.read_text(encoding="utf8")
+    else:
+        sidecar_base = repaired_xml
+    repaired_sidecar = _reconstruct_sony_nrt_xml(
+        sidecar_base,
+        width=w,
+        height=h,
+        codec=codec,
+        fps_label=fps_label,
+        model_name=model_name,
+        expect_open_gate=expect_open_gate,
+    )
+    resolved_out_xml.write_text(repaired_sidecar, encoding="utf8", newline="\n")
+
+    return {
+        "ok": True,
+        "source_mp4": str(src),
+        "output_mp4": str(dst),
+        "output_xml": str(resolved_out_xml),
+        "model_name": model_name,
+        "dimensions": f"{w}x{h}",
+        "meta_offset": meta_off,
+        "prefix_bytes": meta_off,
+        "prefix_sha256": src_prefix_hash.hexdigest(),
+        "prefix_identical": True,
+        "device_tag_added": 'manufacturer="Sony"' not in embedded_xml,
+        "repaired_xml_bytes": len(repaired_xml_bytes),
+    }
+
+
 # ------------------------------------------------------------ synthetic MP4 builder (for selftest & tests)
 
 def _box(tag: bytes, payload: bytes) -> bytes:
@@ -966,9 +1296,16 @@ def build_synthetic_xml(
     codec: str = "hvc1",
     fps: str = "23.976p",
     aspect_ratio: str | None = None,
+    manufacturer: str | None = "Sony",
+    model_name: str = "ZV-E1",
 ) -> str:
     codec_name = "HEVC" if codec.startswith("hvc") else "AVC"
     ar_attr = f' aspectRatio="{aspect_ratio}"' if aspect_ratio is not None else ""
+    dev_line = (
+        f'  <Device manufacturer="{manufacturer}" modelName="{model_name}" serialNo="4294967295"/>\n'
+        if manufacturer is not None
+        else ""
+    )
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<NonRealTimeMeta xmlns="urn:schemas-professionalDisc:nonRealTimeMeta:ver.2.20">\n'
@@ -976,6 +1313,7 @@ def build_synthetic_xml(
         f'    <VideoFrame videoCodec="{codec_name}_{width}_{height}_H420P@L51" captureFps="{fps}" formatFps="{fps}"/>\n'
         f'    <VideoLayout pixel="{width}" numOfVerticalLine="{height}"{ar_attr}/>\n'
         '  </VideoFormat>\n'
+        f'{dev_line}'
         '</NonRealTimeMeta>\n'
     )
 

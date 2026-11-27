@@ -391,9 +391,9 @@ static void cp_part(void)
 /* ------------------------------------------------------------------ D: main-processor sites */
 static int is_mp4_hdr_off(u64 off)
 {
-    return off == 0x102fb8UL || off == 0x20794cUL || off == 0x207aa8UL ||
+    return off == 0x20794cUL || off == 0x207aa8UL ||
            off == 0x207d8cUL || off == 0x207dd8UL || off == 0x20a194UL ||
-           off == 0x20a198UL || off == 0x238114UL;
+           off == 0x20a198UL || off == 0x238108UL || off == 0x238114UL;
 }
 
 static void mp_report(const struct mp_site *e, const u8 *v, int is_lm)

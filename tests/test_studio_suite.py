@@ -138,6 +138,88 @@ class ClipCheckTests(unittest.TestCase):
             self.assertEqual(batch["clips_passed"], 2)
             self.assertEqual(batch["clips_failed"], 0)
 
+    def test_top_level_sony_uuid_prof_and_meta_xml_boxes(self) -> None:
+        import struct
+        import studio_gyro as sg
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw = bytearray(bcc.build_synthetic_mp4(3840, 2560, "hvc1", 24000, 1001, hvcc_level_idc=150))
+            # Move embedded uuid(SONY_PROF_UUID) out of moov to top level (replace inside moov with 'free')
+            idx = raw.find(bcc.SONY_PROF_UUID)
+            self.assertGreater(idx, 8)
+            box_start = idx - 8
+            (box_len,) = struct.unpack_from(">I", raw, box_start)
+            top_uuid_prof = bytes(raw[box_start : box_start + box_len])
+            raw[box_start + 4 : box_start + 8] = b"free"
+            raw[box_start + 8 : box_start + box_len] = b"\x00" * (box_len - 8)
+
+            hdlr_xml = bcc._fullbox(b"hdlr", 0, 0, struct.pack(">4s4sIII", b"\x00\x00\x00\x00", b"nrtm", 0, 0, 0) + b"\x00")
+
+            # 1. Truncated XML (<VideoFrame/> without <VideoLayout> or <Device manufacturer='Sony'>) must fail
+            trunc_xml = (
+                '<?xml version="1.0" encoding="UTF-8"?>\n'
+                '<NonRealTimeMeta xmlns="urn:schemas-professionalDisc:nonRealTimeMeta:ver.2.20">\n'
+                '  <VideoFormat><VideoRecPort port="DIRECT"/><VideoFrame/></VideoFormat>\n'
+                '  <Lens modelName="FE 24mm F1.4 GM"/>\n'
+                '</NonRealTimeMeta>\n'
+            )
+            trunc_meta = bcc._fullbox(b"meta", 0, 0, hdlr_xml + bcc._fullbox(b"xml ", 0, 0, trunc_xml.encode("utf8")))
+            mp4_trunc = root / "TRUNCATED_SONY.MP4"
+            mp4_trunc.write_bytes(bytes(raw) + top_uuid_prof + trunc_meta)
+
+            rep_bad, _ = bcc.inspect_clip(mp4_trunc, expect="open-gate", body="zve1_202")
+            self.assertFalse(rep_bad["ok"], rep_bad)
+            self.assertFalse(rep_bad["xml_3x2"], rep_bad)
+            self.assertTrue(any("Device manufacturer='Sony'" in msg for msg in rep_bad["issues"]), rep_bad["issues"])
+
+            gd_bad = sg.diagnose_clip_gyro(mp4_trunc, body="zve1_202", expect="open-gate")
+            self.assertFalse(gd_bad["ready_for_gyroflow"], gd_bad)
+
+            # 2. repair_nrt_xml_copy must produce a valid 3:2 copy with identical prefix & Device tag
+            mp4_repaired = root / "repaired" / "REPAIRED_SONY.MP4"
+            res_rep = bcc.repair_nrt_xml_copy(mp4_trunc, mp4_repaired, body="zve1_202")
+            self.assertTrue(res_rep["ok"], res_rep)
+            self.assertTrue(res_rep["prefix_identical"], res_rep)
+            self.assertTrue(res_rep["device_tag_added"], res_rep)
+            prefix_len = res_rep["meta_offset"]
+            self.assertEqual(mp4_repaired.read_bytes()[:prefix_len], mp4_trunc.read_bytes()[:prefix_len])
+
+            rep_ok, _ = bcc.inspect_clip(mp4_repaired, expect="open-gate", body="zve1_202")
+            self.assertTrue(rep_ok["ok"], rep_ok)
+            self.assertTrue(rep_ok["xml_3x2"], rep_ok)
+            gd_rep = sg.diagnose_clip_gyro(mp4_repaired, body="zve1_202", expect="open-gate")
+            self.assertTrue(gd_rep["ready_for_gyroflow"], gd_rep)
+            self.assertTrue(gd_rep["ready_for_catalyst"], gd_rep)
+
+            # 3. Native fixed V19 XML (videoCodec="HEVC_3840_2160_M10P@L5HT" + VideoLayout 3840x2560 + Device Sony) passes
+            native_xml = (
+                '<?xml version="1.0" encoding="UTF-8"?>\n'
+                '<NonRealTimeMeta xmlns="urn:schemas-professionalDisc:nonRealTimeMeta:ver.2.20">\n'
+                '  <VideoFormat>\n'
+                '    <VideoRecPort port="DIRECT"/>\n'
+                '    <VideoFrame videoCodec="HEVC_3840_2160_M10P@L5HT" captureFps="23.98p" formatFps="23.98p"/>\n'
+                '    <VideoLayout pixel="3840" numOfVerticalLine="2560"/>\n'
+                '  </VideoFormat>\n'
+                '  <Device manufacturer="Sony" modelName="ZV-E1" serialNo="4294967295"/>\n'
+                '  <Lens modelName="FE 24mm F1.4 GM"/>\n'
+                '</NonRealTimeMeta>\n'
+            )
+            native_meta = bcc._fullbox(b"meta", 0, 0, hdlr_xml + bcc._fullbox(b"xml ", 0, 0, native_xml.encode("utf8")))
+            mp4_native = root / "NATIVE_V19.MP4"
+            mp4_native.write_bytes(bytes(raw) + top_uuid_prof + native_meta)
+
+            rep_nat, _ = bcc.inspect_clip(mp4_native, expect="open-gate", body="zve1_202")
+            self.assertTrue(rep_nat["ok"], rep_nat)
+            self.assertTrue(rep_nat["vprf_3x2"], rep_nat)
+            self.assertTrue(rep_nat["embedded_xml_present"], rep_nat)
+            self.assertTrue(rep_nat["xml_3x2"], rep_nat)
+            self.assertEqual(rep_nat["issues"], [])
+
+            gd_nat = sg.diagnose_clip_gyro(mp4_native, body="zve1_202", expect="open-gate")
+            self.assertTrue(gd_nat["ready_for_gyroflow"], gd_nat)
+            self.assertTrue(gd_nat["ready_for_catalyst"], gd_nat)
+
 
 class StudioCliTests(unittest.TestCase):
     def test_list_bodies_and_verify_pins(self) -> None:
@@ -489,6 +571,56 @@ class UsbTransportAndLiveOrchestratorTests(unittest.TestCase):
         self.assertFalse(undo_res["s3"]["ok"])
         self.assertEqual(undo_res["s3"]["outcome"], "UNDO INCOMPLETE")
 
+        # Benign diagnostic preamble notices (/proc/driver/pcie/* -EISDIR) must not fail valid writes,
+        # while any '!!' inside action sections or non-EISDIR errors must fail closed.
+        pcie_benign = ssr.parse_write_result(
+            "L13",
+            "dmmwb_zv_v1",
+            (
+                b"readcheck 1 level 13: dmmwb\n"
+                b"euid 0\n"
+                b"== dir /proc/driver/pcie\nentries 1\n"
+                b"== file /proc/driver/pcie/0\n\n!! read failed -21\n\n== end 0 bytes\n"
+                b"== level 13: apply the memory-manager word\n"
+                b"DONE: the site holds the target bytes (apply)\n"
+                b"== done, bytes written before this line: 100\n"
+            ),
+        )
+        self.assertTrue(pcie_benign["s3"]["ok"])
+        self.assertEqual(pcie_benign["problems"], 0)
+        self.assertEqual(pcie_benign["s3"]["problem_lines"], [])
+        self.assertEqual(pcie_benign["s3"]["diagnostic_problem_lines"], ["!! read failed -21"])
+
+        in_level_err = ssr.parse_write_result(
+            "L13",
+            "dmmwb_zv_v1",
+            (
+                b"readcheck 1 level 13: dmmwb\n"
+                b"euid 0\n"
+                b"== level 13: apply the memory-manager word\n"
+                b"!! read failed -21\n"
+                b"DONE: the site holds the target bytes (apply)\n"
+                b"== done, bytes written before this line: 100\n"
+            ),
+        )
+        self.assertFalse(in_level_err["s3"]["ok"])
+        self.assertEqual(in_level_err["problems"], 1)
+
+        non_eisdir_pcie = ssr.parse_write_result(
+            "L13",
+            "dmmwb_zv_v1",
+            (
+                b"readcheck 1 level 13: dmmwb\n"
+                b"euid 0\n"
+                b"== file /proc/driver/pcie/0\n\n!! read failed -5\n\n== end 0 bytes\n"
+                b"== level 13: apply the memory-manager word\n"
+                b"DONE: the site holds the target bytes (apply)\n"
+                b"== done, bytes written before this line: 100\n"
+            ),
+        )
+        self.assertFalse(non_eisdir_pcie["s3"]["ok"])
+        self.assertEqual(non_eisdir_pcie["problems"], 1)
+
     def test_readonly_report_parser_validates_and_rejects_tampering(self) -> None:
         import studio_step_run as ssr
 
@@ -506,6 +638,29 @@ class UsbTransportAndLiveOrchestratorTests(unittest.TestCase):
             self.assertTrue(parsed_app["s3"]["ready"])
             self.assertEqual(parsed_app["s3"]["state"], "applied")
             self.assertEqual(parsed_app["s3"]["verdict"], "VERDICT READY (open gate applied)")
+
+            # Benign diagnostic notices in /log before '== identity:' must not fail closing dump,
+            # while '!!' inside verification sections must fail closed.
+            if body_id == "zve1_202":
+                diag_dump = app_rep.replace(
+                    b"== identity:",
+                    b"== dir /log\n!! read failed -21\n== file /log/boot\n!! truncated at 2048 bytes\n== identity:",
+                    1,
+                )
+                res_diag = ssr.parse_readonly_result("zve1_202", "dump", diag_dump)
+                self.assertTrue(res_diag["s3"]["ready"])
+                self.assertEqual(res_diag["s3"]["state"], "applied")
+                self.assertEqual(res_diag["problems"], 0)
+                self.assertEqual(len(res_diag["s3"]["diagnostic_problem_lines"]), 2)
+
+                cp_err = app_rep.replace(
+                    b"== coprocessor sites",
+                    b"== coprocessor memory, read-only\n!! read failed -21\n== coprocessor sites",
+                    1,
+                )
+                res_cp = ssr.parse_readonly_result("zve1_202", "dump", cp_err)
+                self.assertFalse(res_cp["s3"]["ready"])
+                self.assertEqual(res_cp["problems"], 1)
 
             # Reject if identity differs or !! appears or guard differs
             bad_diff = stock_rep.replace(b"  SAME as the", b"  DIFFERS from the", 1)
@@ -931,8 +1086,11 @@ class LiveInAppOrchestratorTests(unittest.TestCase):
         chk = subprocess.run(["bash", "-n", str(RUN_LIVE_INAPP_SH)], capture_output=True, text=True)
         self.assertEqual(chk.returncode, 0, chk.stderr)
 
-        # Wrapper must never invoke sudo itself
-        for line in RUN_LIVE_INAPP_SH.read_text(encoding="utf8").splitlines():
+        # Wrapper must never invoke sudo itself, and should adopt the GUI user's bootstrap context for TCC
+        wrapper_src = RUN_LIVE_INAPP_SH.read_text(encoding="utf8")
+        self.assertIn('/bin/launchctl asuser "$OWNER_UID"', wrapper_src)
+        self.assertIn('/bin/launchctl print "gui/$OWNER_UID"', wrapper_src)
+        for line in wrapper_src.splitlines():
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
@@ -1518,6 +1676,205 @@ class HardeningRegressionTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+
+    def test_macos_takeover_waits_retries_and_serial_unwrap(self) -> None:
+        import hashlib
+        import types
+        from unittest import mock
+
+        import ct1_stage2_service as s2
+
+        class FakeUSBError(Exception):
+            pass
+
+        class FakeSession:
+            def __init__(self) -> None:
+                self.results: dict = {}
+                self.notes: list[str] = []
+                self.says: list[str] = []
+
+            def log(self, kind: str, **kw) -> None:
+                self.notes.append(f"{kind}:{kw.get('text', '')}")
+
+            def say(self, text: str) -> None:
+                self.says.append(text)
+
+        class FakeDev:
+            def __init__(self, tag: str, serial: str = "SN-TEST-001") -> None:
+                self.tag = tag
+                self.iSerialNumber = 3
+                self.serial = serial
+
+        class FakeDriver:
+            def __init__(self, dev: FakeDev) -> None:
+                self.backend = types.SimpleNamespace(dev=dev)
+                self.reset_calls = 0
+
+            def reset(self) -> None:
+                self.reset_calls += 1
+
+        fake_usb_core = types.ModuleType("usb.core")
+        fake_usb_core.USBError = FakeUSBError
+        fake_usb_util = types.ModuleType("usb.util")
+        fake_usb_util.get_string = lambda raw, idx: getattr(raw, "serial", None)
+        fake_usb_pkg = types.ModuleType("usb")
+        fake_usb_pkg.core = fake_usb_core
+        fake_usb_pkg.util = fake_usb_util
+
+        with mock.patch.dict(
+            sys.modules,
+            {"usb": fake_usb_pkg, "usb.core": fake_usb_core, "usb.util": fake_usb_util},
+        ):
+            # 1) _safe_usb_serial_sha256 unwraps .handle -> SHA-256
+            dev_obj = FakeDev("h", serial="  ZV-E1-999  ")
+            wrapped = types.SimpleNamespace(handle=dev_obj, idVendor=0x054C, idProduct=0x0E72)
+            self.assertEqual(
+                s2._safe_usb_serial_sha256(wrapped),
+                hashlib.sha256(b"ZV-E1-999").hexdigest(),
+            )
+
+            # 2) Polls past IOUSBMassStorageInterfaceNub and retries transient claim_interface error
+            ioreg_seq = iter([
+                [{"service": "IOUSBMassStorageInterfaceNub"}],
+                [{"service": "IOUSBMassStorageInterfaceNub"}],
+                [{"service": "none"}],
+            ])
+            claim_attempts = {"n": 0}
+
+            def claim_transient(dev, iface):
+                claim_attempts["n"] += 1
+                if claim_attempts["n"] < 3:
+                    raise FakeUSBError("Other error")
+
+            fake_usb_util.claim_interface = claim_transient
+            fake_usb_util.dispose_resources = lambda dev: None
+
+            sess1 = FakeSession()
+            drv1 = FakeDriver(FakeDev("d1"))
+            with (
+                mock.patch("os.geteuid", return_value=0),
+                mock.patch.object(s2.c, "unmount_sony_disks"),
+                mock.patch.object(s2.c, "ioreg_sony_devices", side_effect=lambda: next(ioreg_seq)),
+                mock.patch("time.sleep"),
+            ):
+                ret1 = s2.take_over_from_macos(sess1, drv1)
+            self.assertIs(ret1, drv1)
+            self.assertEqual(claim_attempts["n"], 3)
+            self.assertEqual(drv1.reset_calls, 1)
+
+            # 3) Disposes stale dev and re-opens via libusb_devices + MscContext().openDevice when stuck
+            stale_dev = FakeDev("stale")
+            fresh_dev = FakeDev("fresh", serial="REENUM-123")
+            drv_stale = FakeDriver(stale_dev)
+            drv_fresh = FakeDriver(fresh_dev)
+            disposed: list[str] = []
+
+            def claim_reopen(dev, iface):
+                if dev is stale_dev:
+                    raise FakeUSBError("Other error")
+
+            fake_usb_util.claim_interface = claim_reopen
+            fake_usb_util.dispose_resources = lambda dev: disposed.append(dev.tag)
+
+            fake_msc_ctx = mock.MagicMock()
+            fake_msc_ctx.openDevice.return_value = drv_fresh
+            fake_pmca_libusb = types.ModuleType("pmca.usb.driver.generic.libusb")
+            fake_pmca_libusb.MscContext = lambda: fake_msc_ctx
+            fake_pmca_libusb.VendorSpecificContext = mock.MagicMock()
+            fake_pmca_generic = types.ModuleType("pmca.usb.driver.generic")
+            fake_pmca_generic.libusb = fake_pmca_libusb
+
+            with (
+                mock.patch.dict(
+                    sys.modules,
+                    {
+                        "pmca.usb.driver.generic": fake_pmca_generic,
+                        "pmca.usb.driver.generic.libusb": fake_pmca_libusb,
+                    },
+                ),
+                mock.patch("os.geteuid", return_value=0),
+                mock.patch.object(s2.c, "unmount_sony_disks"),
+                mock.patch.object(s2.c, "ioreg_sony_devices", return_value=[{"service": "none"}]),
+                mock.patch.object(s2, "libusb_devices", return_value=([wrapped], [])),
+                mock.patch("time.sleep"),
+            ):
+                ret2 = s2.take_over_from_macos(FakeSession(), drv_stale)
+            self.assertIs(ret2, drv_fresh)
+            self.assertEqual(disposed, ["stale"])
+
+            # 4) connect() reads serial only AFTER take_over_from_macos (not before)
+            call_order: list[str] = []
+
+            def record_takeover(session, inner):
+                call_order.append("takeover")
+                return drv_fresh
+
+            def record_get_string(raw, idx):
+                call_order.append("serial")
+                return getattr(raw, "serial", None)
+
+            fake_usb_util.get_string = record_get_string
+            fake_pmca_usb = types.ModuleType("pmca.usb")
+            fake_msc_dev = mock.MagicMock()
+            fake_msc_dev.getDeviceInfo.return_value = types.SimpleNamespace(manufacturer="Sony", model="DSC")
+            fake_pmca_usb.MscDevice = lambda inner: fake_msc_dev
+            fake_pmca_sony = types.ModuleType("pmca.usb.sony")
+            fake_pmca_sony.isSonyMscCamera = lambda info: True
+            fake_msc_handle = types.SimpleNamespace(
+                handle=FakeDev("msc0", serial="PRE-TAKEOVER"),
+                idVendor=0x054C,
+                idProduct=0x0E72,
+            )
+            fake_senser_handle = types.SimpleNamespace(
+                handle=FakeDev("svc0", serial="REENUM-123"),
+                idVendor=0x054C,
+                idProduct=0x0E72,
+            )
+            sess_conn = FakeSession()
+            with (
+                mock.patch.dict(
+                    sys.modules,
+                    {
+                        "pmca.usb": fake_pmca_usb,
+                        "pmca.usb.sony": fake_pmca_sony,
+                        "pmca.usb.driver.generic": fake_pmca_generic,
+                        "pmca.usb.driver.generic.libusb": fake_pmca_libusb,
+                    },
+                ),
+                mock.patch.object(sys, "platform", "darwin"),
+                mock.patch.object(s2.c, "use_pmca"),
+                mock.patch.object(s2.c, "print_pnp", return_value=[]),
+                mock.patch.object(s2, "libusb_devices", return_value=([fake_msc_handle], [])),
+                mock.patch.object(s2, "take_over_from_macos", side_effect=record_takeover),
+                mock.patch.object(s2, "phase_a"),
+                mock.patch.object(s2, "wait_for_service_device", return_value=fake_senser_handle),
+            ):
+                s2.connect(sess_conn)
+            self.assertGreaterEqual(len(call_order), 2)
+            self.assertEqual(call_order[:2], ["takeover", "serial"])
+            self.assertEqual(
+                sess_conn.results["camera_usb_identity"]["serial_sha256"],
+                hashlib.sha256(b"REENUM-123").hexdigest(),
+            )
+
+            # 5) Persistent Other error on claim_interface includes Removable Volumes & Terminal fallback guidance
+            def claim_always_other(dev, iface):
+                raise FakeUSBError("[Errno None] Other error")
+
+            fake_usb_util.claim_interface = claim_always_other
+            fake_usb_util.dispose_resources = lambda dev: None
+            drv_fail = FakeDriver(FakeDev("fail"))
+            with (
+                mock.patch("os.geteuid", return_value=0),
+                mock.patch.object(s2.c, "unmount_sony_disks"),
+                mock.patch.object(s2.c, "ioreg_sony_devices", return_value=[{"service": "none"}]),
+                mock.patch.object(s2, "libusb_devices", return_value=([], [])),
+                mock.patch("time.sleep"),
+                self.assertRaises(s2.c.StopTest) as cm_fail,
+            ):
+                s2.take_over_from_macos(FakeSession(), drv_fail)
+            self.assertIn("Removable Volumes", str(cm_fail.exception))
+            self.assertIn("Use Terminal Instead", str(cm_fail.exception))
 
 
 if __name__ == "__main__":

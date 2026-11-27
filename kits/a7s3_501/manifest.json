@@ -14,14 +14,14 @@
   "readonly": {
     "check": {
       "file": "libJit_s3_check.so",
-      "sha256": "d80e4e951c33b9a3bdddc99a4996a666951eed9a276fe842534f57346328480a",
+      "sha256": "bf337c40a726059a2f38d3d2656fd6cb2a5663417ee7b4e5e3ef035335631fa9",
       "size": 52752,
       "level": 101,
       "summary": "Coherent read-only preflight check (s3read_v9: 25 cp + 12 lm + 101 av sites)"
     },
     "dump": {
       "file": "libJit_s3_dump.so",
-      "sha256": "68790cda22525c1f54b270403c8aa611599e927518454416b4d7fb4f0e1e808f",
+      "sha256": "24a77b75a6fc8b8b47fa54c0171d232a728388979f135c262636a615f902e1ac",
       "size": 56216,
       "level": 102,
       "summary": "Coherent read-only diagnostic dump + coprocessor pages (s3read_v9)"
@@ -150,14 +150,14 @@
     },
     "V19": {
       "file": "libJit_s3_V19.so",
-      "sha256": "68a33c49b145cdfd39c28c390e669b34d24d74c78dc0f45d5ffadbd93a1e8d18",
+      "sha256": "99d99617e53bf8e3d5a9618ef82a0c6b25abcd3dd16e7018340cca7bd4f90e04",
       "size": 29000,
       "level": 19,
       "summary": "Apply 23.98p/25p/29.97p encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_s3_v3 (149 av-cam + 12 libmpr)"
     },
     "V20": {
       "file": "libJit_s3_V20.so",
-      "sha256": "e78762128deeb703ed9b40f00397eeb0428722fe9761d0ab5a755c016dcda4c9",
+      "sha256": "2217e5ea39158875ffbe8cb285bb55f30d487f3ca99cbe2681c107cb3252d94a",
       "size": 29000,
       "level": 20,
       "summary": "Put back 23.98p/25p/29.97p encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_s3_v3"

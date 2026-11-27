@@ -1107,6 +1107,7 @@ public final class AppState: ObservableObject {
             selectedXMLURL = nil
         }
         await inspectCurrentClip()
+        await runGyroDiagnosticForCurrentClip()
     }
 
     public func selectXMLFile(_ url: URL?) async {
@@ -1115,6 +1116,7 @@ public final class AppState: ObservableObject {
         gyroDiagError = nil
         if selectedMP4URL != nil {
             await inspectCurrentClip()
+            await runGyroDiagnosticForCurrentClip()
         }
     }
 
@@ -1133,8 +1135,14 @@ public final class AppState: ObservableObject {
             appendLog(trace)
             clipResult = res
         } catch {
-            clipResult = nil
-            captureError(error, target: .clip)
+            if let (decoded, trace) = StudioBridge.decodeStructuredFailureReport(ClipCheckResult.self, from: error) {
+                appendLog(trace)
+                clipResult = decoded
+                clipError = nil
+            } else {
+                clipResult = nil
+                captureError(error, target: .clip)
+            }
         }
     }
 
@@ -1183,12 +1191,22 @@ public final class AppState: ObservableObject {
                 selectedIngestedClipId = first.id
             }
         } catch {
-            ingestResult = nil
-            if let bridgeError = error as? StudioBridgeError,
-               case let .cliFailed(_, _, trace) = bridgeError {
+            if let (decoded, trace) = StudioBridge.decodeStructuredFailureReport(BatchIngestResult.self, from: error) {
                 appendLog(trace)
+                ingestResult = decoded
+                selectedProxyClipPaths = Set(decoded.clips.filter(\.ok).map(\.file))
+                if selectedIngestedClipId == nil, let first = decoded.clips.first {
+                    selectedIngestedClipId = first.id
+                }
+                ingestError = nil
+            } else {
+                ingestResult = nil
+                if let bridgeError = error as? StudioBridgeError,
+                   case let .cliFailed(_, _, trace) = bridgeError {
+                    appendLog(trace)
+                }
+                ingestError = error.localizedDescription
             }
-            ingestError = error.localizedDescription
         }
     }
 

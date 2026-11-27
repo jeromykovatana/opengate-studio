@@ -182,7 +182,7 @@ flowchart LR
 | `VPRF` XAVC S-I ID (`Opt-vprf-si`) | `FUN_00224c24` (`0x224c24`) | `FUN_00220e88` (`0x220e88`) | `FUN_00208cec` (`0x208cec`) |
 | `rtmd` (`cdsc`) track builder | `FUN_00227394` (`0x227394`) | `FUN_002235b8` (`0x2235b8`) | `FUN_0020b45c` (`0x20b45c`) |
 | `xavcsMovieMeta::Init` / `WriteMetaInfo` | `0x109b24` / `0x10a9b4` | `0x1078ac` / `0x108730` | `0x0f5d34` / `0x0f6bbc` |
-| `L3-nrt-vline` (`VideoLayout` struct) | `FUN_001181cc` (`0x1181cc`) | `FUN_00115fec` (`0x115fec`) | `FUN_00102b50` (`0x102b50`) |
+| `L3-nrt-vline` (`NrtMetaWrapper::Init` `[x20,#0x5e]` override) | `FUN_00253f64` (`0x253f64`) | `FUN_002500d0` (`0x2500d0`) | `FUN_00237f5c` (`0x237f5c`) |
 | `L3-nrt-noasp` (`NrtMetaWrapper::Init`) | `FUN_00253f64` (`0x253f64`) | `FUN_002500d0` (`0x2500d0`) | `FUN_00237f5c` (`0x237f5c`) |
 | `SetVideoLayout` XML emitter | `FUN_00234fb8` (`0x234fb8`) | `FUN_002311c0` (`0x2311c0`) | `FUN_00218fe8` (`0x218fe8`) |
 | `L4-play-w/h` playback validator | `FUN_00225fd8` (`0x225fd8`) | `FUN_0022223c` (`0x22223c`) | `FUN_0020a0a0` (`0x20a0a0`) |
@@ -201,7 +201,7 @@ Every patch below targets executable `.text` inside `libmpr.so` `PT_LOAD[0]` (`f
 | `L2-lvl-avc` | `0x223884` | `0x21fb0c` | `0x20794c` | `20040054` -> `22040054` | `b.eq +0x84` -> `b.hs +0x84` | Preserve AVC Level `5.1`/`5.2` at `2560` |
 | `L2-lvl-hevc` (S3/ZV) | `0x2239e0` | — | `0x207aa8` | `c0030054` -> `c2030054` | `b.eq +0x78` -> `b.hs +0x78` | Preserve HEVC Level `5.0`/`5.1`/`5.2` |
 | `L2-lvl-hevc` (FX3) | — | `0x21fc68` | — | `80030054` -> `82030054` | `b.eq +0x70` -> `b.hs +0x70` | Preserve HEVC Level `5.0`/`5.1`/`5.2` |
-| `L3-nrt-vline` | `0x118634` | `0x1164b0` | `0x102fb8` | `000e8152` -> `00408152` | `mov w0, #0x870` -> `mov w0, #0xa00` | NRT `<VideoLayout numOfVerticalLine="2560">` |
+| `L3-nrt-vline` | `0x254110` | `0x25027c` | `0x238108` | `80be4079` -> `00408152` | `ldrh w0, [x20, #0x5e]` -> `mov w0, #0xa00` | NRT `<VideoLayout numOfVerticalLine="2560">` without aborting `<VideoFrame>`/`<Device>` |
 | `L3-nrt-noasp` | `0x25411c` | `0x250288` | `0x238114` | `20008052` -> `00008052` | `mov w0, #1` -> `mov w0, #0` | Omit fixed `"16:9"` XML `aspectRatio` tag |
 | `L4-play-w` | `0x2260cc` | `0x222330` | `0x20a194` | `01c08352` -> `01e08152` | `mov w1, #0x1e00` -> `mov w1, #0xf00` | Repurpose dead 8K width `7680` -> `3840` |
 | `L4-play-h` | `0x2260d0` | `0x222334` | `0x20a198` | `011ca272` -> `0140a172` | `movk w1, #0x10e0, lsl #16` -> `movk w1, #0xa00, lsl #16` | Repurpose dead 8K height `4320` -> `2560` |
@@ -226,10 +226,10 @@ Rebuilt under `ziglang 0.13.0` (`clang 18.1.6`). `H16/H17`, `B19/B20`, `S16/S17`
 | `L6` | `16d14ae4b326614f6bdb11aec1c03b7d7db70e5bfc64be6ba1d76052e5ab3f4b` (`37488` B) | `1fdd3296387814c1fc577fad439059447c362e2eddbff20e7310b63a93707ac1` (`37488` B) | `40887db79186cc46988ee39ea488fe7a44d9eab210a084befe4ec999d0fd1142` (`37552` B) |
 | `L19` | `745d95184a2ad10a91ad91775620ac8ae3c741c8f30ba5c350725dd1870f9561` (`28024` B) | `b87e5fb342be98d50d8a01beb93d8ffc0bdaf205d4caa19844b4cf966947b216` (`28024` B) | `91feca335466618d3a3c0c97942d848291829d166ac2840aa48854ceffeea77e` (`28040` B) |
 | `L20` | `6871dfa07ec82f90ab61fbcb0de76e6d7df45fcff04ac89b32fb3b5e9c6cb53b` (`28000` B) | `526c85a73e37d763d4529c73ca3a36333eac323468b0b64c1b5432f7a0238583` (`28000` B) | `461f9c66293096f73cd547c9f6435fa926285696984fb9374a20c413bfbea675` (`28016` B) |
-| `V19` | `4f3be4553237ded7091d88410ddc7b6b4b086308e956db7b64681ca31e8ffdbd` (`29000` B) | `68a33c49b145cdfd39c28c390e669b34d24d74c78dc0f45d5ffadbd93a1e8d18` (`29000` B) | `a2c3cda80851abf0f6a592de817c365cdaf0143325d7f70af4fac114bb29f31a` (`29016` B) |
-| `V20` | `2670d65b38a3a17c0a5600e605afdc2f3697324aca2d81d395a02e50f89bd32e` (`29000` B) | `e78762128deeb703ed9b40f00397eeb0428722fe9761d0ab5a755c016dcda4c9` (`29000` B) | `796f58d4ef240e90a9bda244f66da884c320f48d34ce19bbe87831c8cc279777` (`29016` B) |
-| `I19` | `51cc4c86d2d2f40436dd02dc2b101bf0dcdb6ad88d726b64156c696695987941` (`24736` B) | `12ea26beab58616a91add9aaff44abae7dd639309715a7dae39783c1cdfa4aea` (`24776` B) | `413c968dbc583d218594cd9d09e653305f04396e880c665a33eab6e1d0756d35` (`22528` B) |
-| `I20` | `9d0ea28bbd768315553d47486ed810c62518d7e00faf34033065a004a1a95f1c` (`24744` B) | `9f9155559bd9c9864bb1dbb9d5c01256268f48a94d85ba07af8820a249294025` (`24776` B) | `058b41f320c49181df1d0dba4f42d340cc509eb6c81d12c09d3fab68191062e4` (`22544` B) |
+| `V19` | `4979e885241c0916b0b791fa3c3ba94b1785a8f468a87e6dd2d3cfad2f032695` (`29000` B) | `99d99617e53bf8e3d5a9618ef82a0c6b25abcd3dd16e7018340cca7bd4f90e04` (`29000` B) | `511e8afec18ad02b598d12132f7c683d2661387cd4945fe8a8fdf7ea48b8c5a2` (`29016` B) |
+| `V20` | `c00045208cc411065d4e177145384aec6de434ec9315f153b5ceb508bd496cfc` (`29000` B) | `2217e5ea39158875ffbe8cb285bb55f30d487f3ca99cbe2681c107cb3252d94a` (`29000` B) | `77ce5c981f0f683c0db40e0ff790c0fbb9db68610e10cfa31f408c7e514a812b` (`29016` B) |
+| `I19` | `14de1b6a43e93865770443edbac4cdc5f1955410c1401a5ad6029d2577df152c` (`24736` B) | `12ea26beab58616a91add9aaff44abae7dd639309715a7dae39783c1cdfa4aea` (`24776` B) | `d463d7bd9198ebfe0aa7d55e462e317b73836b76d97c8e883a5346f18ca56a97` (`22528` B) |
+| `I20` | `886a013da25aa8e6fe01d02b9900590369046339c8ebf44b16aecc9a3bd69e44` (`24744` B) | `9f9155559bd9c9864bb1dbb9d5c01256268f48a94d85ba07af8820a249294025` (`24776` B) | `ed9ad7e0afca66e55d61f771d39db2c14b981e28fa18894094e0e3b8c00c7e39` (`22544` B) |
 
 ---
 

@@ -68,7 +68,10 @@ public struct ClipInspectorView: View {
                 .frame(width: 240)
                 .onChange(of: appState.clipExpectMode) { _, _ in
                     if appState.selectedMP4URL != nil {
-                        Task { await appState.inspectCurrentClip() }
+                        Task {
+                            await appState.inspectCurrentClip()
+                            await appState.runGyroDiagnosticForCurrentClip()
+                        }
                     }
                 }
             }

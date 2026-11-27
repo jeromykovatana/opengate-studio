@@ -167,8 +167,21 @@ if [ "$HAS_JSON_EVENTS" -eq 0 ]; then
   EXTRA_FLAGS+=(--json-events)
 fi
 
+RUN_CMD=("$PY" -I -B "$ORCH" ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} ${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"})
+if [ "$(id -u)" -eq 0 ] && [ "$IS_DRY_RUN" -eq 0 ] && [ -x /bin/launchctl ]; then
+  case "$OWNER_UID" in
+    ''|0|*[!0-9]*)
+      ;;
+    *)
+      if /bin/launchctl print "gui/$OWNER_UID" >/dev/null 2>&1; then
+        RUN_CMD=(/bin/launchctl asuser "$OWNER_UID" "${RUN_CMD[@]}")
+      fi
+      ;;
+  esac
+fi
+
 set +e
-"$PY" -I -B "$ORCH" ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} ${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"}
+"${RUN_CMD[@]}"
 STATUS=$?
 set -e
 

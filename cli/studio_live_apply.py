@@ -1116,7 +1116,9 @@ def run_write_flow(
                 err_msg = "STOPPED at step 1 (L13): movie buffer already open. Pull battery >= 10s, power on in Stills, and retry."
             else:
                 reason = "session did not finish" if (rc != 0 or ct6_man is None or not facts) else f"outcome {facts.get('outcome')}"
-                if n == 1:
+                outcome = facts.get("outcome") if isinstance(facts, dict) else None
+                safe_unchanged = outcome in ("NOTHING WRITTEN", "NOTHING TO DO", "NOT DONE (everything put back)")
+                if n == 1 and safe_unchanged:
                     err_msg = f"STOPPED at step 1 ({k}): {reason}. Nothing was changed in camera RAM."
                 else:
                     err_msg = f"STOPPED at step {n} ({k}): {reason}. Pull battery >= 10s to return to clean stock."

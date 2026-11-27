@@ -252,20 +252,20 @@ static const unsigned char B246[] = {112,8};
 static const unsigned char B247[] = {0,10};
 static const unsigned char B248[] = {112,8,0,0};
 static const unsigned char B249[] = {0,10,0,0};
-static const unsigned char B250[] = {0,14,129,82};
-static const unsigned char B251[] = {0,64,129,82};
-static const unsigned char B252[] = {32,4,0,84};
-static const unsigned char B253[] = {34,4,0,84};
-static const unsigned char B254[] = {192,3,0,84};
-static const unsigned char B255[] = {194,3,0,84};
+static const unsigned char B250[] = {32,4,0,84};
+static const unsigned char B251[] = {34,4,0,84};
+static const unsigned char B252[] = {192,3,0,84};
+static const unsigned char B253[] = {194,3,0,84};
+static const unsigned char B254[] = {6,14,129,82};
+static const unsigned char B255[] = {6,64,129,82};
 static const unsigned char B256[] = {6,14,129,82};
 static const unsigned char B257[] = {6,64,129,82};
-static const unsigned char B258[] = {6,14,129,82};
-static const unsigned char B259[] = {6,64,129,82};
-static const unsigned char B260[] = {1,192,131,82};
-static const unsigned char B261[] = {1,224,129,82};
-static const unsigned char B262[] = {1,28,162,114};
-static const unsigned char B263[] = {1,64,161,114};
+static const unsigned char B258[] = {1,192,131,82};
+static const unsigned char B259[] = {1,224,129,82};
+static const unsigned char B260[] = {1,28,162,114};
+static const unsigned char B261[] = {1,64,161,114};
+static const unsigned char B262[] = {128,190,64,121};
+static const unsigned char B263[] = {0,64,129,82};
 static const unsigned char B264[] = {32,0,128,82};
 static const unsigned char B265[] = {0,0,128,82};
 static const unsigned char B266[] = {112,8};
@@ -281,7 +281,7 @@ static const unsigned char B273[] = {0,10};
 #define CP_HI 0x2100000U
 #define AVCAM_PHYS 0x401000000UL
 #define AVCAM_RESERVE "@0x401000000"
-#define IS_MP4_HDR(off) ((off) == 0x118634UL || (off) == 0x223884UL || (off) == 0x2239e0UL || (off) == 0x223cc4UL || (off) == 0x223d10UL || (off) == 0x2260ccUL || (off) == 0x2260d0UL || (off) == 0x25411cUL)
+#define IS_MP4_HDR(off) ((off) == 0x223884UL || (off) == 0x2239e0UL || (off) == 0x223cc4UL || (off) == 0x223d10UL || (off) == 0x2260ccUL || (off) == 0x2260d0UL || (off) == 0x254110UL || (off) == 0x25411cUL)
 struct id_file { const char *name; unsigned char sha256[32]; };
 struct id_page { unsigned int address; unsigned char sha256[32]; };
 struct cp_site { const char *name; unsigned int address, length; const unsigned char *stock, *target; int soft; };
@@ -327,13 +327,13 @@ static const struct cp_site cp_sites[] = {
     {"outsize_guard1", 0x13ec2e8, 4, B47, 0, 1},
 };
 static const struct mp_site lm_sites[] = {
-    {0x118634UL, 4, B250, B251},
-    {0x223884UL, 4, B252, B253},
-    {0x2239e0UL, 4, B254, B255},
-    {0x223cc4UL, 4, B256, B257},
-    {0x223d10UL, 4, B258, B259},
-    {0x2260ccUL, 4, B260, B261},
-    {0x2260d0UL, 4, B262, B263},
+    {0x223884UL, 4, B250, B251},
+    {0x2239e0UL, 4, B252, B253},
+    {0x223cc4UL, 4, B254, B255},
+    {0x223d10UL, 4, B256, B257},
+    {0x2260ccUL, 4, B258, B259},
+    {0x2260d0UL, 4, B260, B261},
+    {0x254110UL, 4, B262, B263},
     {0x25411cUL, 4, B264, B265},
     {0x2d440eUL, 2, B266, B267},
     {0x2d443eUL, 2, B268, B269},

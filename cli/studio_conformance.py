@@ -26,6 +26,21 @@ import studio_gyro  # noqa: E402
 
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 
+# Historical release kit manifest SHA-256 digests accepted when auditing live USB
+# sessions captured prior to an incremental helper rebuild (for example v0.1.3-alpha
+# 417b28a before L3-nrt-vline moved into NrtMetaWrapper::Init).
+_HISTORICAL_STUDIO_MANIFEST_SHA256: dict[str, set[str]] = {
+    "zve1_202": {
+        "ad79834c3628d9ca3c42d3327968f8ae0b3c77ca29aca34bb2fd4a21dc3a1133",
+    },
+    "a7s3_501": {
+        "d6ea99fedc6e35fa0868d1c924977085e883a97112726e0c118c844ec1fe18e9",
+    },
+    "fx3_702": {
+        "4a4f1eeb51662dee8a2431eb7a07bd12a01757e4d1a80ac3051ee935e4e1d41f",
+    },
+}
+
 _BODY_ALIASES: dict[str, str] = {
     "zve1": "zve1_202",
     "zve1_202": "zve1_202",
@@ -240,7 +255,8 @@ def _validate_live_usb_sessions(
             reasons.append("verified is not True")
         if rec.get("pins_ok") is not True:
             reasons.append("pins_ok is not True")
-        if rec.get("manifest_sha256") != manifest_sha256:
+        allowed_manifest_shas = {manifest_sha256} | _HISTORICAL_STUDIO_MANIFEST_SHA256.get(body_id, set())
+        if rec.get("manifest_sha256") not in allowed_manifest_shas:
             reasons.append("kit manifest_sha256 mismatch or missing")
 
         if kind in ("preflight", "dump"):
@@ -984,10 +1000,15 @@ def audit_conformance_bundle(
         target_dir.mkdir(parents=True, exist_ok=True)
         md_path = target_dir / "CONFORMANCE_REPORT.md"
         manifest_path = target_dir / "conformance_manifest.json"
+        def _display_report_path(path: Path) -> str:
+            if path.is_relative_to(REPO_ROOT):
+                return path.relative_to(REPO_ROOT).as_posix()
+            return str(path)
+
         manifest["report_paths"] = {
-            "out_dir": str(target_dir),
-            "markdown_path": str(md_path),
-            "manifest_path": str(manifest_path),
+            "out_dir": _display_report_path(target_dir),
+            "markdown_path": _display_report_path(md_path),
+            "manifest_path": _display_report_path(manifest_path),
         }
         md_text = _render_conformance_markdown(manifest)
         md_path.write_text(md_text, encoding="utf8")

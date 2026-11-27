@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import struct
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -131,19 +132,26 @@ def verify_clean_room(root: Path = REPO_ROOT) -> dict[str, Any]:
     checked_manifests = 0
 
     checked_pmca_files = 0
+    if (root / ".git").exists():
+        tracked = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "--", "sessions/camera_private"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if tracked.returncode == 0 and tracked.stdout.strip():
+            errors.append("Tracked files found inside gitignored sessions/camera_private")
+
     for path in sorted(root.rglob("*")):
         rel = path.relative_to(root)
         parts_lower = {p.lower() for p in rel.parts}
         if ".git" in parts_lower or ".build" in parts_lower or ".venv" in parts_lower:
             continue
+        if len(rel.parts) >= 2 and rel.parts[0].lower() == "sessions" and rel.parts[1].lower() == "camera_private":
+            continue
 
         if path.is_dir():
-            is_runtime_session_private = (
-                len(rel.parts) >= 2
-                and rel.parts[0].lower() == "sessions"
-                and path.name.lower() == "camera_private"
-            )
-            if path.name.lower() in FORBIDDEN_DIR_NAMES and not is_runtime_session_private:
+            if path.name.lower() in FORBIDDEN_DIR_NAMES:
                 errors.append(f"Forbidden directory present: {rel}")
             continue
 

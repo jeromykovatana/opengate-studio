@@ -701,6 +701,24 @@ def cmd_check_clip(mp4_path: Path, xml_path: Path | None, body: str | None, expe
         return 2, {"ok": False, "error": str(err)}
 
 
+def cmd_repair_nrt_xml(
+    mp4_path: Path,
+    out_mp4: Path,
+    body: str | None,
+    out_xml: Path | None = None,
+) -> tuple[int, dict[str, Any]]:
+    try:
+        payload = bcc.repair_nrt_xml_copy(
+            mp4_path,
+            out_mp4,
+            body=body,
+            out_xml_path=out_xml,
+        )
+        return (0 if payload.get("ok", False) else 1), payload
+    except Exception as err:
+        return 2, {"ok": False, "error": str(err)}
+
+
 def cmd_gyro_diagnose(mp4_path: Path, xml_path: Path | None, body: str | None, expect: str) -> tuple[int, dict[str, Any]]:
     if studio_gyro is None:
         return 2, {"ok": False, "error": "studio_gyro module is not available"}
@@ -858,6 +876,13 @@ def main(argv: list[str] | None = None) -> int:
     p_clip.add_argument("--expect", choices=("open-gate", "stock"), default="open-gate")
     p_clip.add_argument("--json", action="store_true")
 
+    p_rep_xml = sub.add_parser("repair-nrt-xml", help="Write non-destructive MP4 copy with repaired trailing NRT XML for Gyroflow/Catalyst")
+    p_rep_xml.add_argument("mp4_path", type=Path)
+    p_rep_xml.add_argument("--out", type=Path, required=True)
+    p_rep_xml.add_argument("--out-xml", type=Path, default=None)
+    p_rep_xml.add_argument("--body", default=None)
+    p_rep_xml.add_argument("--json", action="store_true")
+
     p_rep = sub.add_parser("build-report", help="Generate Markdown + JSON field-test & reliability report")
     p_rep.add_argument("--body", required=True)
     p_rep.add_argument("--session-dir", type=Path, default=DEFAULT_SESSION_DIR)
@@ -935,6 +960,8 @@ def main(argv: list[str] | None = None) -> int:
         rc, payload = cmd_prepare_live_command(args.action, args.body, args.packs, args.session_dir)
     elif args.cmd == "check-clip":
         rc, payload = cmd_check_clip(args.mp4_path, args.xml, args.body, args.expect)
+    elif args.cmd == "repair-nrt-xml":
+        rc, payload = cmd_repair_nrt_xml(args.mp4_path, args.out, args.body, args.out_xml)
     elif args.cmd == "build-report":
         rc, payload = cmd_build_report(args)
     elif args.cmd == "gyro-diagnose":

@@ -264,20 +264,20 @@ static const unsigned char B258[] = {112,8};
 static const unsigned char B259[] = {0,10};
 static const unsigned char B260[] = {112,8,0,0};
 static const unsigned char B261[] = {0,10,0,0};
-static const unsigned char B262[] = {0,14,129,82};
-static const unsigned char B263[] = {0,64,129,82};
-static const unsigned char B264[] = {32,4,0,84};
-static const unsigned char B265[] = {34,4,0,84};
-static const unsigned char B266[] = {192,3,0,84};
-static const unsigned char B267[] = {194,3,0,84};
+static const unsigned char B262[] = {32,4,0,84};
+static const unsigned char B263[] = {34,4,0,84};
+static const unsigned char B264[] = {192,3,0,84};
+static const unsigned char B265[] = {194,3,0,84};
+static const unsigned char B266[] = {6,14,129,82};
+static const unsigned char B267[] = {6,64,129,82};
 static const unsigned char B268[] = {6,14,129,82};
 static const unsigned char B269[] = {6,64,129,82};
-static const unsigned char B270[] = {6,14,129,82};
-static const unsigned char B271[] = {6,64,129,82};
-static const unsigned char B272[] = {1,192,131,82};
-static const unsigned char B273[] = {1,224,129,82};
-static const unsigned char B274[] = {1,28,162,114};
-static const unsigned char B275[] = {1,64,161,114};
+static const unsigned char B270[] = {1,192,131,82};
+static const unsigned char B271[] = {1,224,129,82};
+static const unsigned char B272[] = {1,28,162,114};
+static const unsigned char B273[] = {1,64,161,114};
+static const unsigned char B274[] = {128,190,64,121};
+static const unsigned char B275[] = {0,64,129,82};
 static const unsigned char B276[] = {32,0,128,82};
 static const unsigned char B277[] = {0,0,128,82};
 static const unsigned char B278[] = {112,8};
@@ -344,13 +344,13 @@ static const struct cp_site cp_sites[] = {
     {"rawbuf_size", 0x2580150, 4, B58, B59, 0},
 };
 static const struct mp_site lm_sites[] = {
-    {0x102fb8UL, 4, B262, B263},
-    {0x20794cUL, 4, B264, B265},
-    {0x207aa8UL, 4, B266, B267},
-    {0x207d8cUL, 4, B268, B269},
-    {0x207dd8UL, 4, B270, B271},
-    {0x20a194UL, 4, B272, B273},
-    {0x20a198UL, 4, B274, B275},
+    {0x20794cUL, 4, B262, B263},
+    {0x207aa8UL, 4, B264, B265},
+    {0x207d8cUL, 4, B266, B267},
+    {0x207dd8UL, 4, B268, B269},
+    {0x20a194UL, 4, B270, B271},
+    {0x20a198UL, 4, B272, B273},
+    {0x238108UL, 4, B274, B275},
     {0x238114UL, 4, B276, B277},
     {0x2b2cfeUL, 2, B278, B279},
     {0x2b2d2eUL, 2, B280, B281},

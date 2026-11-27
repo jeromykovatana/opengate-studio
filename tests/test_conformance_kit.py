@@ -264,13 +264,13 @@ class ConformanceKitTests(unittest.TestCase):
             self.assertFalse(res["matrix_recommendations"]["matrix_mutated"])
             self.assertTrue(promos)
             promo_pairs = {(p["pack"], p["dimension"], p["to"]) for p in promos}
-            self.assertIn(("mp4_3x2", "hardware_recorded", "yes"), promo_pairs)
             self.assertIn(("mp4_3x2", "clip_xml_validated", "yes"), promo_pairs)
-            self.assertIn(("mp4_3x2", "gyroflow_verified", "yes"), promo_pairs)
             self.assertIn(("mp4_3x2", "catalyst_verified", "yes"), promo_pairs)
             self.assertIn(("mp4_3x2", "nle_verified", "yes"), promo_pairs)
+            self.assertIn(("mp4_3x2", "playback_verified", "yes"), promo_pairs)
             self.assertIn(("mp4_3x2", "field_ready", "yes"), promo_pairs)
             self.assertIn(("core_open_gate + mp4_3x2", "hardware_recorded", "yes"), promo_pairs)
+            self.assertIn(("core_open_gate + mp4_3x2", "gyroflow_verified", "yes"), promo_pairs)
 
             # Clean-room report files written and redacted
             md_path = out_dir / "CONFORMANCE_REPORT.md"

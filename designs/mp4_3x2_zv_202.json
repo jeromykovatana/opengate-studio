@@ -80,15 +80,15 @@
     {
       "binary": "libmpr.so",
       "kind": "L3-nrt-vline",
-      "function": "FUN_00102b50",
-      "file_off": "0x102fb8",
-      "va": "0x102fb8",
-      "old": "000e8152",
+      "function": "FUN_00237f5c (NrtMetaWrapper::Init)",
+      "file_off": "0x238108",
+      "va": "0x238108",
+      "old": "80be4079",
       "new": "00408152",
-      "old_asm": "mov w0, #0x870",
+      "old_asm": "ldrh w0, [x20, #0x5e]",
       "new_asm": "mov w0, #0xa00",
       "code": true,
-      "note": "NonRealTimeMeta <VideoLayout numOfVerticalLine>: 2160 -> 2560"
+      "note": "NrtMetaWrapper::Init <VideoLayout numOfVerticalLine>: override [x20,#0x5e] load with 2560 after SetVideoFrame succeeds"
     },
     {
       "binary": "libmpr.so",
@@ -253,10 +253,10 @@
     },
     {
       "binary": "libmpr.so",
-      "file_off": "0x238100",
-      "va": "0x238100",
-      "bytes": "bf630239a07300b980be4079bf030239",
-      "note": "pre-site 16B guard before 0x238114"
+      "file_off": "0x2380f8",
+      "va": "0x2380f8",
+      "bytes": "80ba407901008012bf630239a07300b9",
+      "note": "pre-site 16B guard before 0x238108"
     },
     {
       "binary": "libmpr.so",

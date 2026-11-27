@@ -173,6 +173,7 @@ class GyroDiagnosticTests(unittest.TestCase):
                 '    <VideoFrame videoCodec="HEVC_3840_2560_H420P@L51" captureFps="23.976p" formatFps="23.976p"/>\n'
                 '    <VideoLayout pixel="3840" numOfVerticalLine="2560" aspectRatio="3:2"/>\n'
                 '  </VideoFormat>\n'
+                '  <Device manufacturer="Sony" modelName="ZV-E1" serialNo="4294967295"/>\n'
                 '  <Lens modelName="Manual" focalLength="0"/>\n'
                 '</NonRealTimeMeta>\n',
                 encoding="utf8",
@@ -196,6 +197,7 @@ class GyroDiagnosticTests(unittest.TestCase):
                 '    <VideoFrame videoCodec="HEVC_3840_2560_H420P@L51" captureFps="23.976p" formatFps="23.976p"/>\n'
                 '    <VideoLayout pixel="3840" numOfVerticalLine="2560" aspectRatio="3:2"/>\n'
                 '  </VideoFormat>\n'
+                '  <Device manufacturer="Sony" modelName="ZV-E1" serialNo="4294967295"/>\n'
                 '  <SteadyShot mode="Active"/>\n'
                 '</NonRealTimeMeta>\n',
                 encoding="utf8",

@@ -83,8 +83,9 @@ def _inspect_optional_xml_hints(
     }
     xml_texts: list[str] = []
     try:
-        _, buf, _ = bcc.scan_top_level_boxes(mp4_path)
-        embedded = bcc._extract_embedded_xml(buf, len(buf))
+        _, buf, _, aux_boxes = bcc.read_mp4_metadata_boxes(mp4_path)
+        meta_buf = buf + aux_boxes
+        embedded = bcc._extract_embedded_xml(meta_buf, len(meta_buf))
         if embedded:
             xml_texts.append(embedded)
     except (ValueError, OSError, struct.error):
@@ -212,7 +213,12 @@ def install_gyroflow_presets(
     }
 
 
-def _build_readout_calibration(body_id: str, width: int, height: int) -> dict[str, Any]:
+def _build_readout_calibration(
+    body_id: str,
+    width: int,
+    height: int,
+    rtmd_hardware_readout_ms: float | None = None,
+) -> dict[str, Any]:
     index = _load_calibration_index()
     profiles = {p["body_id"]: p for p in index.get("profiles", [])}
     if body_id in profiles:
@@ -221,6 +227,7 @@ def _build_readout_calibration(body_id: str, width: int, height: int) -> dict[st
             "body_id": body_id,
             "sensor": p["sensor"],
             "frame_readout_time_ms": float(p["frame_readout_time_ms"]),
+            "rtmd_hardware_readout_ms": rtmd_hardware_readout_ms,
             "evidence_level": p["evidence_level"],
             "source_basis": p["line_ratio_basis"],
             "preset_filename": p["filename"],
@@ -231,6 +238,7 @@ def _build_readout_calibration(body_id: str, width: int, height: int) -> dict[st
             "body_id": "auto",
             "sensor": "IMX510 (12.1MP Full-Frame shared platform)",
             "frame_readout_time_ms": 10.3,
+            "rtmd_hardware_readout_ms": rtmd_hardware_readout_ms,
             "evidence_level": "estimated_from_imx510_line_ratio",
             "source_basis": "8.7 ms * (2832 / 2392 active lines) = 10.30 ms",
             "preset_filename": None,
@@ -242,6 +250,7 @@ def _build_readout_calibration(body_id: str, width: int, height: int) -> dict[st
             "body_id": "a7iv_602",
             "sensor": p.get("sensor", "IMX710 (33MP Full-Frame)"),
             "frame_readout_time_ms": float(p.get("frame_readout_time_ms", 31.8)),
+            "rtmd_hardware_readout_ms": rtmd_hardware_readout_ms,
             "evidence_level": p.get("evidence_level", "estimated_from_imx710_line_ratio"),
             "source_basis": p.get("line_ratio_basis", "26.8 ms * (4672 / 3942 active lines) = 31.76 ms"),
             "preset_filename": p.get("filename"),
@@ -251,6 +260,7 @@ def _build_readout_calibration(body_id: str, width: int, height: int) -> dict[st
         "body_id": body_id,
         "sensor": "unknown",
         "frame_readout_time_ms": None,
+        "rtmd_hardware_readout_ms": rtmd_hardware_readout_ms,
         "evidence_level": "unverified",
         "source_basis": "No matching sensor readout preset for this body/resolution.",
         "preset_filename": None,
@@ -348,7 +358,15 @@ def diagnose_clip_gyro(
         if not clip_report.get("vprf_3x2", False):
             geom_issues.append("Sony PROF/VPRF box does not declare 3:2 square-pixel dimensions")
         if clip_report.get("xml_3x2") is False:
-            geom_issues.append("NRT XML VideoLayout/VideoFrame has 16:9 or mismatched dimensions")
+            xml_specific = [
+                iss
+                for iss in clip_report.get("issues", [])
+                if "XML" in iss or "VideoLayout" in iss or "VideoFrame" in iss or "Device" in iss
+            ]
+            if xml_specific:
+                geom_issues.extend(xml_specific)
+            else:
+                geom_issues.append("NRT XML VideoLayout/VideoFrame has 16:9 or mismatched dimensions")
     else:
         if (w, h) not in bcc.VALID_STOCK_SIZES:
             geom_issues.append(f"Dimensions {w}x{h} are not valid stock dimensions")
@@ -503,7 +521,15 @@ def diagnose_clip_gyro(
 
     actions: list[str] = []
     if geom_issues:
-        actions.append("Re-apply the mp4_3x2 pack before shooting so tkhd/stsd/VPRF and NRT XML declare native 3:2 dimensions.")
+        if any("Device manufacturer='Sony'" in msg or "missing <VideoLayout>" in msg for msg in geom_issues):
+            actions.append(
+                f"For clips already shot with truncated NRT XML, run: studio_cli.py repair-nrt-xml {mp4.name} --out {mp4.stem}_gyroflow.MP4 --body {body_id} (non-destructive; keeps rtmd intact)."
+            )
+            actions.append(
+                "For future in-camera recordings, apply the updated mp4_3x2 (V19) pack so NRT XML emits <Device manufacturer='Sony'> and <VideoLayout numOfVerticalLine='2560'> directly on-card."
+            )
+        else:
+            actions.append("Re-apply the mp4_3x2 pack before shooting so tkhd/stsd/VPRF and NRT XML declare native 3:2 dimensions.")
     if meta_issues:
         actions.append("Use the untouched camera original .MP4 (ffmpeg remuxing strips the Sony rtmd track).")
     if cadence_issues:
@@ -537,7 +563,12 @@ def diagnose_clip_gyro(
         "failure_category": failure_category,
         "summary": summary,
         "checks": checks,
-        "readout_calibration": _build_readout_calibration(body_id, w, h),
+        "readout_calibration": _build_readout_calibration(
+            body_id,
+            w,
+            h,
+            rtmd_hardware_readout_ms=clip_report.get("rtmd_frame_readout_ms"),
+        ),
         "ibis_guidance": _build_ibis_guidance(hints["active_steadyshot_detected"]),
         "recommended_actions": actions,
         "clip_report": clip_report,

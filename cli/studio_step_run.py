@@ -125,6 +125,23 @@ EARLIER_LIBS: dict[str, str] = {
     "ad416c29151f435f45aa71c6bb8f4bb9cf24c85bf098945642e92bf76f37f91c": "upstream a7siii dump (libJit_s3_dump.so)",
     "c25e08bf01dbd4e314d91a54aa39ec450c2326e43030df6c8277e73b57a508e0": "upstream zve1 check (libJit_zv_check.so)",
     "30aab4055212647723c26e8d5332e926fe73cb6898370aa28496799576996421": "upstream zve1 dump (libJit_zv_dump.so)",
+    # Superseded v0.1.3-alpha (417b28a) helpers before L3-nrt-vline NrtMetaWrapper::Init update
+    "fd78700bec66c78cd13e421adfc52ea1b5d3c418711c69571cf0a1d9ad9cf627": "v0.1.3-alpha zve1_202 check (libJit_zv_check.so)",
+    "2b676263ccb09969cd2f8fce985578593fd0756f11198e25faef840e88733cfe": "v0.1.3-alpha zve1_202 dump (libJit_zv_dump.so)",
+    "a2c3cda80851abf0f6a592de817c365cdaf0143325d7f70af4fac114bb29f31a": "v0.1.3-alpha zve1_202 V19 (libJit_zv_ogfile2560_hs_s_v3.so)",
+    "796f58d4ef240e90a9bda244f66da884c320f48d34ce19bbe87831c8cc279777": "v0.1.3-alpha zve1_202 V20 (libJit_zv_ogfile2560_hs_s_v3_60p.so)",
+    "413c968dbc583d218594cd9d09e653305f04396e880c665a33eab6e1d0756d35": "v0.1.3-alpha zve1_202 I19 (libJit_zv_ogfile2560_i.so)",
+    "058b41f320c49181df1d0dba4f42d340cc509eb6c81d12c09d3fab68191062e4": "v0.1.3-alpha zve1_202 I20 (libJit_zv_ogfile2560_i_60p.so)",
+    "d80e4e951c33b9a3bdddc99a4996a666951eed9a276fe842534f57346328480a": "v0.1.3-alpha a7s3_501 check (libJit_s3_check.so)",
+    "68790cda22525c1f54b270403c8aa611599e927518454416b4d7fb4f0e1e808f": "v0.1.3-alpha a7s3_501 dump (libJit_s3_dump.so)",
+    "68a33c49b145cdfd39c28c390e669b34d24d74c78dc0f45d5ffadbd93a1e8d18": "v0.1.3-alpha a7s3_501 V19 (libJit_s3_ogfile2560_hs_s_v3.so)",
+    "e78762128deeb703ed9b40f00397eeb0428722fe9761d0ab5a755c016dcda4c9": "v0.1.3-alpha a7s3_501 V20 (libJit_s3_ogfile2560_hs_s_v3_60p.so)",
+    "ab4bdee0c1aaa38b4635a9c500680e66ebef5dffe2f7a6a9ee55119e3f041e47": "v0.1.3-alpha fx3_702 check (libJit_fx3_check.so)",
+    "15e35b234e17a06a1ee72f51e20ab40fbcf8feabc6ccfa87c24834de7b0818b2": "v0.1.3-alpha fx3_702 dump (libJit_fx3_dump.so)",
+    "4f3be4553237ded7091d88410ddc7b6b4b086308e956db7b64681ca31e8ffdbd": "v0.1.3-alpha fx3_702 V19 (libJit_fx3_ogfile2560_hs_s_v3.so)",
+    "2670d65b38a3a17c0a5600e605afdc2f3697324aca2d81d395a02e50f89bd32e": "v0.1.3-alpha fx3_702 V20 (libJit_fx3_ogfile2560_hs_s_v3_60p.so)",
+    "51cc4c86d2d2f40436dd02dc2b101bf0dcdb6ad88d726b64156c696695987941": "v0.1.3-alpha fx3_702 I19 (libJit_fx3_ogfile2560_i.so)",
+    "9d0ea28bbd768315553d47486ed810c62518d7e00faf34033065a004a1a95f1c": "v0.1.3-alpha fx3_702 I20 (libJit_fx3_ogfile2560_i_60p.so)",
 }
 EXTRA_LIBS: dict[str, str] = {}
 
@@ -182,6 +199,47 @@ def step_pins(manifest: dict[str, Any]) -> tuple[dict[str, tuple[str, str]], dic
     return pins, write_steps
 
 
+_BENIGN_DIAG_SECTION_PREFIXES = (
+    "== dir /proc/driver/pcie",
+    "== file /proc/driver/pcie/",
+    "== dir /sys/module/liro/parameters",
+    "== file /sys/module/liro/parameters/",
+    "== dir /log",
+    "== file /log/",
+)
+_BENIGN_DIAG_BANG_RE = re.compile(
+    r"^!! (?:read failed -21|open failed -\d+|truncated at \d+ bytes)$"
+)
+
+
+def _partition_problem_lines(lines: list[str]) -> tuple[list[str], list[str]]:
+    """Split '!!' lines into (actionable_problems, benign_diagnostic_preamble_notices).
+
+    Fail closed: any '!!' line inside action/verification sections ('== level ',
+    '== identity:', '== coprocessor', '== main-processor', '== summary') or outside
+    the known optional diagnostic directory dumps stays in actionable_problems.
+    """
+    problems: list[str] = []
+    diag_problems: list[str] = []
+    current_section = ""
+    in_action_area = False
+    for ln in lines:
+        if ln.startswith("== "):
+            current_section = ln
+            if ln.startswith(("== level ", "== identity:", "== coprocessor", "== main-processor", "== summary")):
+                in_action_area = True
+        elif ln.startswith("!!"):
+            if (
+                not in_action_area
+                and current_section.startswith(_BENIGN_DIAG_SECTION_PREFIXES)
+                and _BENIGN_DIAG_BANG_RE.match(ln)
+            ):
+                diag_problems.append(ln)
+            else:
+                problems.append(ln)
+    return problems, diag_problems
+
+
 def parse_write_result(which: str, what: str, data: bytes) -> dict[str, Any]:
     text = data.decode("utf8", "replace")
     lines = text.split("\n")
@@ -199,10 +257,11 @@ def parse_write_result(which: str, what: str, data: bytes) -> dict[str, Any]:
         if any("nothing is written" in ln for ln in lines)
         else "UNKNOWN"
     )
-    problems = [ln for ln in lines if ln.startswith("!!")]
+    problems, diag_problems = _partition_problem_lines(lines)
     header_ok = bool(lines) and lines[0].startswith(f"readcheck 1 level {which[1:]}")
+    has_level_section = any(ln.startswith(f"== level {which[1:]}") for ln in lines)
     complete = any(ln.startswith("== done") for ln in lines[-3:])
-    ok = outcome in ("DONE", "NOTHING TO DO") and header_ok and complete and not problems
+    ok = outcome in ("DONE", "NOTHING TO DO") and header_ok and has_level_section and complete and not problems
     return {
         "bytes": len(data),
         "sha256": hashlib.sha256(data).hexdigest(),
@@ -224,6 +283,7 @@ def parse_write_result(which: str, what: str, data: bytes) -> dict[str, Any]:
                 or pick("UNDO INCOMPLETE")
             ),
             "problem_lines": problems,
+            "diagnostic_problem_lines": diag_problems,
         },
     }
 
@@ -244,7 +304,7 @@ def parse_readonly_result(
     expected_header = f"{cfg['reader']} {spec['label']} {which} for {cfg['header_model']} {fw}; read-only"
     header_ok = head == expected_header
     complete = "== done" in lines[-3:] and lines[-3:].count("== done") == 1
-    problem_lines = [ln for ln in lines if ln.startswith("!!")]
+    problem_lines, diag_problems = _partition_problem_lines(lines)
 
     same_pat = re.compile(rf" sha256 ([0-9a-f]{{64}})  SAME as the {re.escape(fw)} update$", re.M)
     diff_pat = re.compile(rf"DIFFERS from the {re.escape(fw)} update$")
@@ -344,6 +404,7 @@ def parse_readonly_result(
         "avcam_other": av_other,
         "avcam_guards": guard_lines,
         "problem_lines": problem_lines,
+        "diagnostic_problem_lines": diag_problems,
         "pages": len(pages),
         "kernel_command_line": cmd.group(1).strip() if cmd else None,
         "kernel_version": ver.group(1).strip() if ver else None,

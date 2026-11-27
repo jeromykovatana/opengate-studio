@@ -14,14 +14,14 @@
   "readonly": {
     "check": {
       "file": "libJit_zv_check.so",
-      "sha256": "fd78700bec66c78cd13e421adfc52ea1b5d3c418711c69571cf0a1d9ad9cf627",
+      "sha256": "81f5faa2801c6b27fe2997cc9685e496fa9ab3180876f625ee24d1713b1c8cf6",
       "size": 54096,
       "level": 101,
       "summary": "Coherent read-only preflight check (zvread_v4: 31 cp + 12 lm + 101 av sites)"
     },
     "dump": {
       "file": "libJit_zv_dump.so",
-      "sha256": "2b676263ccb09969cd2f8fce985578593fd0756f11198e25faef840e88733cfe",
+      "sha256": "107e5e0d816093945842e3514eee76cca55f3aac40b37900e63fb1dc0b7e278d",
       "size": 57784,
       "level": 102,
       "summary": "Coherent read-only diagnostic dump + coprocessor pages (zvread_v4)"
@@ -166,14 +166,14 @@
     },
     "V19": {
       "file": "libJit_zv_V19.so",
-      "sha256": "a2c3cda80851abf0f6a592de817c365cdaf0143325d7f70af4fac114bb29f31a",
+      "sha256": "511e8afec18ad02b598d12132f7c683d2661387cd4945fe8a8fdf7ea48b8c5a2",
       "size": 29016,
       "level": 19,
       "summary": "Apply 23.98p/25p/29.97p encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_zv_v3 (149 av-cam + 12 libmpr)"
     },
     "V20": {
       "file": "libJit_zv_V20.so",
-      "sha256": "796f58d4ef240e90a9bda244f66da884c320f48d34ce19bbe87831c8cc279777",
+      "sha256": "77ce5c981f0f683c0db40e0ff790c0fbb9db68610e10cfa31f408c7e514a812b",
       "size": 29016,
       "level": 20,
       "summary": "Put back 23.98p/25p/29.97p encoder + native 3:2 MP4 container/NRT/playback ogfile2560_hs_s_zv_v3"
@@ -236,14 +236,14 @@
     },
     "I19": {
       "file": "libJit_zv_I19.so",
-      "sha256": "413c968dbc583d218594cd9d09e653305f04396e880c665a33eab6e1d0756d35",
+      "sha256": "d463d7bd9198ebfe0aa7d55e462e317b73836b76d97c8e883a5346f18ca56a97",
       "size": 22528,
       "level": 19,
       "summary": "Apply orthogonal XAVC S-I 3840x2560 (23.98p/25p/29.97p) delta og_xavcsi_addon_zv_202 (30 av-cam + 2 libmpr, incl. +0x56 dual-core split)"
     },
     "I20": {
       "file": "libJit_zv_I20.so",
-      "sha256": "058b41f320c49181df1d0dba4f42d340cc509eb6c81d12c09d3fab68191062e4",
+      "sha256": "ed9ad7e0afca66e55d61f771d39db2c14b981e28fa18894094e0e3b8c00c7e39",
       "size": 22544,
       "level": 20,
       "summary": "Put back orthogonal XAVC S-I 3840x2560 (23.98p/25p/29.97p) delta og_xavcsi_addon_zv_202"

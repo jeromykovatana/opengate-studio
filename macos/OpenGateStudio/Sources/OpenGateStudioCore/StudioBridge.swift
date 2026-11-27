@@ -575,6 +575,22 @@ public final class StudioBridge: @unchecked Sendable {
         return candidates.first(where: { fm.fileExists(atPath: $0.path) })
     }
 
+    /// Decodes a structured report (e.g., ClipCheckResult or BatchIngestResult) when the CLI exits with status 1
+    /// to signal validation findings, while returning nil on genuine CLI/process failures (e.g., exit code 2).
+    public static func decodeStructuredFailureReport<T: Decodable>(
+        _ type: T.Type,
+        from error: Error
+    ) -> (result: T, trace: CommandTrace)? {
+        guard let bridgeError = error as? StudioBridgeError,
+              case let .cliFailed(exitCode, _, trace) = bridgeError,
+              exitCode == 1,
+              let data = trace.stdout.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(T.self, from: data) else {
+            return nil
+        }
+        return (decoded, trace)
+    }
+
     private func runAndDecode<T: Decodable & Sendable>(
         _ type: T.Type,
         context: String,
