@@ -99,13 +99,15 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.10"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
 
       - name: Build Android kit and run Gradle unit tests + debug APK
         run: |
