@@ -702,5 +702,92 @@ class StudioCliExpressAndUsbDetectTests(unittest.TestCase):
                 self.assertEqual(chk.returncode, 0, chk.stderr)
 
 
+class ServiceTimeoutAndSequenceTests(unittest.TestCase):
+    def test_read_service_answer_uses_30s_timeout(self) -> None:
+        import struct
+
+        self.assertEqual(c.SERVICE_USB_TIMEOUT_MS, 30000)
+
+        payload = b"hello-service"
+        hdr = struct.pack(c.SENSER_HEADER, len(payload), 64, 7, 0, 0, 0, 0)
+        seen_timeouts: list[int | None] = []
+        chunks = [hdr, payload]
+
+        class _TimeoutRecordingDriver:
+            def read(self, length: int, ep: int = 0, timeout: int | None = None) -> bytes:
+                seen_timeouts.append(timeout)
+                return chunks.pop(0)
+
+        resp, out = c.read_service_answer(_TimeoutRecordingDriver(), 7)
+        self.assertEqual(resp, 0)
+        self.assertEqual(out, payload)
+        self.assertEqual(seen_timeouts, [30000, 30000])
+
+    def test_connect_sets_service_device_default_timeout(self) -> None:
+        import ct1_stage2_service as stage2
+
+        fake_handle = mock.Mock(idVendor=0x054C, idProduct=0x0336)
+        fake_dev = mock.Mock(default_timeout=5000)
+        fake_drv = mock.Mock(backend=mock.Mock(dev=fake_dev))
+        fake_vs_ctx = mock.Mock()
+        fake_vs_ctx.openDevice.return_value = fake_drv
+
+        c.use_pmca()
+        sess = c.Session("test_connect_timeout", write=False, test="CT6")
+        with (
+            mock.patch.object(stage2, "libusb_devices", return_value=([], [fake_handle])),
+            mock.patch.object(stage2, "_safe_usb_serial_sha256", return_value="abc123"),
+            mock.patch.object(c, "print_pnp"),
+            mock.patch("pmca.usb.driver.generic.libusb.VendorSpecificContext", return_value=fake_vs_ctx),
+        ):
+            out_drv = stage2.connect(sess)
+
+        self.assertIs(out_drv, fake_drv)
+        self.assertEqual(fake_dev.default_timeout, 30000)
+
+    def test_multistep_guard_advances_sequence_on_read_timeout(self) -> None:
+        import struct
+        from types import SimpleNamespace
+        from pmca.usb.driver.generic import GenericUsbException
+
+        lib = b"fake-q19-lib"
+        sha = c.sha256(lib)
+        sent_sequences: list[int] = []
+        read_queue: list[bytes | Exception] = [
+            GenericUsbException(),
+            # Delayed reply for seq=10 arriving only when seq=11 (SET_FILE_PATH) reads
+            struct.pack(c.SENSER_HEADER, 4, 64, 10, 0, 0, 0, 0),
+        ]
+
+        class _DelayedDriver:
+            def write(self, data: bytes, ep: int = 0) -> None:
+                _sz, _pf, seq, *_ = struct.unpack_from(c.SENSER_HEADER, data, 0)
+                sent_sequences.append(seq)
+
+            def read(self, length: int, ep: int = 0, timeout: int | None = None) -> bytes:
+                item = read_queue.pop(0)
+                if isinstance(item, Exception):
+                    raise item
+                return item
+
+        dev = SimpleNamespace(driver=_DelayedDriver(), _sequence=10)
+        sess = c.Session("test_seq_advance", write=False, test="CT6")
+        guard = R.MultiStepGuard(dev, sess)
+        guard._path_set = R.LIB_PATH
+        guard.arm_step(lib, sha)
+
+        with self.assertRaises(GenericUsbException):
+            guard.send(c.PFUNC_ADJUST, struct.pack("<HH", 0x1001, R.SET_FILE2) + b"\x00\xff\x00" + lib)
+
+        self.assertEqual(dev._sequence, 11)
+
+        with self.assertRaises(c.StopTest) as ctx:
+            guard.send(c.PFUNC_ADJUST, struct.pack("<HH", 0x1001, R.SET_FILE_PATH) + b"\x00" + R.LIB_PATH)
+
+        self.assertEqual(sent_sequences, [10, 11])
+        self.assertEqual(dev._sequence, 12)
+        self.assertIn("sequence 10, expected 11", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

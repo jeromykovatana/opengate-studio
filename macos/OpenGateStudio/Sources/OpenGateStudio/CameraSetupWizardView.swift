@@ -16,6 +16,7 @@ public struct CameraSetupWizardView: View {
             appState.checkedFirmwareVersion,
             appState.checkedSdCardSlot1,
             appState.checkedUsbMassStorage,
+            appState.checkedPowerSaveDisabled,
             appState.checkedMovie24pSettings,
             appState.checkedAppsClosed,
         ].filter { $0 }.count
@@ -63,7 +64,7 @@ public struct CameraSetupWizardView: View {
             Spacer()
 
             StudioStatusPill(
-                "\(checkedCount) of 5 Checked",
+                "\(checkedCount) of 6 Checked",
                 systemImage: appState.isSetupWizardChecklistComplete ? "checkmark.circle.fill" : "circle.dashed",
                 color: appState.isSetupWizardChecklistComplete ? .green : .blue
             )
@@ -145,7 +146,10 @@ public struct CameraSetupWizardView: View {
     }
 
     private var menuAndMacSection: some View {
-        let done = appState.checkedUsbMassStorage && appState.checkedMovie24pSettings && appState.checkedAppsClosed
+        let done = appState.checkedUsbMassStorage
+            && appState.checkedPowerSaveDisabled
+            && appState.checkedMovie24pSettings
+            && appState.checkedAppsClosed
         let moviePresetSummary: String = {
             var parts = [
                 "XAVC HS 4K or XAVC S 4K",
@@ -167,6 +171,20 @@ public struct CameraSetupWizardView: View {
                         Text("USB Connection Mode = Mass Storage (if prompted on plug-in, tap Image Transfer (MSC))")
                             .font(.callout.weight(.medium))
                         Text("USB Power Supply = Off · Smartphone Connection / Cnct. while Power OFF = Off")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Toggle(isOn: $appState.checkedPowerSaveDisabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(
+                            profile.hasMonitorPowerSave
+                                ? "Power Save Start Time = Off & Power Save by Monitor = Off"
+                                : "Power Save Start Time = Off (prevent camera sleep)"
+                        )
+                        .font(.callout.weight(.medium))
+                        Text("\(profile.powerSaveDetail) — waking from sleep via shutter resets sensor RAM back to 16:9.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -233,9 +251,9 @@ public struct CameraSetupWizardView: View {
                     icon: "battery.25",
                     color: profile.isPowerSwitchResetBody ? .red : .orange,
                     title: profile.isPowerSwitchResetBody
-                        ? "10s Battery Pull Reset Rule (ZV-E1 & a7S III)"
-                        : "10s Battery Pull Reset Rule",
-                    detail: "Flipping only the power switch can leave partial patch state active (blocking Apply). Always pull the battery for >= 10 seconds to restore stock RAM."
+                        ? "10s Battery Pull Reset & No-Sleep Rule (ZV-E1 & a7S III)"
+                        : "10s Battery Pull Reset & No-Sleep Rule",
+                    detail: "Flipping the power switch or letting Power Save sleep trigger resets coprocessor RAM back to 16:9 while leaving encoder patches active (mixed_powerswitch). Keep Power Save Start Time = Off, and always pull the battery for >= 10 seconds to restore stock RAM."
                 )
 
                 Divider()

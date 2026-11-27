@@ -31,7 +31,7 @@ Generate a body-specific prioritized runbook (and verify offline V19 NRT XML + r
 ### Desktop (`OpenGate Studio.app`), Android Companion & Kit Verification
 - [ ] Run SHA-256 pin check: `.venv/bin/python -B cli/studio_cli.py verify-pins --json` (`"ok": true`), or open `OpenGate Studio.app` -> **`Diagnostics`** (`Diagnostics & Field Tools` -> `Pins` tab).
 - [ ] Close **Finder** windows showing cards, **Photos**, and **Image Capture**.
-- [ ] In `OpenGate Studio.app` (**`Camera`** workspace), choose your camera body from the toolbar picker and click **`Setup Guide…`** (complete the 5-item checklist). On Android, open **`OpenGate Field Companion`** and select the matching body chip (`ZV-E1 2.02`, `a7S III 5.01`, or `FX3 7.02`).
+- [ ] In `OpenGate Studio.app` (**`Camera`** workspace), choose your camera body from the toolbar picker and click **`Setup Guide…`** (complete the 6-item checklist). On Android, open **`OpenGate Field Companion`** and select the matching body chip (`ZV-E1 2.02`, `a7S III 5.01`, or `FX3 7.02`).
 - [ ] Confirm exact body/firmware target:
   - [ ] `zve1_202`: **Sony ZV-E1** firmware **`2.02`** (`32000_08.2025101101`)
   - [ ] `a7s3_501`: **Sony a7S III** (`ILCE-7SM3`) firmware **`5.01`** (`39183_16.2026041504`)
@@ -43,6 +43,7 @@ Generate a body-specific prioritized runbook (and verify offline V19 NRT XML + r
 - [ ] **Setup > USB > USB LUN Setting:** `Multi` (or `Single`).
 - [ ] **Network > Smartphone Conn / Cnct. while Power OFF:** `Off`.
 - [ ] **Setup > USB > USB Power Supply:** `Off`.
+- [ ] **Setup > Power Setting Option:** `Power Save Start Time = Off`, `Power Save by Monitor = Off` (vari-angle bodies), `Auto Power OFF Temp. = High`.
 - [ ] **Movie > Image Quality/Rec:** `XAVC HS 4K` / `XAVC S 4K` / `XAVC S-I 4K`, `24p` (`23.98p`), `25p` (`PAL`), or `30p` (`29.97p`), Full Frame (`APS-C`, `S&Q`, `Proxy`, `Auto Framing`, `Clear Image Zoom` = `Off`).
 
 ### Cold Boot

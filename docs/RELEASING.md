@@ -1,6 +1,6 @@
 # Releasing OpenGate Studio
 
-This guide documents how to verify, sign, package, and publish clean-room macOS `arm64` alpha releases of **OpenGate Studio** (`ZV-E1 2.02`, `a7S III 5.01`, `FX3 7.02`).
+This guide documents how to verify, sign, package, and publish clean-room macOS `arm64` (and optional Android USB-OTG APK) alpha releases of **OpenGate Studio** (`ZV-E1 2.02`, `a7S III 5.01`, `FX3 7.02`, plus experimental `a7C 2.03` and `ZV-E10 2.03`).
 
 > [!IMPORTANT]
 > Releases are strictly **clean-room** and **volatile-RAM-only**: zero Sony firmware binaries, zero `.DAT`/`.bin`/`.img`/`.tar`/`.elf` files, and zero persistent camera flash writes may ever be packaged or published.
@@ -15,20 +15,20 @@ Before tagging or publishing a release, every check below must pass with zero sk
    ```bash
    python3 scripts/verify_clean_room.py
    ```
-   Confirms `0` clean-room violations across `3` kit manifests, `62` `.so` helpers (`clang version 18.1.6`, zero unexpected ELF imports/exports), `17` MIT-pinned `sony-pmca-re` files, and all source files.
+   Confirms `0` clean-room violations across `5` kit manifests, `90` `.so` helpers (`clang version 18.1.6`, zero unexpected ELF imports/exports), `17` MIT-pinned `sony-pmca-re` files, and all source files.
 
 2. **Support Matrix & SHA-256 Pin Gate**
    ```bash
    python3 scripts/generate_support_matrix.py --check
    python3 cli/studio_cli.py verify-pins --json
    ```
-   Ensures `docs/SUPPORT_MATRIX.md` and `README.md` match `docs/support_matrix.json`, and all `65` pinned files (`62` `.so` helpers + `3` `device_info` XMLs) match `kits/*/manifest.json`.
+   Ensures `docs/SUPPORT_MATRIX.md` and `README.md` match `docs/support_matrix.json`, and all `95` pinned files (`90` `.so` helpers + `5` `device_info` XMLs) match `kits/*/manifest.json`.
 
 3. **Reproducible Helper Build Gate**
    ```bash
    python3 scripts/verify_reproducible_build.py --json
    ```
-   Rebuilds all `62` `.so` helpers using the hash-pinned `ziglang 0.13.0` toolchain (`requirements-build.txt`) and confirms exact SHA-256 parity with `kits/*/*.so`.
+   Rebuilds all `90` `.so` helpers using the hash-pinned `ziglang 0.13.0` toolchain (`requirements-build.txt`) and confirms exact SHA-256 parity with `kits/*/*.so`.
 
 4. **Clip Inspector, Python & Swift Test Suites**
    ```bash
@@ -48,10 +48,10 @@ Before tagging or publishing a release, every check below must pass with zero sk
 
 ### Version Injection (`APP_VERSION`)
 
-Set `APP_VERSION` to populate `CFBundleShortVersionString` (any leading `v`/`V` is stripped automatically, e.g., `v0.1.3-alpha` → `0.1.3-alpha`):
+Set `APP_VERSION` to populate `CFBundleShortVersionString` (any leading `v`/`V` is stripped automatically, e.g., `v0.3.1-alpha` → `0.3.1-alpha`):
 
 ```bash
-APP_VERSION=v0.1.3-alpha bash macos/OpenGateStudio/bundle_app.sh
+APP_VERSION=v0.3.1-alpha bash macos/OpenGateStudio/bundle_app.sh
 ```
 
 If `APP_VERSION` is omitted, `CFBundleShortVersionString` defaults to `1.0.0`. `CFBundleVersion` defaults to `1` (override with `APP_BUILD_VERSION`).
@@ -83,7 +83,7 @@ xcrun notarytool store-credentials "opengate-notary" \
   --password "<app-specific-password>"
 
 # Build, Developer ID sign (hardened runtime + timestamp), notarize, and staple:
-APP_VERSION=v0.1.3-alpha \
+APP_VERSION=v0.3.1-alpha \
 APPLE_DEVELOPER_ID_APP="Developer ID Application: Your Name (YOURTEAMID)" \
 APPLE_NOTARY_PROFILE="opengate-notary" \
 bash macos/OpenGateStudio/bundle_app.sh
@@ -103,21 +103,26 @@ What `bundle_app.sh` performs when those variables are set:
 Always test staging and exclusions first with `--dry-run`:
 
 ```bash
-bash scripts/package_release.sh --version v0.1.3-alpha --dry-run
+bash scripts/package_release.sh --version v0.3.1-alpha --dry-run
+# Or include the Android USB-OTG Field Companion APK:
+bash scripts/package_release.sh --version v0.3.1-alpha --apk android/app/build/outputs/apk/debug/app-debug.apk --dry-run
 ```
 
-`--dry-run` runs `verify_clean_room.py`, `generate_support_matrix.py --check`, and `studio_cli.py verify-pins --json`, skips `bundle_app.sh`, stages the clean runtime into a temporary directory, asserts zero excluded files leaked, verifies `3` `kits/*/manifest.json` + `62` `.so` helpers, previews `SHA256SUMS.txt` (`66` entries), and removes the temporary directory so `git status` remains clean.
+`--dry-run` runs `verify_clean_room.py`, `generate_support_matrix.py --check`, and `studio_cli.py verify-pins --json`, skips `bundle_app.sh`, stages the clean runtime into a temporary directory, asserts zero excluded files leaked, verifies `5` `kits/*/manifest.json` + `90` `.so` helpers, previews `SHA256SUMS.txt` (`96` entries, or `97` entries when `--apk` is provided), and removes the temporary directory so `git status` remains clean.
 
 ### Full Release Build
 
 ```bash
-bash scripts/package_release.sh --version v0.1.3-alpha
+bash scripts/package_release.sh --version v0.3.1-alpha
+# With Android USB-OTG Field Companion APK:
+bash scripts/package_release.sh --version v0.3.1-alpha --apk android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-*(Pass `APPLE_DEVELOPER_ID_APP` and `APPLE_NOTARY_PROFILE` in the environment for a notarized archive.)*
+*(Pass `APPLE_DEVELOPER_ID_APP` and `APPLE_NOTARY_PROFILE` in the environment for a notarized archive. Pass `--apk <path>` to copy the Android debug/release APK into `dist/OpenGate-Field-Companion-<version>-debug.apk` and include it in `dist/SHA256SUMS.txt`.)*
 
 This produces:
-- `dist/Sony-OpenGate-Studio-v0.1.3-alpha-macos-arm64.zip`
+- `dist/Sony-OpenGate-Studio-v0.3.1-alpha-macos-arm64.zip`
+- `dist/OpenGate-Field-Companion-v0.3.1-alpha-debug.apk` *(when `--apk` is passed)*
 - `dist/SHA256SUMS.txt`
 
 > [!WARNING]
@@ -138,10 +143,11 @@ Explicitly excluded from staging:
 
 ## 4. Checksum Verification (`SHA256SUMS.txt`)
 
-`dist/SHA256SUMS.txt` contains **66 SHA-256 entries**:
+`dist/SHA256SUMS.txt` contains **96 SHA-256 entries** (or **97 entries** when `--apk` is passed):
 1. `Sony-OpenGate-Studio-<version>-macos-arm64.zip` (1 archive)
-2. `kits/<body_id>/manifest.json` (3 manifests: `a7s3_501`, `fx3_702`, `zve1_202`)
-3. `kits/<body_id>/*.so` (62 helper binaries)
+2. `OpenGate-Field-Companion-<version>-debug.apk` (1 Android companion APK, when `--apk` is passed)
+3. `kits/<body_id>/manifest.json` (5 manifests: `a7c_203`, `a7s3_501`, `fx3_702`, `zve10_203`, `zve1_202`)
+4. `kits/<body_id>/*.so` (90 helper binaries)
 
 ### Verifying the Downloaded Archive
 
@@ -164,19 +170,20 @@ python3 cli/studio_cli.py verify-pins --json
 
 ## 5. Publishing an Alpha Pre-Release on GitHub
 
-1. Confirm all changes are committed, pushed to `main`, and all GitHub Actions CI jobs (`Clean-Room & Python Suite`, `Reproducible Helper SHA-256 Verification`, `macOS SwiftUI & Core Tests`) are green:
+1. Confirm all changes are committed, pushed to `main`, and all GitHub Actions CI jobs (`Clean-Room & Python Suite`, `Reproducible Helper SHA-256 Verification`, `macOS SwiftUI & Core Tests`, `Android Companion APK & Unit Tests`) are green:
    ```bash
    gh run list --branch main --limit 5
    gh run watch <run-id> --exit-status
    ```
-2. Build the release artifacts locally (`bash scripts/package_release.sh --version v0.1.3-alpha`) and verify `dist/SHA256SUMS.txt`.
+2. Build the release artifacts locally (`bash scripts/package_release.sh --version v0.3.1-alpha --apk android/app/build/outputs/apk/debug/app-debug.apk`) and verify `dist/SHA256SUMS.txt`.
 3. Create and publish the GitHub pre-release (never mark alpha builds as latest production):
    ```bash
-   gh release create v0.1.3-alpha \
-     dist/Sony-OpenGate-Studio-v0.1.3-alpha-macos-arm64.zip \
+   gh release create v0.3.1-alpha \
+     dist/Sony-OpenGate-Studio-v0.3.1-alpha-macos-arm64.zip \
+     dist/OpenGate-Field-Companion-v0.3.1-alpha-debug.apk \
      dist/SHA256SUMS.txt \
      --prerelease \
-     --title "OpenGate Studio v0.1.3-alpha" \
+     --title "OpenGate Studio v0.3.1-alpha" \
      --notes-file <release-notes.md>
    ```
 4. Remove local `dist/` (or keep outside the git worktree) so no untracked artifacts remain in the repository.

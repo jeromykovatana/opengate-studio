@@ -5,6 +5,8 @@ public struct LiveSessionSheetView: View {
     @EnvironmentObject private var appState: AppState
     @State private var pulseActive: Bool = false
     @State private var showConfirmAdvanced: Bool = false
+    @State private var sudoPassword: String = ""
+    @State private var isSudoCached: Bool = false
 
     public init() {}
 
@@ -30,6 +32,15 @@ public struct LiveSessionSheetView: View {
                     withAnimation(.easeInOut(duration: 0.95).repeatForever(autoreverses: true)) {
                         pulseActive = true
                     }
+                    refreshSudoCacheStatus()
+                }
+                .onChange(of: session.phase) { _, newPhase in
+                    if newPhase == .confirming {
+                        refreshSudoCacheStatus()
+                    }
+                }
+                .onDisappear {
+                    sudoPassword = ""
                 }
             } else {
                 EmptyView()
@@ -225,13 +236,7 @@ public struct LiveSessionSheetView: View {
                     }
                 }
 
-                HStack(spacing: 8) {
-                    Image(systemName: "touchid")
-                        .foregroundStyle(.secondary)
-                    Text("macOS will ask for Touch ID or your administrator password once to temporarily release USB Mass Storage.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                adminAuthSection(session)
 
                 DisclosureGroup("Advanced & Step Details", isExpanded: $showConfirmAdvanced) {
                     VStack(alignment: .leading, spacing: 10) {
@@ -540,8 +545,19 @@ public struct LiveSessionSheetView: View {
             }
         }()
 
+        let showSafeToUnplug: Bool = isReady && (
+            session.action == .expressApply
+            || session.action == .apply
+            || session.action == .expressPutback
+            || session.action == .putback
+        )
+
         StudioSurface(accent: accent, padding: 14) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
+                if showSafeToUnplug {
+                    safeToUnplugHeader(isPutback: session.action == .expressPutback || session.action == .putback)
+                }
+
                 HStack(spacing: 10) {
                     Image(systemName: isReady ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
                         .font(.title2)
@@ -554,6 +570,10 @@ public struct LiveSessionSheetView: View {
                             .font(.callout)
                     }
                     Spacer()
+                }
+
+                if showSafeToUnplug {
+                    safeToUnplugStepsBox(isPutback: session.action == .expressPutback || session.action == .putback)
                 }
 
                 if isReady && session.action == .expressApply && session.bodyId == "a7s3_501" {
@@ -771,7 +791,9 @@ public struct LiveSessionSheetView: View {
         HStack(spacing: 10) {
             switch session.phase {
             case .confirming:
+                let missingPassword: Bool = !isSudoCached && !appState.useSystemAuthDialog && sudoPassword.isEmpty
                 Button("Cancel") {
+                    sudoPassword = ""
                     appState.dismissLiveSessionSheet()
                 }
                 .keyboardShortcut(.cancelAction)
@@ -779,14 +801,14 @@ public struct LiveSessionSheetView: View {
                 Spacer()
 
                 Button {
-                    Task { await appState.authorizeAndStartLiveSession() }
+                    startSessionFromSheet()
                 } label: {
                     Label("Authorize & Start \(session.actionTitle)", systemImage: "lock.open.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(actionAccent(for: session.action))
                 .controlSize(.large)
-                .disabled(!session.canAuthorizeAndStart)
+                .disabled(!session.canAuthorizeAndStart || missingPassword)
 
             case .running:
                 if session.isCancelling {
@@ -868,6 +890,142 @@ public struct LiveSessionSheetView: View {
 
     // MARK: - Helpers
 
+    @ViewBuilder
+    private func adminAuthSection(_ session: LiveSessionPresentation) -> some View {
+        StudioSurface(padding: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: isSudoCached ? "lock.open.fill" : "lock.shield.fill")
+                        .foregroundStyle(isSudoCached ? .green : .blue)
+                    Text("Administrator Authorization")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    if isSudoCached {
+                        StudioStatusPill("Cached sudo", systemImage: "checkmark.circle.fill", color: .green)
+                    }
+                }
+
+                if isSudoCached {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.shield.fill")
+                            .foregroundStyle(.green)
+                        Text("Administrator session active (no password prompt needed)")
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(.green)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.green.opacity(0.10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.green.opacity(0.30), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                } else {
+                    Picker("Authorization Method", selection: $appState.useSystemAuthDialog) {
+                        Text("Direct sudo Password").tag(false)
+                        Text("Touch ID / System Dialog").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+
+                    if !appState.useSystemAuthDialog {
+                        SecureField("Enter your Mac login password", text: $sudoPassword)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit {
+                                if session.canAuthorizeAndStart && !sudoPassword.isEmpty {
+                                    startSessionFromSheet()
+                                }
+                            }
+                        Text("macOS 14–27 compatible · caches administrator session for ~5 min · never saved or logged.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: 8) {
+                            Image(systemName: "touchid")
+                                .foregroundStyle(.secondary)
+                            Text("macOS will show the system Touch ID / password prompt (osascript). If macOS 26/27 blocks USB access, switch to Direct sudo Password.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func safeToUnplugHeader(isPutback: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "cable.connector")
+                .font(.callout.weight(.bold))
+            Text("SAFE TO UNPLUG USB-C")
+                .font(.callout.weight(.heavy))
+                .tracking(0.6)
+            Spacer()
+            Text(isPutback ? "Stock RAM Verified" : "3:2 Open-Gate Ready")
+                .font(.caption.weight(.bold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(Color.white.opacity(0.22))
+                .clipShape(Capsule())
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.green)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func safeToUnplugStepsBox(isPutback: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if isPutback {
+                Text("Camera RAM is 100% stock — safe to unplug USB-C")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
+            } else {
+                Text("1. Unplug USB-C cable now")
+                    .font(.callout.weight(.semibold))
+                Text("2. Switch camera to Movie (24p / 25p / 30p only)")
+                    .font(.callout.weight(.semibold))
+                Text("3. Keep Power Save = Off while shooting")
+                    .font(.callout.weight(.semibold))
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.green.opacity(0.10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.green.opacity(0.32), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func refreshSudoCacheStatus() {
+        Task {
+            let cached: Bool = await Task.detached(priority: .userInitiated) {
+                StudioBridge.canRunPasswordlessSudo()
+            }.value
+            isSudoCached = cached
+        }
+    }
+
+    private func startSessionFromSheet() {
+        let passwordToPass: String?
+        if isSudoCached || appState.useSystemAuthDialog {
+            passwordToPass = nil
+        } else {
+            passwordToPass = sudoPassword
+        }
+        sudoPassword = ""
+        Task {
+            await appState.authorizeAndStartLiveSession(adminPassword: passwordToPass)
+        }
+    }
+
     private func labeledBadge(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
@@ -892,7 +1050,7 @@ public struct LiveSessionSheetView: View {
 
     private func expressBadgeText(for session: LiveSessionPresentation) -> String {
         if session.action == .expressApply && session.isSinglePassFused {
-            return "1-Pass Express Apply (~6s · Zero Cable Replugs)"
+            return "1-Pass Express Apply (~10s · Zero Cable Replugs)"
         }
         return "Single-Session Express (Zero Cable Replugs)"
     }

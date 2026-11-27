@@ -391,15 +391,21 @@ public struct GyroDiagnosticResult: Codable, Equatable, Sendable {
             }
         }
         if let arr = checks?.arrayValue {
-            return arr.enumerated().map { idx, item in
+            var pairs: [(key: String, passed: Bool?, detail: String)] = []
+            pairs.reserveCapacity(arr.count)
+            for (idx, item) in arr.enumerated() {
                 if let sub = item.objectValue {
-                    let name = sub["title"]?.stringValue ?? sub["name"]?.stringValue ?? sub["id"]?.stringValue ?? sub["check"]?.stringValue ?? "check_\(idx + 1)"
+                    let title = sub["title"]?.stringValue ?? sub["name"]?.stringValue
+                    let fallbackId = sub["id"]?.stringValue ?? sub["check"]?.stringValue
+                    let name = title ?? fallbackId ?? "check_\(idx + 1)"
                     let ok = sub["ok"]?.boolValue ?? sub["passed"]?.boolValue
                     let msg = sub["detail"]?.stringValue ?? sub["message"]?.stringValue ?? item.displayString
-                    return (name, ok, msg)
+                    pairs.append((key: name, passed: ok, detail: msg))
+                } else {
+                    pairs.append((key: "check_\(idx + 1)", passed: nil, detail: item.displayString))
                 }
-                return ("check_\(idx + 1)", nil, item.displayString)
             }
+            return pairs
         }
         return []
     }

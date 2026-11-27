@@ -228,7 +228,11 @@ def connect(session):
         "msc_inquiry": session.results.get("msc_inquiry"),
     }
     session.say("Found a camera in service mode")
-    return libusb.VendorSpecificContext().openDevice(handle)
+    service_drv = libusb.VendorSpecificContext().openDevice(handle)
+    service_dev = getattr(getattr(service_drv, "backend", None), "dev", None)
+    if service_dev is not None and hasattr(service_dev, "default_timeout"):
+        service_dev.default_timeout = c.SERVICE_USB_TIMEOUT_MS
+    return service_drv
 
 
 def take_over_from_macos(session, inner):

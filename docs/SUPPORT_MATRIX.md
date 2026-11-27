@@ -1,6 +1,6 @@
 # OpenGate Studio — Public Evidence & Support Matrix
 
-> Generated automatically from [`docs/support_matrix.json`](support_matrix.json) by [`scripts/generate_support_matrix.py`](../scripts/generate_support_matrix.py). Current maturity: **`v0.2.0-alpha (Hardening Release)`**.
+> Generated automatically from [`docs/support_matrix.json`](support_matrix.json) by [`scripts/generate_support_matrix.py`](../scripts/generate_support_matrix.py). Current maturity: **`v0.3.1-alpha (1-Click Express Release)`**.
 
 ## Evidence Legend
 

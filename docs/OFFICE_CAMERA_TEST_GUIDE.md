@@ -7,7 +7,7 @@
 > 3. **Read-Only Gate First:** Never write to camera RAM without an explicit read-only verification gate on the exact firmware version. **1-Click Express Apply (`Q19`/`F19`)** executes the read-only stock RAM, firmware identity, and `mixed_powerswitch` check atomically inside the single pass before writing a single byte (returning `VERDICT NOT READY` with zero writes if any check fails), while standalone **`Check Camera (Read-Only)`** (`preflight`) remains available in **Advanced Tools**.
 > 4. **24p (23.98p), 25p (PAL), or 30p (29.97p) Only While Applied:** Record **only** at `24p` (`23.98p`), `25p` (`PAL`, drive mode `0x820`), or `30p` (`29.97p`) in `XAVC HS 4K`, `XAVC S 4K`, or `XAVC S-I 4K` while Open Gate is applied. **`50p` / `60p` / `120p` distorts live view and crashes the camera** (pixel clock ceiling on `IMX510`).
 > 5. **Leftover `/tmp/jiritsu/libJit.so` Auto-Recovery:** If an earlier aborted run left one of our own known `libJit.so` libraries in `/tmp/jiritsu/libJit.so`, the tool removes it automatically before running; foreign files still stop immediately without touching anything. You can also pass `--remove-library <SHA256>` to clear a specific known hash manually.
-> 6. **Keep Camera Switched ON During `apply` / `putback`:** Do **not** toggle the power switch or pull the battery between steps. Both **`ZV-E1` (`2.02`)** and **`a7S III` (`5.01`)** (Issue #3) reset coprocessor RAM while retaining encoder patches on a power-switch cycle (`mixed_powerswitch`) — always **pull the battery for >= 10 seconds** to restore clean stock.
+> 6. **Keep Camera Switched ON & Prevent Sleep During `apply` / `putback`:** Do **not** toggle the power switch, let the camera enter Power Save sleep, or pull the battery between steps. Both **`ZV-E1` (`2.02`)** and **`a7S III` (`5.01`)** (Issue #3) reset coprocessor RAM back to `16:9` while retaining encoder patches on a power-switch cycle or sleep wake (`mixed_powerswitch`) — set **`Power Save Start Time = Off`** (and **`Power Save by Monitor = Off`**) and always **pull the battery for >= 10 seconds** to restore clean stock.
 > 7. **FX3 `7.02` Playback Freeze Warning:** On stock FX3 `7.02`, playing an open-gate clip shows `"Unable to display"` and **retrying freezes the camera until battery pull**. Do **not** play back clips on FX3 unless testing the optional **`fx3_playback` (`P29`/`P30`)** pack (untested on hardware: test 1 normal 16:9 clip first, then 1 open-gate clip, and **never retry** if it errors).
 
 ---
@@ -40,6 +40,9 @@ Set these **once** on each camera before starting:
 | **USB LUN Setting** *(Setup > USB)* | **`Multi`** *(or `Single`)* | `unmount_sony_disks` unmounts all whole disks cleanly before takeover |
 | **Smartphone Conn / Cnct. while Power OFF** *(Network)* | **`Off`** | Prevents background wireless/BT takeover conflicts over USB |
 | **USB Power Supply** *(Setup > USB Power Supply)* | **`Off`** *(recommended)* | Prevents USB bus power confusion during power-switch / battery-pull checks |
+| **Power Save Start Time** *(Setup > Power Setting Option)* | **`Off`** | Prevents idle sleep + shutter wake from resetting sensor/coprocessor RAM back to `16:9` while leaving encoder patches active |
+| **Power Save by Monitor** *(Setup > Power Setting Option)* | **`Off`** *(ZV-E1 / a7S III)* | Prevents folding the LCD screen inward from triggering sleep |
+| **Auto Power OFF Temp.** *(Setup > Power Setting Option)* | **`High`** | Prevents early thermal shutdown during 4K / 3:2 recording |
 | **File Format / Frame Rate** *(Movie)* | **`XAVC HS 4K` / `XAVC S 4K` / `XAVC S-I 4K`, `24p` (`23.98p`), `25p` (`PAL`), or `30p` (`29.97p`), Full Frame** | Matches the open-gate `0x8c0` (NTSC 24p/30p) and `0x820` (PAL 25p) readout modes (`3840x2560`) |
 | **S&Q / APS-C / Proxy / Auto Framing / Clear Image Zoom** | **`Off`** | Keep full-frame sensor readout and clean gyro/framing geometry |
 | **Camera Firmware** | `ZV-E1`: **`2.02`** · `a7S III`: **`5.01`** · `FX3`: **`7.02`** | Exact SHA-256 `DeviceInfo.xml` & memory-page identity check |
@@ -108,12 +111,12 @@ Standalone diagnostics and legacy multi-replug commands also remain available in
 - **ZV-E1 (`zve1_202`):**
   - `23.98p` (`v2`, including SteadyShot Active / Dynamic Active) is hardware-confirmed; `25p` (PAL) and `29.97p` (`30p`, Long-GOP & XAVC S-I) are Unicorn-verified and ready for camera validation.
   - **C2 key** in Movie mode cycles preview aspect **`3:2 -> 2:1 (1.33x) -> 2.25:1 (1.5x) -> 2.4:1 (1.6x) -> 3:2`** (`S16` + `C19`). Cycle back to **`3:2`** before running `express-putback` / `putback` or a closing `dump`.
-  - **Do NOT toggle the power switch** mid-test without pulling the battery: `av-cam.bin` / `libmpr.so` retain patches across a warm power cycle while coprocessor RAM resets.
+  - **Do NOT toggle the power switch or let the camera sleep** mid-test without pulling the battery: `av-cam.bin` / `libmpr.so` retain patches across a warm power cycle or Power Save wake while coprocessor RAM resets back to `16:9` (`mixed_powerswitch`). Keep **`Power Save Start Time = Off`** and **`Power Save by Monitor = Off`**.
 - **a7S III (`a7s3_501`):**
   - `23.98p` is hardware-confirmed; `25p` (PAL via `0x820`) and `29.97p` (`30p`, Long-GOP & XAVC S-I) are Unicorn-verified and ready for camera validation.
   - **C3 key** in Movie mode cycles preview aspect **`3:2 -> 2:1 -> 2.25:1 -> 2.4:1 -> 3:2`** (`S16` + `C19`). Cycle back to **`3:2`** before running `express-putback` / `putback`.
   - Also test **3:2 HDMI output** (`hdmi32`), **200M/300M Long-GOP** (`high_bitrate`), and **XAVC S-I All-Intra 3840x2560** (`xavc_si`) on a V90 SD / CFexpress Type A card.
-  - **Warm Power-Switch Partial Reset (Issue #3):** On `5.01`, flipping only the power switch resets coprocessor RAM (`ogsq` / `outsz2560`) while retaining main-processor encoder patches (`av-cam.bin` / `libmpr.so`), leaving the camera in `mixed_powerswitch` (`VERDICT NOT READY`). Always **pull the battery >= 10s** to restore clean stock.
+  - **Warm Power-Switch / Sleep Partial Reset (Issue #3):** On `5.01`, flipping only the power switch or waking from Power Save sleep resets coprocessor RAM (`ogsq` / `outsz2560`) while retaining main-processor encoder patches (`av-cam.bin` / `libmpr.so`), leaving the camera in `mixed_powerswitch` (`VERDICT NOT READY`). Keep **`Power Save Start Time = Off`** (`Power Save by Monitor = Off`) and always **pull the battery >= 10s** to restore clean stock.
   - Known workaround: if live view turns purple after switching Stills -> Movie, start/stop a 1-second recording to re-initialize the sensor readout cleanly.
 - **FX3 (`fx3_702`):**
   - Verify the body is **`ILME-FX3`**, **not** `ILME-FX3A` (the app blocks `ILME-FX3A` automatically during passive USB detection).

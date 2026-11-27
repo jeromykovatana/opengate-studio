@@ -277,6 +277,7 @@ public final class AppState: ObservableObject {
     @Published public var checkedFirmwareVersion: Bool = false
     @Published public var checkedSdCardSlot1: Bool = false
     @Published public var checkedUsbMassStorage: Bool = false
+    @Published public var checkedPowerSaveDisabled: Bool = false
     @Published public var checkedMovie24pSettings: Bool = false
     @Published public var checkedAppsClosed: Bool = false
 
@@ -312,6 +313,7 @@ public final class AppState: ObservableObject {
     @Published public var isSyncingSession: Bool = false
     @Published public var hasInterruptedLiveSession: Bool = false
     @Published public var liveLeftBehindWarning: Bool = false
+    @Published public var useSystemAuthDialog: Bool = false
 
     @Published public var isRunningPreflight: Bool = false
     @Published public var isApplying: Bool = false
@@ -385,6 +387,7 @@ public final class AppState: ObservableObject {
     private var liveSnapshot = SafetyResultsSnapshot()
     private var activeLiveRunHandle: LiveRunHandle?
     private var activeLiveRunTask: Task<LiveRunResult, Error>?
+    private var usbWatcherTask: Task<Void, Never>?
 
     public static let modularPackOrder: [String] = [
         "mp4_3x2",
@@ -453,6 +456,7 @@ public final class AppState: ObservableObject {
         checkedFirmwareVersion
             && checkedSdCardSlot1
             && checkedUsbMassStorage
+            && checkedPowerSaveDisabled
             && checkedMovie24pSettings
             && checkedAppsClosed
     }
@@ -644,6 +648,7 @@ public final class AppState: ObservableObject {
         await loadBodies()
         await verifyPins()
         await refreshDetectedUsbCamera()
+        startUsbWatcherIfNeeded()
     }
 
     public func retryLocateBridge() async {
@@ -653,31 +658,67 @@ public final class AppState: ObservableObject {
             await loadBodies()
             await verifyPins()
             await refreshDetectedUsbCamera()
+            startUsbWatcherIfNeeded()
         } catch {
             startupError = error.localizedDescription
         }
     }
 
-    public func refreshDetectedUsbCamera() async {
+    private func startUsbWatcherIfNeeded() {
+        guard usbWatcherTask == nil else { return }
+        usbWatcherTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard let self, !Task.isCancelled else { break }
+                if self.offlineMockCamera || self.isLiveSessionActive {
+                    continue
+                }
+                await self.refreshDetectedUsbCamera(silent: true)
+            }
+        }
+    }
+
+    public func refreshDetectedUsbCamera(silent: Bool = false) async {
+        if let nativeResult = UsbRegistryMonitor.detectConnectedSonyCamera() {
+            applyDetectedUsbCameraResult(nativeResult, forceAutoSelect: !silent)
+            return
+        }
+
         guard let bridge else { return }
-        isDetectingUsbCamera = true
-        defer { isDetectingUsbCamera = false }
+        if !silent {
+            isDetectingUsbCamera = true
+        }
+        defer {
+            if !silent {
+                isDetectingUsbCamera = false
+            }
+        }
 
         do {
             let (res, trace) = try await bridge.detectUsbCamera()
-            appendLog(trace)
-            detectedUsbCamera = res
-            if res.detected,
-               !res.isFx3aBlocked,
-               let detectedBodyId = res.bodyId,
-               !detectedBodyId.isEmpty,
-               activeLiveSession == nil,
-               (bodies.isEmpty || bodies.contains(where: { $0.bodyId == detectedBodyId })),
-               selectedBodyId != detectedBodyId {
-                selectedBodyId = detectedBodyId
+            if res != detectedUsbCamera {
+                appendLog(trace)
             }
+            applyDetectedUsbCameraResult(res, forceAutoSelect: !silent)
         } catch {
             // Passive USB probing should not block workspace startup.
+        }
+    }
+
+    private func applyDetectedUsbCameraResult(_ res: DetectedUsbCameraResult, forceAutoSelect: Bool) {
+        let changed = (res != detectedUsbCamera)
+        if changed {
+            detectedUsbCamera = res
+        }
+        guard changed || forceAutoSelect else { return }
+        if res.detected,
+           !res.isFx3aBlocked,
+           let detectedBodyId = res.bodyId,
+           !detectedBodyId.isEmpty,
+           activeLiveSession == nil,
+           (bodies.isEmpty || bodies.contains(where: { $0.bodyId == detectedBodyId })),
+           selectedBodyId != detectedBodyId {
+            selectedBodyId = detectedBodyId
         }
     }
 
@@ -825,7 +866,7 @@ public final class AppState: ObservableObject {
                 return
             }
             presentLiveSession(action: .expressApply)
-            if hasAcceptedExpressSafetyTerms {
+            if hasAcceptedExpressSafetyTerms && (StudioBridge.canRunPasswordlessSudo() || useSystemAuthDialog) {
                 await authorizeAndStartLiveSession()
             }
             return
@@ -878,7 +919,7 @@ public final class AppState: ObservableObject {
                 return
             }
             presentLiveSession(action: .expressPutback)
-            if hasAcceptedExpressSafetyTerms {
+            if hasAcceptedExpressSafetyTerms && (StudioBridge.canRunPasswordlessSudo() || useSystemAuthDialog) {
                 await authorizeAndStartLiveSession()
             }
             return
@@ -1023,7 +1064,7 @@ public final class AppState: ObservableObject {
         activeLiveSession = presentation
     }
 
-    public func authorizeAndStartLiveSession() async {
+    public func authorizeAndStartLiveSession(adminPassword: String? = nil) async {
         guard let bridge,
               var session = activeLiveSession,
               session.phase == .confirming,
@@ -1084,6 +1125,7 @@ public final class AppState: ObservableObject {
             sessionDir: sessionDir,
             dryRunSimulate: false,
             noMovieSession: false,
+            adminPassword: adminPassword,
             onEvent: { [weak self] event in
                 Task { @MainActor [weak self] in
                     self?.handleLiveRunEvent(event)
@@ -1886,6 +1928,7 @@ public final class AppState: ObservableObject {
 
     private func resetBodySpecificSetupConfirmations() {
         checkedFirmwareVersion = false
+        checkedPowerSaveDisabled = false
         checkedMovie24pSettings = false
         batteryPulled10s = false
         cameraInStillsMode = false

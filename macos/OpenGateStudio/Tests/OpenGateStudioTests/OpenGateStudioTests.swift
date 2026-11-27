@@ -1082,6 +1082,109 @@ struct OpenGateStudioTests {
         #expect(rep.markdownPreview.contains("Sony CEA-G 160GB"))
     }
 
+    @Test("UsbRegistryMonitor.mapSonyUsbProduct maps supported Sony bodies and blocks ILME-FX3A")
+    func testUsbRegistryMonitorMapSonyUsbProduct() {
+        let zve1 = UsbRegistryMonitor.mapSonyUsbProduct("ZV-E1")
+        #expect(zve1.bodyId == "zve1_202")
+        #expect(zve1.isFx3aBlocked == false)
+        #expect(zve1.warning == nil)
+
+        let zve1Alt = UsbRegistryMonitor.mapSonyUsbProduct("Sony ZVE1")
+        #expect(zve1Alt.bodyId == "zve1_202")
+        #expect(zve1Alt.isFx3aBlocked == false)
+
+        // ZV-E10 must be matched before ZV-E1 so prefix overlap cannot misclassify it.
+        let zve10 = UsbRegistryMonitor.mapSonyUsbProduct("ZV-E10")
+        #expect(zve10.bodyId == "zve10_203")
+        #expect(zve10.isFx3aBlocked == false)
+
+        let zve10Alt = UsbRegistryMonitor.mapSonyUsbProduct("ZVE10")
+        #expect(zve10Alt.bodyId == "zve10_203")
+
+        let a7s3 = UsbRegistryMonitor.mapSonyUsbProduct("ILCE-7SM3")
+        #expect(a7s3.bodyId == "a7s3_501")
+        #expect(a7s3.isFx3aBlocked == false)
+        #expect(UsbRegistryMonitor.mapSonyUsbProduct("7SM3").bodyId == "a7s3_501")
+        #expect(UsbRegistryMonitor.mapSonyUsbProduct("A7S III").bodyId == "a7s3_501")
+        #expect(UsbRegistryMonitor.mapSonyUsbProduct("A7SIII").bodyId == "a7s3_501")
+
+        let fx3 = UsbRegistryMonitor.mapSonyUsbProduct("ILME-FX3")
+        #expect(fx3.bodyId == "fx3_702")
+        #expect(fx3.isFx3aBlocked == false)
+        #expect(UsbRegistryMonitor.mapSonyUsbProduct("FX3").bodyId == "fx3_702")
+        #expect(UsbRegistryMonitor.mapSonyUsbProduct("ILME-FX30").bodyId == nil)
+        #expect(UsbRegistryMonitor.mapSonyUsbProduct("FX30").bodyId == nil)
+
+        let fx3a = UsbRegistryMonitor.mapSonyUsbProduct("ILME-FX3A")
+        #expect(fx3a.bodyId == nil)
+        #expect(fx3a.isFx3aBlocked == true)
+        #expect(fx3a.warning?.contains("ILME-FX3A") == true)
+        let fx3aShort = UsbRegistryMonitor.mapSonyUsbProduct("FX3A")
+        #expect(fx3aShort.bodyId == nil)
+        #expect(fx3aShort.isFx3aBlocked == true)
+
+        let a7c = UsbRegistryMonitor.mapSonyUsbProduct("ILCE-7C")
+        #expect(a7c.bodyId == "a7c_203")
+        #expect(a7c.isFx3aBlocked == false)
+        #expect(UsbRegistryMonitor.mapSonyUsbProduct("A7C").bodyId == "a7c_203")
+        #expect(UsbRegistryMonitor.mapSonyUsbProduct("ILCE-7CM2").bodyId == nil)
+        #expect(UsbRegistryMonitor.mapSonyUsbProduct("ILCE-7CR").bodyId == nil)
+        #expect(UsbRegistryMonitor.mapSonyUsbProduct("A7C II").bodyId == nil)
+        #expect(UsbRegistryMonitor.mapSonyUsbProduct("A7C R").bodyId == nil)
+
+        let dsc = UsbRegistryMonitor.mapSonyUsbProduct("DSC")
+        #expect(dsc.bodyId == nil)
+        #expect(dsc.isFx3aBlocked == false)
+        #expect(dsc.warning == nil)
+        #expect(UsbRegistryMonitor.mapSonyUsbProduct(nil).bodyId == nil)
+        #expect(UsbRegistryMonitor.mapSonyUsbProduct("   ").bodyId == nil)
+    }
+
+    @Test("UsbRegistryMonitor.detectConnectedSonyCamera returns nil when OPENGATE_MOCK_IOREG_FILE is set")
+    func testUsbRegistryMonitorReturnsNilWhenMockEnvSet() {
+        let previous = getenv("OPENGATE_MOCK_IOREG_FILE").map { String(cString: $0) }
+        defer {
+            if let previous {
+                setenv("OPENGATE_MOCK_IOREG_FILE", previous, 1)
+            } else {
+                unsetenv("OPENGATE_MOCK_IOREG_FILE")
+            }
+        }
+        setenv("OPENGATE_MOCK_IOREG_FILE", "/tmp/mock_ioreg.txt", 1)
+        #expect(UsbRegistryMonitor.detectConnectedSonyCamera() == nil)
+    }
+
+    @Test("StudioBridge.formatAdminStderr formats sudo password and AppleScript USB errors clearly")
+    func testStudioBridgeFormatAdminStderr() {
+        let badPw = StudioBridge.formatAdminStderr(
+            usedSudoPassword: true,
+            usedOsascript: false,
+            exitCode: 1,
+            hasEvents: false,
+            stderr: "Sorry, try again.\nsudo: 1 incorrect password attempt\n"
+        )
+        #expect(badPw == "Incorrect macOS administrator password — nothing was sent to the camera.")
+
+        let badPwWithEvents = StudioBridge.formatAdminStderr(
+            usedSudoPassword: true,
+            usedOsascript: false,
+            exitCode: 1,
+            hasEvents: true,
+            stderr: "Sorry, try again."
+        )
+        #expect(badPwWithEvents == "Sorry, try again.")
+
+        let osascriptUsb = StudioBridge.formatAdminStderr(
+            usedSudoPassword: false,
+            usedOsascript: true,
+            exitCode: 1,
+            hasEvents: false,
+            stderr: "IOCreatePlugInInterfaceForService failed: out of resources\n"
+        )
+        #expect(osascriptUsb.contains("IOCreatePlugInInterfaceForService"))
+        #expect(osascriptUsb.hasSuffix(" (macOS blocked AppleScript USB access; use Direct sudo Password in the sheet and retry)"))
+    }
+
     private func generate57KClipFixture(repoRoot: URL, mp4URL: URL, xmlURL: URL) throws {
         let script = """
         import pathlib, sys

@@ -211,6 +211,45 @@ public final class StudioBridge: @unchecked Sendable {
         return "do shell script \"\(escapedCmd)\" with prompt \"\(escapedPrompt)\" with administrator privileges"
     }
 
+    /// Returns whether `/usr/bin/sudo -n true` succeeds without prompting for a password.
+    public static func canRunPasswordlessSudo() -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+        process.arguments = ["-n", "true"]
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return false
+        }
+        process.waitUntilExit()
+        return process.terminationStatus == 0
+    }
+
+    /// Normalizes privileged-launch stderr output for user-facing failure messages.
+    public static func formatAdminStderr(
+        usedSudoPassword: Bool,
+        usedOsascript: Bool,
+        exitCode: Int32,
+        hasEvents: Bool,
+        stderr: String
+    ) -> String {
+        if usedSudoPassword && exitCode != 0 && !hasEvents {
+            let lower = stderr.lowercased()
+            if lower.contains("sorry, try again") || lower.contains("incorrect password") {
+                return "Incorrect macOS administrator password — nothing was sent to the camera."
+            }
+        }
+        if usedOsascript && (stderr.contains("IOCreatePlugInInterfaceForService")
+            || stderr.localizedCaseInsensitiveContains("out of resources")) {
+            let trimmed = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed + " (macOS blocked AppleScript USB access; use Direct sudo Password in the sheet and retry)"
+        }
+        return stderr
+    }
+
     /// Detects whether `/usr/bin/osascript` exited because the user dismissed the admin prompt.
     public static func isOsascriptUserCancelled(exitCode: Int32, stderr: String) -> Bool {
         guard exitCode != 0 else { return false }
@@ -229,6 +268,7 @@ public final class StudioBridge: @unchecked Sendable {
         sessionDir: URL? = nil,
         dryRunSimulate: Bool = false,
         noMovieSession: Bool = false,
+        adminPassword: String? = nil,
         onEvent: @escaping @Sendable (LiveRunEvent) -> Void,
         onLogChunk: @escaping @Sendable (String) -> Void
     ) -> (handle: LiveRunHandle, task: Task<LiveRunResult, Error>) {
@@ -292,6 +332,11 @@ public final class StudioBridge: @unchecked Sendable {
             let process = Process()
             process.currentDirectoryURL = rootURL
 
+            var stdinPipe: Pipe?
+            var stdinPasswordData: Data?
+            var usedSudoPassword = false
+            var usedOsascript = false
+
             if useDryRun {
                 process.executableURL = URL(fileURLWithPath: "/bin/bash")
                 process.arguments = [scriptURL.path] + finalScriptArgs
@@ -299,6 +344,18 @@ public final class StudioBridge: @unchecked Sendable {
                 env["PYTHONUNBUFFERED"] = "1"
                 env["OPENGATE_STUDIO_ROOT"] = rootURL.path
                 process.environment = env
+            } else if Self.canRunPasswordlessSudo() {
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+                process.arguments = ["-n", "/bin/bash", scriptURL.path] + finalScriptArgs
+                process.standardInput = FileHandle.nullDevice
+            } else if let pw = adminPassword, !pw.isEmpty {
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+                process.arguments = ["-S", "-p", "", "/bin/bash", scriptURL.path] + finalScriptArgs
+                let pipe = Pipe()
+                process.standardInput = pipe
+                stdinPipe = pipe
+                stdinPasswordData = (pw + "\n").data(using: .utf8)!
+                usedSudoPassword = true
             } else {
                 let shellCommand = Self.buildLiveInAppShellCommand(
                     scriptPath: scriptURL.path,
@@ -307,6 +364,7 @@ public final class StudioBridge: @unchecked Sendable {
                 let appleScript = Self.buildAdminAppleScript(shellCommand: shellCommand)
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
                 process.arguments = ["-e", appleScript]
+                usedOsascript = true
             }
 
             let stdoutPipe = Pipe()
@@ -317,7 +375,18 @@ public final class StudioBridge: @unchecked Sendable {
             do {
                 try process.run()
             } catch {
+                if let stdinPipe {
+                    try? stdinPipe.fileHandleForWriting.close()
+                }
                 throw StudioBridgeError.processLaunchFailed(error.localizedDescription)
+            }
+
+            if let stdinPipe {
+                if let pwData = stdinPasswordData {
+                    try? stdinPipe.fileHandleForWriting.write(contentsOf: pwData)
+                }
+                try? stdinPipe.fileHandleForWriting.close()
+                stdinPasswordData = nil
             }
 
             let pipeGroup = DispatchGroup()
@@ -363,8 +432,15 @@ public final class StudioBridge: @unchecked Sendable {
             let exitCode = await exitTask.value
             tailer.drain(final: true, onEvent: onEvent, onLogChunk: onLogChunk)
 
-            let stderrStr = String(data: stderrBox.get(), encoding: .utf8) ?? ""
-            let osascriptCancelled = !useDryRun && Self.isOsascriptUserCancelled(exitCode: exitCode, stderr: stderrStr)
+            let rawStderr = String(data: stderrBox.get(), encoding: .utf8) ?? ""
+            let stderrStr = Self.formatAdminStderr(
+                usedSudoPassword: usedSudoPassword,
+                usedOsascript: usedOsascript,
+                exitCode: exitCode,
+                hasEvents: !tailer.events.isEmpty,
+                stderr: rawStderr
+            )
+            let osascriptCancelled = usedOsascript && Self.isOsascriptUserCancelled(exitCode: exitCode, stderr: rawStderr)
             let eventCancelled = tailer.events.contains(where: { $0.type == "cancelled" })
             let wasUserCancelled = osascriptCancelled || eventCancelled || exitCode == 130
 

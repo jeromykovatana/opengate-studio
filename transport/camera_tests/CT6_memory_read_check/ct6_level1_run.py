@@ -485,10 +485,11 @@ class Guard(c.ServiceGuard):
         if len(data) > 0x1000 and len(data) != self._big:
             raise c.GuardRefusal("a %d-byte service packet that is not the pinned library" % len(data))
         device = self._device
-        header = struct.pack(c.SENSER_HEADER, len(data), pFunc, device._sequence, 0, 0, 0, 0)
+        seq = device._sequence
+        header = struct.pack(c.SENSER_HEADER, len(data), pFunc, seq, 0, 0, 0, 0)
         device.driver.write(header + bytes(data))                      # one write, as the Erlla client does it
-        response, out = c.read_service_answer(device.driver, device._sequence, self.session.log)
-        device._sequence += 1
+        device._sequence = seq + 1
+        response, out = c.read_service_answer(device.driver, seq, self.session.log)
         return response, out
 
     def send(self, pFunc, data, oData=None):
@@ -546,10 +547,11 @@ class MultiStepGuard(c.ServiceGuard):
         if len(data) > 0x1000 and (self._big <= 0 or len(data) != self._big):
             raise c.GuardRefusal("a %d-byte service packet that is not the pinned library" % len(data))
         device = self._device
-        header = struct.pack(c.SENSER_HEADER, len(data), pFunc, device._sequence, 0, 0, 0, 0)
+        seq = device._sequence
+        header = struct.pack(c.SENSER_HEADER, len(data), pFunc, seq, 0, 0, 0, 0)
         device.driver.write(header + bytes(data))
-        response, out = c.read_service_answer(device.driver, device._sequence, self.session.log)
-        device._sequence += 1
+        device._sequence = seq + 1
+        response, out = c.read_service_answer(device.driver, seq, self.session.log)
         return response, out
 
     def send(self, pFunc, data, oData=None):

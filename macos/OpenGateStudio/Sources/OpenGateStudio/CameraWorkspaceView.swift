@@ -19,6 +19,7 @@ public struct CameraWorkspaceView: View {
             appState.checkedFirmwareVersion,
             appState.checkedSdCardSlot1,
             appState.checkedUsbMassStorage,
+            appState.checkedPowerSaveDisabled,
             appState.checkedMovie24pSettings,
             appState.checkedAppsClosed,
         ].filter { $0 }.count
@@ -64,7 +65,7 @@ public struct CameraWorkspaceView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("First-time setup for \(profile.displayName)")
                         .font(.callout.weight(.semibold))
-                    Text("Confirm firmware, Slot 1 SD card, USB Mass Storage, and 24p/25p/30p menu settings (\(setupCheckedCount) of 5 checked).")
+                    Text("Confirm firmware, Slot 1 SD card, USB Mass Storage, Power Save = Off, and 24p/25p/30p menu settings (\(setupCheckedCount) of 6 checked).")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -148,10 +149,19 @@ public struct CameraWorkspaceView: View {
             VStack(alignment: .trailing, spacing: 6) {
                 HStack(spacing: 6) {
                     if let usb = appState.detectedUsbCamera, usb.detected, !usb.isFx3aBlocked {
+                        let mode: String = usb.usbMode ?? "other"
+                        let pillLabel: String = {
+                            switch mode {
+                            case "msc": return "USB Mass Storage"
+                            case "service": return "USB Service Mode"
+                            default: return "Wrong USB Mode"
+                            }
+                        }()
+                        let pillColor: Color = (mode == "msc") ? .green : .orange
                         StudioStatusPill(
-                            usb.usbMode == "service" ? "USB Service" : "USB Ready",
+                            pillLabel,
                             systemImage: "cable.connector",
-                            color: .green
+                            color: pillColor
                         )
                     }
 
@@ -204,6 +214,24 @@ public struct CameraWorkspaceView: View {
             )
         }
 
+        if let usb = appState.detectedUsbCamera, usb.detected, !usb.isFx3aBlocked, usb.usbMode == "other" {
+            StudioCallout(
+                icon: "exclamationmark.triangle.fill",
+                color: .orange,
+                title: "Camera Connected in Wrong USB Mode",
+                detail: "Set MENU > Setup > USB > USB Connection = Mass Storage on your camera (or tap Image Transfer (MSC) on the camera screen) so OpenGate Studio can talk to it."
+            )
+        }
+
+        if let usb = appState.detectedUsbCamera, usb.detected, usb.usbMode == "service", !appState.isLiveSessionActive {
+            StudioCallout(
+                icon: "exclamationmark.triangle.fill",
+                color: .orange,
+                title: "Camera in USB Service Mode",
+                detail: "Wait ~5 seconds for USB Mass Storage to return, or unplug USB-C and pull the battery for >= 10 seconds if an earlier session was interrupted."
+            )
+        }
+
         if let err = appState.stepperError {
             StudioCallout(
                 icon: "xmark.octagon.fill",
@@ -217,8 +245,8 @@ public struct CameraWorkspaceView: View {
             StudioCallout(
                 icon: "battery.0",
                 color: .red,
-                title: "Warm Power-Switch State Detected",
-                detail: "Pull the camera battery for at least 10 seconds to clear residual RAM, boot straight into Stills mode, then run a read-only check."
+                title: "Warm Power-Switch / Sleep State Detected",
+                detail: "Flipping the power switch or waking from Power Save sleep resets sensor RAM to 16:9 while leaving encoder patches active. Set Power Save Start Time = Off, pull the battery for >= 10 seconds, boot straight into Stills mode, and re-check."
             )
         } else if stage == .recoveryRequired {
             StudioCallout(
@@ -801,7 +829,7 @@ public struct CameraWorkspaceView: View {
         case .recoveryRequired:
             return "Pull the battery for >= 10 seconds to clear residual RAM, then click Check & Apply."
         case .applied:
-            return "Unplug USB-C, switch to Movie (24p, 25p, or 30p) and shoot. Do not switch to 50p, 60p, or 120p."
+            return "Unplug USB-C, switch to Movie (24p, 25p, or 30p) and shoot. Keep Power Save = Off so the camera doesn't sleep; do not switch to 50p, 60p, or 120p."
         case .restoredStock:
             return "Stock camera RAM was verified. Click Apply Open-Gate (3:2) anytime to patch volatile RAM again."
         case .readyToApply, .needsPreflight:

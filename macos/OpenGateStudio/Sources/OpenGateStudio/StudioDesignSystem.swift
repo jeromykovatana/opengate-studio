@@ -121,6 +121,8 @@ public struct BodySetupProfile {
     public let firmwareBadge: String
     public let firmwareCaution: String?
     public let bodySpecificMovieSetting: String?
+    public let powerSaveDetail: String
+    public let hasMonitorPowerSave: Bool
     public let stillsModeTitle: String
     public let stillsShortHint: String
     public let stillsModeInstruction: String
@@ -139,6 +141,8 @@ public struct BodySetupProfile {
                 firmwareBadge: "a7S III -> Ver. \(fw)",
                 firmwareCaution: nil,
                 bodySpecificMovieSetting: nil,
+                powerSaveDetail: "MENU > Setup > Power Setting Option: Power Save Start Time = Off · Power Save by Monitor = Off · Auto Power OFF Temp. = High",
+                hasMonitorPowerSave: true,
                 stillsModeTitle: "Mode Dial -> Stills",
                 stillsShortHint: "top dial on M / S / A / P",
                 stillsModeInstruction: "Turn the top mode dial to a Stills position (M / S / A / P) before booting.",
@@ -155,6 +159,8 @@ public struct BodySetupProfile {
                 firmwareBadge: "FX3 -> Ver. \(fw) (ILME-FX3 only)",
                 firmwareCaution: "Verify Model Name is ILME-FX3 (NOT ILME-FX3A) in MENU > Setup > Setup Option > Version.",
                 bodySpecificMovieSetting: "De-Squeeze Display = Off",
+                powerSaveDetail: "MENU > Setup > Power Setting Option: Power Save Start Time = Off · Auto Power OFF Temp. = High",
+                hasMonitorPowerSave: false,
                 stillsModeTitle: "MODE Button -> Stills",
                 stillsShortHint: "MODE button set to Stills",
                 stillsModeInstruction: "Press the MODE button and select Stills before connecting USB.",
@@ -171,6 +177,8 @@ public struct BodySetupProfile {
                 firmwareBadge: "a7C -> Ver. \(fw)",
                 firmwareCaution: nil,
                 bodySpecificMovieSetting: "File Format = XAVC S 4K · 24p 100M",
+                powerSaveDetail: "MENU > Setup > Power Setting Option: Power Save Start Time = Off · Power Save by Monitor = Off · Auto Power OFF Temp. = High",
+                hasMonitorPowerSave: true,
                 stillsModeTitle: "Mode Dial -> Stills",
                 stillsShortHint: "top dial on M / S / A / P",
                 stillsModeInstruction: "Turn the top mode dial to a Stills position (M / S / A / P) before connecting USB.",
@@ -187,6 +195,8 @@ public struct BodySetupProfile {
                 firmwareBadge: "ZV-E10 -> Ver. \(fw)",
                 firmwareCaution: nil,
                 bodySpecificMovieSetting: "File Format = XAVC S 4K · 24p 100M",
+                powerSaveDetail: "MENU > Setup > Power Setting Option: Power Save Start Time = Off · Power Save by Monitor = Off · Auto Power OFF Temp. = High",
+                hasMonitorPowerSave: true,
                 stillsModeTitle: "Still/Movie/S&Q Button -> Still",
                 stillsShortHint: "Still/Movie/S&Q set to Still",
                 stillsModeInstruction: "Press the top Still/Movie/S&Q button until the camera is in Stills mode.",
@@ -203,6 +213,8 @@ public struct BodySetupProfile {
                 firmwareBadge: "ZV-E1 -> Ver. \(fw)",
                 firmwareCaution: nil,
                 bodySpecificMovieSetting: "Auto Framing = Off",
+                powerSaveDetail: "MENU > Setup > Power Setting Option: Power Save Start Time = Off · Power Save by Monitor = Off · Auto Power OFF Temp. = High",
+                hasMonitorPowerSave: true,
                 stillsModeTitle: "Still/Movie/S&Q Button -> Still",
                 stillsShortHint: "Still/Movie/S&Q set to Still",
                 stillsModeInstruction: "Press the top Still/Movie/S&Q button until the camera is in Stills mode.",

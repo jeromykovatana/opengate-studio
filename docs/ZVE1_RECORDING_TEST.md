@@ -20,7 +20,7 @@ Print the full ZV-E1 runbook or run the offline V19 self-test anytime:
 - Open **`OpenGate Studio.app`** -> **`Camera`** workspace, select **`ZV-E1 2.02`**, and click **`Setup Guide…`** (or open **`OpenGate Field Companion`** on Android and select **`ZV-E1 2.02`**).
 - Confirm camera firmware **`2.02`** (`MENU > Setup > Setup Option > Version`).
 - Set Movie mode to NTSC, **XAVC HS 4K, 24p (23.98p / 23.976p), 50M 4:2:0 10-bit**, Full Frame. Turn **Off** `APS-C / Super 35`, `S&Q`, `Proxy Recording`, `Auto Framing`, and `Clear Image Zoom`.
-- Set **Setup > USB > USB Connection** = `Mass Storage`, **USB Power Supply** = `Off`, **Smartphone Conn / Cnct. while Power OFF** = `Off`, and keep a normal formatted SD card in **Slot 1** (zero files copied onto the card).
+- Set **Setup > USB > USB Connection** = `Mass Storage`, **USB Power Supply** = `Off`, **Smartphone Conn / Cnct. while Power OFF** = `Off`, **Setup > Power Setting Option > Power Save Start Time** = `Off`, **Power Save by Monitor** = `Off`, **Auto Power OFF Temp.** = `High`, and keep a normal formatted SD card in **Slot 1** (zero files copied onto the card).
 - Close **Finder** card windows, **Photos**, and **Image Capture** on Mac (or ensure **`Offline Simulation Mode`** is **OFF** so the toolbar pill shows **`Live USB`**).
 - Shoot landscape with a Sony E-mount lens that reports focal length (e.g., `FE 24mm F1.4 GM`). Turn camera **SteadyShot** and lens **OSS** **Off** for baseline takes, lock focus/exposure/WB, and use steady light (`1/125 s` or `1/500+` for readout calibration).
 - Mark a wall chart with a circular center target, left/right frame markers, and tape strips just above and below the stock `16:9` frame on a locked tripod.

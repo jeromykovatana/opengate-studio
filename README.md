@@ -11,9 +11,9 @@
 <p>
   <a href="https://github.com/jeromykovatana/opengate-studio/releases"><img src="https://img.shields.io/github/v/release/jeromykovatana/opengate-studio?include_prereleases&label=release&color=0ea5e9" alt="Latest Release"></a>
   <a href="https://github.com/jeromykovatana/opengate-studio/actions/workflows/ci.yml"><img src="https://github.com/jeromykovatana/opengate-studio/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
-  <img src="https://img.shields.io/badge/cameras-FX3%20%7C%20a7S%20III%20%7C%20ZV--E1-f59e0b" alt="Supported Cameras">
+  <img src="https://img.shields.io/badge/cameras-FX3%20%7C%20a7S%20III%20%7C%20ZV--E1%20(%2B%20a7C%20%2F%20ZV--E10%20Exp)-f59e0b" alt="Supported Cameras">
   <img src="https://img.shields.io/badge/writes-Volatile%20RAM%20Only-10b981" alt="Volatile RAM Only">
-  <img src="https://img.shields.io/badge/platform-macOS%2014%2B%20%7C%20Python%203-6366f1" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-macOS%2014%2B%20%7C%20Android%20USB--OTG%20%7C%20Python%203-6366f1" alt="Platform">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License: GPL-3.0-or-later"></a>
 </p>
 
@@ -43,7 +43,7 @@
 
 ## Why OpenGate Studio?
 
-Sony's 12.1MP full-frame sensor (`IMX510` + `CXD90057` BIONZ XR) physically reads out 3:2 rows, yet stock firmware crops the frame vertically to 16:9 (`3840×2160`) before encoding. **OpenGate Studio** (`v0.2.0-alpha` hardening release) unlocks the full **3:2 (`3840×2560`)** sensor height—alongside native 3:2 MP4 headers designed to keep Sony's `rtmd` gyro track intact, plus experimental HDMI/high-bitrate/All-Intra packs—inside a guided macOS SwiftUI utility and clean-room Python CLI.
+Sony's 12.1MP full-frame sensor (`IMX510` + `CXD90057` BIONZ XR) physically reads out 3:2 rows, yet stock firmware crops the frame vertically to 16:9 (`3840×2160`) before encoding. **OpenGate Studio** (`v0.3.1-alpha` 1-Click Express release) unlocks the full **3:2 (`3840×2560`)** sensor height—alongside native 3:2 MP4 headers that preserve Sony's `rtmd` gyro track, plus experimental HDMI/high-bitrate/All-Intra packs—via a 1-click macOS SwiftUI app, an Android USB-OTG field companion APK, and a clean-room Python CLI.
 
 <div align="center">
   <img src="assets/open-gate-framing.png" alt="3:2 Open Gate 3840x2560 vs Stock 16:9 3840x2160 Sensor Geometry" width="100%">
@@ -51,25 +51,26 @@ Sony's 12.1MP full-frame sensor (`IMX510` + `CXD90057` BIONZ XR) physically read
 
 ### How It Compares
 
-| Capability | Stock Sony Firmware | Basic Open-Gate Script | **OpenGate Studio (`v0.2.0-alpha`)** |
+| Capability | Stock Sony Firmware | Basic Open-Gate Script | **OpenGate Studio (`v0.3.1-alpha`)** |
 |---|---|---|---|
-| **3:2 Full Sensor (`3840×2560`)** | ❌ Cropped to `3840×2160` (`16:9`) | ✅ `23.98p` (+ FX3 `25p`) | ✅ `23.98p` HW core across 3 bodies (+ FX3 `25p`); `25p`/`29.97p` experimental (`Emu ✅`) |
-| **Native 3:2 MP4 Headers (`tkhd`/`stsd`/`VPRF`)** | ❌ `16:9` only | ⚠️ Often needs `ffmpeg` re-mux | 🟡 Native `3:2` in-camera (`mp4_3x2`: Ghidra + emu ✅, conformance bundle pending) |
-| **Sony `rtmd` Gyro Track Preservation** | ✅ `16:9` clips only | ❌ Stripped if `ffmpeg` re-muxed | 🟡 `rtmd` mux path preserved (`mp4_3x2`); end-to-end Gyroflow/Catalyst clip proof pending |
+| **3:2 Full Sensor (`3840×2560`)** | ❌ Cropped to `3840×2160` (`16:9`) | ✅ `23.98p` (+ FX3 `25p`) | ✅ `23.98p` HW core across 3 bodies (+ FX3 `25p`); `25p`/`29.97p` & `a7C`/`ZV-E10` (`Emu ✅`) |
+| **1-Click Express Apply** | — | Manual multi-step scripts + replugs | ✅ **1-Click Single-Pass Express Apply (~10s, 0 cable replugs, no Movie-mode replug)** |
+| **Native `3:2` MP4 + `rtmd` Gyro** | ✅ `16:9` clips only | ❌ Stripped if `ffmpeg` re-muxed | ✅ **Hardware-verified on ZV-E1 `2.02` `23.98p` + Gyroflow `12.336ms`** (a7S III/FX3 `Emu ✅`) |
 | **Clean 3:2 & Anamorphic HDMI (`hdmi32`)** | ❌ `16:9` cropped HDMI | ❌ Not included | 🧪 Experimental (`H16`/`H17`, byte + emulator ✅, HW pending) |
 | **High-Bitrate `200M/300M` & `XAVC S-I` All-Intra** | ❌ `16:9` only | ❌ Stock `100M` Long-GOP only | 🧪 Experimental (`high_bitrate` & `xavc_si`, byte + emulator ✅, HW pending) |
-| **Safety & Fail-Closed Preflight** | — | Manual script order | ✅ **Boot/Camera-Bound Live Preflight + 16B Guards + Fail-Closed Verify & Putback** |
-| **Clip, XML & Gyro Inspector** | ❌ None | ❌ None | ✅ Built-in SwiftUI & CLI `bionz_clip_check.py` (10/10 synthetic fixtures) |
-| **macOS Setup Experience** | — | Manual Python + scripts | ✅ One-click `OpenGate Studio.app` (no Zadig/Homebrew `libusb`) |
+| **Safety & Fail-Closed Preflight** | — | Manual script order | ✅ **Single-Session `DeviceInfo.xml` + FW SHA-256 + 16B Guards + Read-Back Verify** |
+| **Clip, XML & Gyro Inspector** | ❌ None | ❌ None | ✅ Built-in SwiftUI & CLI `bionz_clip_check.py` (10/10 synthetic fixtures + ZV-E1 HW clip) |
+| **macOS Setup Experience** | — | Manual Python + scripts | ✅ **Live IOKit USB Auto-Detection + macOS 14–27 `sudo` / Touch ID** (no Zadig/Homebrew `libusb`) |
+| **Mobile Field Companion** | — | ❌ Laptop required on set | ✅ **1-Tap Android USB-OTG Companion APK** (re-apply on set after any battery swap) |
 
 ---
 
 ## Supported Cameras, Firmware Pins & Evidence Matrix
 
-All 62 `.so` helper binaries across `kits/` are compiled reproducibly with `ziglang 0.13.0` (`clang 18.1.6`), pinned by SHA-256, and verified in Unicorn AArch64 emulation (`0` clean-room violations). **Recommended profile for field use: `Safe Daily 3:2` (`core_open_gate` + `mp4_3x2` + `screen_3x2`).**
+All 90 `.so` helper binaries across 5 bodies in `kits/` are compiled reproducibly with `ziglang 0.13.0` (`clang 18.1.6`), pinned by SHA-256, and verified in Unicorn AArch64 / ARM32 emulation (`0` clean-room violations). **Recommended profile for field use: `Safe Daily 3:2` (`core_open_gate` + `mp4_3x2` + `screen_3x2`).**
 
 <!-- BEGIN GENERATED SUPPORT MATRIX -->
-### Supported Bodies & Pinned Firmware (`v0.2.0-alpha (Hardening Release)`)
+### Supported Bodies & Pinned Firmware (`v0.3.1-alpha (1-Click Express Release)`)
 
 | Camera Body | Model ID | Pinned Firmware | `body_id` | Build ID (`version.txt`) | Pinned Helpers | Evidence Summary |
 |---|---|---|---|---|---:|---|
@@ -113,7 +114,7 @@ _Legend: ✅ Verified · 🟡 Partial (upstream/architectural evidence; full Stu
 > [!NOTE]
 > - **Exact firmware required:** Only `ZV-E1 2.02`, `a7S III 5.01`, and `FX3 7.02` (`ILME-FX3`, **not** `ILME-FX3A`) are supported. Preflight rejects any mismatched `DeviceInfo.xml` or memory identity page before touching RAM.
 > - **Sony a7 IV Clip Support:** The built-in Clip Inspector (`cli/bionz_clip_check.py`) also validates `3840×2560` and `5760×3840` clips from `a7iv-open-gate-test`.
-> - **Help validate on hardware:** This project is in active **v0.2.0-alpha** hardening. If you run it on hardware, please submit a [Field Test Report](https://github.com/jeromykovatana/opengate-studio/issues/new?template=field-test-report.yml) with untouched camera originals.
+> - **Help validate on hardware:** This project is in active **v0.3.1-alpha** testing. If you run it on hardware, please submit a [Field Test Report](https://github.com/jeromykovatana/opengate-studio/issues/new?template=field-test-report.yml) with untouched camera originals.
 
 ---
 
@@ -135,38 +136,40 @@ Pick **Safe Daily 3:2 (Recommended)** for the smallest volatile RAM footprint, o
 
 ## Quick Start
 
-### Option A — macOS App (`OpenGate Studio.app` — Recommended)
+### Option A — 1-Click macOS App (`OpenGate Studio.app` — Recommended)
 
-Requires **macOS 14+** and **Python 3.9+** (Apple Silicon `arm64` prebuilt bundle on [Releases](https://github.com/jeromykovatana/opengate-studio/releases); Xcode CLT / `swift` optional if rebuilding from source). **No Homebrew `libusb` or Windows Zadig driver needed.**
+Requires **macOS 14+** (tested through macOS 27) and **Python 3.9+** (Apple Silicon `arm64` prebuilt bundle on [Releases](https://github.com/jeromykovatana/opengate-studio/releases); Xcode CLT / `swift` optional if rebuilding from source). **No Homebrew `libusb` or Windows Zadig driver needed.**
 
-1. **Download & Open:** Grab the latest `.zip` from **[GitHub Releases](https://github.com/jeromykovatana/opengate-studio/releases)**, or clone and run the one-click setup:
-   ```bash
-   git clone https://github.com/jeromykovatana/opengate-studio.git
-   cd opengate-studio
-   ./setup_and_open_mac.command
-   ```
-2. **Explore Safely Offline or Connect Live:** The app launches in **Live USB** mode with two focused toolbar destinations (**Camera** and **Clips**):
-   - **Offline Simulation Mode (`Cmd+Option+S`):** Open the toolbar Connection Mode popover and toggle **Offline Simulation Mode** (displays an unmistakable blue top banner with `Clean Stock`, `Warm Power-Switch (Blocked)`, and `Open-Gate Active` states) to explore the full workflow with zero USB contact.
-   - **Camera Workspace:** Complete the dismissible **First-Time Setup** checklist (`Setup Guide…`, `Cmd+Shift+G`), verify `>= 10s` battery-pull cold boot and Stills mode, pick **Safe Daily 3:2** or **Cinema Full** (or expand **Customize Feature Packs**), and follow the single adaptive hero action (**Check Camera (Read-Only)** → **Apply Open-Gate (3:2)** → **Swapped Battery? Re-Check Camera** / **Restore Stock RAM**).
-   - **Clips Workspace:** Drop any recorded `Cxxxx.MP4` + `CxxxxM01.XML` or `PRIVATE/M4ROOT/CLIP` card folder via **Open Clip or Card…** to inspect `3840×2560` geometry, NRT XML aspect, `rtmd` gyro samples, and 3:2 delivery framing in the right-side **Inspector** (`Cmd+Option+I`), or launch **Export Proxies…** and **Gyroflow Presets…**.
-   - **Diagnostics & Field Tools (`Cmd+Option+D`):** View **Console Log**, **Kit Integrity** (SHA-256 pins), and the **Field Report** builder from the toolbar wrench icon.
-3. **Go Live Over USB-C:** Ensure Connection Mode is **Live USB** (green indicator). Clicking **Check Camera (Read-Only)**, **Apply Open-Gate (3:2)**, or **Restore Stock RAM** opens the native in-app Live USB sheet (`macos/run_live_inapp.sh`) with clickable firmware/volatile-RAM confirmations, a single macOS Touch ID / administrator dialog to release `iousbmassstorage`, live step progress with pulsing USB replug / Movie-mode banners, safe between-step Cancel, and automatic verdict sync (with **Use Terminal Fallback Instead** tucked under **Advanced & Step Details**).
+1. **Download & Open:** Download `Sony-OpenGate-Studio-v0.3.1-alpha-macos-arm64.zip` from **[GitHub Releases](https://github.com/jeromykovatana/opengate-studio/releases)**, or clone and run `./setup_and_open_mac.command`.
+2. **One-Time Camera Menu Prep:** Set `USB Connection = Mass Storage`, `Power Save Start Time = Off` & `Power Save by Monitor = Off` (so sleep never resets volatile RAM back to `16:9`), and Movie mode to `24p` (`23.98p`), `25p` (PAL), or `30p` (`29.97p`).
+3. **1-Click Express Apply (~10s, 0 Cable Replugs):**
+   - Pull the battery `>= 10s`, power **ON** in **Stills** mode, and plug in USB-C (`OpenGate Studio.app` live auto-detects your camera via `IOKit`).
+   - Click **Apply Open-Gate (3:2)** (~10s single pass, zero cable replugs, no Movie-mode replug) and authorize `sudo` / Touch ID once to release `iousbmassstorage`.
+   - Wait for **`SAFE TO UNPLUG USB-C`**, unplug, switch to **Movie**, and shoot!
 
-### Option B — Live USB Terminal (macOS)
+> [!TIP]
+> **Explore Offline & Inspect Clips:** Toggle **Offline Simulation Mode** (`Cmd+Option+S`) to test every state with zero USB contact, open the **Clips** workspace (`Cmd+Option+I`) to verify `3840×2560` MP4/XML + `rtmd` gyro telemetry or export proxies/Gyroflow presets, or open **Diagnostics** (`Cmd+Option+D`) for kit SHA-256 verification and Field Reports.
+
+### Option B — 1-Tap Android USB-OTG Field Companion (`OpenGate-Field-Companion-v0.3.1-alpha-debug.apk`)
+
+No laptop needed on location:
+1. Sideload `OpenGate-Field-Companion-v0.3.1-alpha-debug.apk` from **[GitHub Releases](https://github.com/jeromykovatana/opengate-studio/releases)** onto your Android device.
+2. After any battery swap on set, power **ON** the camera in **Stills** mode and plug a **USB-C OTG** cable between your phone and camera.
+3. Tap **Apply Safe Daily 3:2**, wait for completion, unplug, switch to **Movie**, and shoot.
+
+### Option C — Live USB Terminal (`express-apply` / `express-putback`)
 
 ```bash
-# Preview any live USB flow safely offline (--dry-run sends nothing and skips sudo)
-./macos/run_live_terminal.sh preflight --body zve1_202 --dry-run
-./macos/run_live_terminal.sh apply --body a7s3_501 --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si --dry-run
+# Preview express-apply safely offline (--dry-run sends nothing and skips sudo)
+./macos/run_live_terminal.sh express-apply --body zve1_202 --packs mp4_3x2,screen_3x2 --dry-run
 
-# Live USB runs (read-only preflight first, then apply, then putback)
-./macos/run_live_terminal.sh preflight --body zve1_202
-./macos/run_live_terminal.sh apply --body zve1_202 --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si
-./macos/run_live_terminal.sh putback --body zve1_202
+# Single-pass live USB express apply & express putback (zero cable replugs)
+./macos/run_live_terminal.sh express-apply --body zve1_202 --packs mp4_3x2,screen_3x2
+./macos/run_live_terminal.sh express-putback --body zve1_202
 ```
 
 <details>
-<summary><strong>Option C — Pure Python CLI, Offline Mock Mode & Developer Verification</strong></summary>
+<summary><strong>Option D — Pure Python CLI, Offline Mock Mode & Developer Verification</strong></summary>
 
 All `cli/studio_cli.py` commands use pure Python 3 standard library and default to `--mock-camera` so you can test pack stacking, preflight gates, and clip verification safely on any OS:
 
@@ -174,16 +177,16 @@ All `cli/studio_cli.py` commands use pure Python 3 standard library and default 
 # List supported bodies and modular packs
 python3 cli/studio_cli.py list-bodies --json
 
-# Verify SHA-256 pins of every .so helper in kits/
+# Verify SHA-256 pins of all 95 pinned kit files (90 .so helpers + 5 device_info XMLs)
 python3 cli/studio_cli.py verify-pins --json
 
-# Run read-only preflight (stock vs warm power-switch mixed state)
+# Single-session express apply / putback in mock mode
+python3 cli/studio_cli.py express-apply --body zve1_202 --packs mp4_3x2,screen_3x2 --mock-camera --session-dir /tmp/og_sessions --json
+python3 cli/studio_cli.py express-putback --body zve1_202 --mock-camera --session-dir /tmp/og_sessions --json
+
+# Run standalone read-only preflight, apply, and putback (stock vs warm power-switch mixed state)
 python3 cli/studio_cli.py preflight --body zve1_202 --mock-camera --mock-state stock --session-dir /tmp/og_sessions --json
-
-# Apply modular packs (enforces newest preflight session ready == true)
 python3 cli/studio_cli.py apply --body zve1_202 --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si --mock-camera --session-dir /tmp/og_sessions --json
-
-# Put back to stock RAM state
 python3 cli/studio_cli.py putback --body zve1_202 --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si --mock-camera --session-dir /tmp/og_sessions --json
 
 # Inspect an MP4 clip + optional M01.XML sidecar for 3:2 framing & rtmd gyro telemetry
@@ -204,23 +207,23 @@ python3 -B -m unittest discover -s tests -v
 
 ## 5-Gate Volatile RAM Safety Architecture
 
-Every run follows a strict read-only-first pipeline so no mismatched firmware, warm-boot partial state, or colliding offset can ever be written:
+Every single-pass express run (`Q19` Safe Daily 3:2 / `F19` Cinema Full 3:2) fuses `DeviceInfo.xml` validation, firmware SHA-256 verification, stock/mixed-state pre-check, ordered RAM apply, and Pass 3 read-back verification into one fail-closed USB session:
 
 ```mermaid
 flowchart LR
-    G1["1. Cold-Boot Stills\n(Battery >= 10s, 24p/25p/30p set)"] --> G2["2. Read-Only Preflight\n(CT6 check + identity SHA-256)"]
-    G2 -->|"VERDICT READY"| G3["3. 16B Stock Guards\n(& leftover libJit auto-cleanup)"]
-    G2 -->|"NOT READY / Mixed"| BP["Pull Battery >= 10s\nto Restore Stock"]
-    G3 --> G4["4. Volatile RAM Apply\n(/tmp/jiritsu/ · 0 flash writes)"]
-    G4 --> SHOOT["5. Shoot 3:2 @ 23.98p/25p/29.97p\n(Native MP4 + rtmd Gyro)"]
-    SHOOT --> END["Software Putback OR\nBattery Pull >= 10s (100% Stock)"]
+    G1["1. Cold-Boot Stills\n(Battery >= 10s, Power Save Off, 24p/25p/30p)"] --> G2["2. Fused Q19/F19 Preflight (Pass 1)\n(DeviceInfo.xml + FW SHA-256 + Stock/Mixed Pre-Check)"]
+    G2 -->|"Mixed / Mismatch"| BP["Fail-Closed Abort\n(Pull Battery >= 10s to Restore Stock)"]
+    G2 -->|"Stock Verified"| G3["3. Ordered RAM Apply (Pass 2)\n(/tmp/jiritsu/ · 0 flash writes · 0 replugs)"]
+    G3 --> G4["4. Pass 3 Read-Back Verify\n(Same Session RAM Verification)"]
+    G4 -->|"SAFE TO UNPLUG USB-C"| SHOOT["5. Shoot 3:2 @ 23.98p/25p/29.97p\n(Native MP4 + rtmd Gyro)"]
+    SHOOT --> END["express-putback OR\nBattery Pull >= 10s (100% Stock)"]
 ```
 
 > [!IMPORTANT]
 > **Essential Hardware & SD Card Notes**
 > - **No files go on your SD card:** Leave a normal formatted SD/CFexpress card in **Slot 1** so the camera mounts as USB Mass Storage (`Setup > USB > Mass Storage`). Nothing on the card is modified or erased.
 > - **FX3 `7.02` Playback Freeze Warning:** On stock FX3 `7.02`, playing an open-gate clip shows `"Unable to display"` and retrying freezes the camera until battery pull. Do **not** play back clips on FX3 unless explicitly testing optional `fx3_playback` (`P29`/`P30`, **untested on hardware** — test 1 normal 16:9 clip first, then 1 open-gate clip, and **never retry** if it errors).
-> - **a7S III `5.01` & ZV-E1 `2.02` Warm Power-Switch Reset:** Toggling the power switch resets coprocessor RAM while retaining encoder patches (`mixed_powerswitch`). Always **pull the battery for ≥ 10 seconds** to restore 100% stock.
+> - **a7S III `5.01` & ZV-E1 `2.02` Warm Power-Switch / Sleep Reset:** Toggling the power switch or waking from Power Save sleep resets coprocessor RAM back to `16:9` while retaining encoder patches (`mixed_powerswitch`). Set **`Setup > Power Setting Option > Power Save Start Time = Off`** (`Power Save by Monitor = Off`) and always **pull the battery for ≥ 10 seconds** to restore 100% stock.
 > - **macOS USB Auto-Reconnect:** After a step finishes, macOS may re-enumerate the camera automatically ~5 seconds later without physically unplugging the cable.
 
 ---

@@ -324,9 +324,10 @@ SENSER_HEADER = "<IHHBBBB"          # size, packet type, sequence, version, mico
 SENSER_HEADER_SIZE = struct.calcsize(SENSER_HEADER)
 SENSER_PART_MAX = 0x100000
 USB_PACKET = 512
+SERVICE_USB_TIMEOUT_MS = 30000
 
 
-def read_service_answer(driver, sequence, log=None):
+def read_service_answer(driver, sequence, log=None, timeout=SERVICE_USB_TIMEOUT_MS):
     """Read one service answer: (response code, data). Our own reader; it sends nothing.
 
     PMCA-RE's reader reads 512 bytes after every 0x8000 and throws them away. On Windows with
@@ -340,7 +341,7 @@ def read_service_answer(driver, sequence, log=None):
     """
     def read_header():
         for _ in range(4):                               # tolerate empty reads (zero-length packets)
-            raw = driver.read(SENSER_HEADER_SIZE)
+            raw = driver.read(SENSER_HEADER_SIZE, timeout=timeout)
             if raw:
                 break
         if len(raw) != SENSER_HEADER_SIZE:
@@ -362,7 +363,7 @@ def read_service_answer(driver, sequence, log=None):
         empty = 0
         while got < part:
             want = min(part - got, 0x8000)
-            chunk = driver.read((want + USB_PACKET - 1) // USB_PACKET * USB_PACKET)
+            chunk = driver.read((want + USB_PACKET - 1) // USB_PACKET * USB_PACKET, timeout=timeout)
             if not chunk:
                 empty += 1
                 if empty > 4:
@@ -395,10 +396,11 @@ class ServiceGuard:
         device = self._device
         if len(data) > 0x1000:
             raise GuardRefusal("a %d-byte service packet: CT1 sends only small requests" % len(data))
-        header = struct.pack(SENSER_HEADER, len(data), pFunc, device._sequence, 0, 0, 0, 0)
+        seq = device._sequence
+        header = struct.pack(SENSER_HEADER, len(data), pFunc, seq, 0, 0, 0, 0)
         device.driver.write(header + bytes(data))
-        response, out = read_service_answer(device.driver, device._sequence, self.session.log)
-        device._sequence += 1
+        device._sequence = seq + 1
+        response, out = read_service_answer(device.driver, seq, self.session.log)
         return response, out
 
     def send(self, pFunc, data, oData=None):

@@ -48,6 +48,10 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$BUILT_BIN" "$MACOS_DIR/$EXECUTABLE_NAME"
 chmod +x "$MACOS_DIR/$EXECUTABLE_NAME"
 
+if [[ -f "$SCRIPT_DIR/Resources/AppIcon.icns" ]]; then
+    cp "$SCRIPT_DIR/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
+fi
+
 cat > "$CONTENTS_DIR/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -59,6 +63,8 @@ cat > "$CONTENTS_DIR/Info.plist" << EOF
     <string>OpenGate Studio</string>
     <key>CFBundleExecutable</key>
     <string>OpenGateStudio</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>org.opengatestudio.macos</string>
     <key>CFBundleInfoDictionaryVersion</key>
