@@ -165,3 +165,34 @@ Two distinct failure modes occur when drawing AF and subject-tracking overlays o
 1. **Offline Ghidra Decompilation (`sony_12mp_opengate.gpr`):** Decompile `ZV 0x129288` (`cpActTrackingFrame`), `0x63b624`/`0x63b664`, `0x63b3da`/`0x63b448`, and `S3 0x129608` (`cpActTrackingFrame`) + `0x128438`/`0x128878` (`cpActAfWindow`) to verify the exact input/output coordinate units of `(fp, r4, sb, r6)` and `[sp, #0x18]` vs `[sp, #8]`.
 2. **Read-Only `CT6` Dump Check:** Read `[r0 + 0x12d]` / `[r0 + 0x12f]` and VDF layout structs in Movie mode (`3:2` stock vs `lcdfill_zv_v2` vs `lcdcycle` `2.4:1`) on `ZV-E1` and `a7S III` before crafting any volatile OSD Y-remap patch.
 3. **Controlled Framing-Chart Field Verification:** Capture rear-LCD photographs of a face/tracking target at top, center, and bottom fifths of the `3:2` frame under `lcdfill_zv_v2` / `lcdratio32_s3_v1` to measure exact vertical tracking-box offset in pixels before/after any future `cpActTrackingFrame` patch.
+
+---
+
+## 4. Cross-Body Offline Verification Findings (2026-11-27)
+
+Static offline disassembly across unpacked `cpapp-b.bin` (`CPAPP_BASE = 0x108000`) and `libmpr.so` (`a7s3_501`) confirms the following cross-body entry points, guard predicates, and register contracts. All addresses below remain read-only research findings pending live read-only `CT6` validation.
+
+### 4.1 OSD & Tracking Frame (`cpActTrackingFrame` & Aspect Tables)
+
+| Component | `ZV-E1` | `a7S III` | `FX3` | Verified Behavior |
+| :--- | :--- | :--- | :--- | :--- |
+| `cpActTrackingFrame` | `0x129288` | `0x129608` | `0x129200` / `0x129370` | `ZV-E1` and `a7S III` share a two-stage OSD normalization pipeline; `FX3` normalizes directly via `0x57b84e` / `0x57fb54` / `0x57fbc2` without a `640x360` Stage 2 branch |
+| Stage 1 OSD dim lookup | `0x63b624`, `0x63b664` | `0x58c67c`, `0x58c6bc` | — | Reads signed byte `[r0 + 0x12d]` / `[r0 + 0x12f]` clamped at index `5` |
+| 6-entry OSD height/width tables | `0xcabfd0` / `0xcac010` | `0xb4fc80` / `0x298824` | `0xb365f0` / `0x2938e4` | Height table `[480, 427, 360, 480, 480, 338]`; width table `[640, 640, 640, 480, 640, 640]` on `ZV-E1` / `a7S III` (`FX3` width check differs) |
+| Stage 2 `640x360` (`0x280 x 0x168`) Y-remap gate | `0x129384` (`0x63b3da` raw, `0x63b448` disp) | `0x129704` (`0x58c432` raw, `0x58c4a0` disp) | None | Branches on `cmp.w r1, #0x280; bne; cmp.w r0, #0x168; bne` before remapping vertical coordinates |
+
+### 4.2 Stills-to-Movie `fullinit` Gate & Cache Check (`[r4, #0x1c]` / `[r4, #0x2c] == 7`)
+
+| Component | `a7S III` | `FX3` | `ZV-E1` | Verified Behavior |
+| :--- | :--- | :--- | :--- | :--- |
+| `fullinit` | `0x86cde6` | `0x85750c` | `0x96d21c` | Writes `7` to `[r4, #0x1c]` and `[r4, #0x2c]` upon completion |
+| Mode-switch dispatcher | `0x335a94` (gate `0x335ac2`) | `0x330d70` region (gate `0x330d9e`, calls `0x85750c` at `0x330db2`) | `0x390994` region (gate `0x3909c2`, calls `0x96d21c` at `0x3909d6`) | Checks dual state flags (`[r4, #0x530] == 1 && [r4, #0x534] == 1` on `a7S III`/`FX3`; `[r4, #0x534] == 1 && [r4, #0x538] == 1` on `ZV-E1`) |
+| Init guard wrapper | `0x332624` (cmp `0x33263e`) | `0x32d900` (cmp `0x32d91a`) | `0x38d4b4` (cmp `0x38d4ce`) | `cmp r1, #7; it eq; cmpeq r2, #7; beq` — skips `fullinit` when both cached state fields already equal `7` from Stills mode |
+
+### 4.3 `50p`/`60p`/`120p` Option C Register Contracts (`picture_ratio` & `libmpr.so`)
+
+1. **`cpapp-b.bin` `picture_ratio` (`0x1e4f64` `a7S III`, `0x1df794` `FX3`, `0x1f5e5c` `ZV-E1`):** Receives packed `(width << 16) | height` in `r1`, unpacking width via `lsrs r3, r1, #0x10` and height via `uxth r2, r1`.
+2. **`libmpr.so` (`a7s3_501`) HFR Frame-Rate Selectors:**
+   - `L2-mp4` (`0x223c4c`): loads the frame-rate selector from `[x1, #0x14]` at `0x223d34`.
+   - `L3-nrt-vline` (`0x1185f0`): loads the frame-rate selector from `[x20, #0x138]` at `0x118684`.
+
