@@ -35,6 +35,11 @@ jobs:
       - name: Run clip checker self-test
         run: python3 cli/bionz_clip_check.py --selftest
 
+      - name: Install ffmpeg for proxy integration tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
       - name: Run Python unit & integration tests
         run: python3 -B -m unittest discover -s tests -v
 
@@ -66,6 +71,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Install ffmpeg for proxy integration tests
+        run: |
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            HOMEBREW_NO_AUTO_UPDATE=1 brew install ffmpeg
+          fi
 
       - name: Run Swift package tests
         run: bash macos/OpenGateStudio/run_tests.sh
