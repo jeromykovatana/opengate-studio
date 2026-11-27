@@ -1,6 +1,6 @@
 # Unified Android USB-OTG Companion Specification
 
-> **Status:** Clean-Room Architecture Specification (Proposal)  
+> **Status:** Clean-Room Architecture Specification & Offline Foundation Implemented (`android/`, `scripts/build_android_kit.py`, `tests/test_android_companion.py`)  
 > **Target Platforms:** Android 9+ (`minSdkVersion 28`, USB Host `android.hardware.usb.host`) supporting `zve1_202` (ZV-E1 2.02), `a7s3_501` (a7S III 5.01), and `fx3_702` (FX3 7.02).
 
 ---
