@@ -69,7 +69,8 @@ def _load_manifests() -> dict[str, tuple[Path, dict[str, Any]]]:
     for sub in sorted(KITS_DIR.iterdir()):
         man_path = sub / "manifest.json"
         if sub.is_dir() and man_path.is_file():
-            data = json.loads(man_path.read_text(encoding="utf8"))
+            with man_path.open("r", encoding="utf8") as f:
+                data = json.load(f)
             bid = data.get("body_id", sub.name)
             found[bid] = (sub, data)
     ordered: dict[str, tuple[Path, dict[str, Any]]] = {}
@@ -184,7 +185,8 @@ def _read_mock_state(session_dir: Path, body_id: str) -> dict[str, Any]:
     p = _mock_state_path(session_dir, body_id)
     if p.is_file():
         try:
-            return json.loads(p.read_text(encoding="utf8"))
+            with p.open("r", encoding="utf8") as f:
+                return json.load(f)
         except (OSError, ValueError):
             pass
     return {"state": "stock", "active_packs": []}
@@ -221,7 +223,8 @@ def _load_sorted_sessions(session_dir: Path) -> list[tuple[float, str, dict[str,
     matches: list[tuple[float, str, dict[str, Any]]] = []
     for p in session_dir.glob("session_*.json"):
         try:
-            rec = json.loads(p.read_text(encoding="utf8"))
+            with p.open("r", encoding="utf8") as f:
+                rec = json.load(f)
         except (OSError, ValueError):
             continue
         if isinstance(rec, dict):

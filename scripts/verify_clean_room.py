@@ -28,7 +28,7 @@ FORBIDDEN_NAME_TOKENS = (
     "dmmcfg",
     "fx30_fw",
 )
-CODE_EXTS = {".py", ".c", ".h", ".sh", ".swift"}
+CODE_EXTS = {".py", ".c", ".h", ".sh", ".swift", ".kt", ".kts"}
 
 # Split tokens so this script never triggers on its own literals
 FORBIDDEN_CODE_PATTERNS = [
@@ -133,21 +133,35 @@ def verify_clean_room(root: Path = REPO_ROOT) -> dict[str, Any]:
 
     checked_pmca_files = 0
     if (root / ".git").exists():
-        tracked = subprocess.run(
-            ["git", "-C", str(root), "ls-files", "--", "sessions/camera_private"],
-            capture_output=True,
-            text=True,
-            check=False,
+        gitignored_paths = (
+            "sessions/camera_private",
+            "android/.gradle",
+            "android/build",
+            "android/app/build",
+            "android/app/src/main/assets/opengate_kit.zip",
+            "android/app/src/main/assets/payload_manifest.json",
         )
-        if tracked.returncode == 0 and tracked.stdout.strip():
-            errors.append("Tracked files found inside gitignored sessions/camera_private")
+        for rel_spec in gitignored_paths:
+            tracked = subprocess.run(
+                ["git", "-C", str(root), "ls-files", "--", rel_spec],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if tracked.returncode == 0 and tracked.stdout.strip():
+                errors.append(f"Tracked files found inside gitignored {rel_spec}")
 
     for path in sorted(root.rglob("*")):
         rel = path.relative_to(root)
-        parts_lower = {p.lower() for p in rel.parts}
-        if ".git" in parts_lower or ".build" in parts_lower or ".venv" in parts_lower:
+        rel_parts_lower = tuple(p.lower() for p in rel.parts)
+        parts_lower = set(rel_parts_lower)
+        if parts_lower & {".git", ".build", ".venv", ".gradle", "dist"}:
             continue
-        if len(rel.parts) >= 2 and rel.parts[0].lower() == "sessions" and rel.parts[1].lower() == "camera_private":
+        if len(rel_parts_lower) >= 2 and rel_parts_lower[0] == "sessions" and rel_parts_lower[1] == "camera_private":
+            continue
+        if len(rel_parts_lower) >= 2 and rel_parts_lower[0] == "android" and rel_parts_lower[1] == "build":
+            continue
+        if len(rel_parts_lower) >= 3 and rel_parts_lower[0] == "android" and rel_parts_lower[1] == "app" and rel_parts_lower[2] == "build":
             continue
 
         if path.is_dir():

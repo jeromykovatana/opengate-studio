@@ -165,7 +165,8 @@ def load_body_manifest(body_id: str) -> tuple[Path, dict[str, Any]]:
     man_path = kit_dir / "manifest.json"
     if not man_path.is_file():
         raise FileNotFoundError(f"Missing manifest: {man_path}")
-    return kit_dir, json.loads(man_path.read_text(encoding="utf8"))
+    with man_path.open("r", encoding="utf8") as f:
+        return kit_dir, json.load(f)
 
 
 def load_body_expected(body_id: str) -> dict[str, Any]:
@@ -173,7 +174,8 @@ def load_body_expected(body_id: str) -> dict[str, Any]:
     exp_path = SRC_DIR / body_id / cfg["expected_json"]
     if not exp_path.is_file():
         raise FileNotFoundError(f"Missing expected JSON: {exp_path}")
-    return json.loads(exp_path.read_text(encoding="utf8"))
+    with exp_path.open("r", encoding="utf8") as f:
+        return json.load(f)
 
 
 def step_level(which: str) -> int:
@@ -430,7 +432,8 @@ def check_result(data: bytes) -> dict[str, Any]:
 
 def known_answer(session: Any, camera: Any) -> None:
     cfg = BODY_CONFIG[CURRENT_BODY]
-    want = (CURRENT_KIT_DIR / "DeviceInfo.xml").read_bytes()
+    with (CURRENT_KIT_DIR / "DeviceInfo.xml").open("rb") as f:
+        want = f.read()
     dev_pin = CURRENT_MANIFEST.get("device_info", {})
     if isinstance(dev_pin, dict) and dev_pin.get("sha256"):
         if c.sha256(want) != dev_pin["sha256"]:
@@ -475,7 +478,8 @@ def run_helper(data: bytes) -> tuple[bytes, str]:
 
 
 def make_sim(lib: bytes, files: dict[str, bytes] | None = None, fault: str | None = None) -> Any:
-    dev_info = (CURRENT_KIT_DIR / "DeviceInfo.xml").read_bytes()
+    with (CURRENT_KIT_DIR / "DeviceInfo.xml").open("rb") as f:
+        dev_info = f.read()
 
     class Sim(ct1_sim.SimDriver):
         def __init__(self) -> None:
@@ -755,7 +759,8 @@ def last_saved_sha() -> str | None:
         return None
     for folder in sorted((p for p in root.iterdir() if p.is_dir() and p.name.startswith("CT6_")), reverse=True):
         try:
-            return json.loads((folder / "manifest.json").read_text(encoding="utf8"))["results"]["ct6"]["result"]["sha256"]
+            with (folder / "manifest.json").open("r", encoding="utf8") as f:
+                return json.load(f)["results"]["ct6"]["result"]["sha256"]
         except (OSError, KeyError, TypeError, ValueError):
             continue
     return None

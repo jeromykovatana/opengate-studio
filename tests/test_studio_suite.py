@@ -1072,11 +1072,11 @@ class LiveInAppOrchestratorTests(unittest.TestCase):
             orig_usb_state = sla.usb_state
             sla.usb_state = lambda: "other"
             try:
-                ctx = sla.RunContext(cancel_file=cancel_flag)
-                with self.assertRaises(sla.CancelledRun):
-                    sla.wait_for_drive("zve1_202", first=True, timeout=5, ctx=ctx, step_index=1, total_steps=4, step_id="L13")
-                with self.assertRaises(sla.CancelledRun):
-                    sla.wait_for_replug(timeout=5, ctx=ctx)
+                with sla.RunContext(cancel_file=cancel_flag) as ctx:
+                    with self.assertRaises(sla.CancelledRun):
+                        sla.wait_for_drive("zve1_202", first=True, timeout=5, ctx=ctx, step_index=1, total_steps=4, step_id="L13")
+                    with self.assertRaises(sla.CancelledRun):
+                        sla.wait_for_replug(timeout=5, ctx=ctx)
             finally:
                 sla.usb_state = orig_usb_state
 
@@ -1556,12 +1556,12 @@ class HardeningRegressionTests(unittest.TestCase):
                     mock.patch.object(studio_live_apply, "wait_for_drive", return_value=True),
                     mock.patch.object(studio_live_apply, "wait_for_replug", side_effect=fake_wait_replug),
                     mock.patch.object(studio_live_apply, "run_step_live", side_effect=fake_run_step_live),
-                ):
-                    ctx = studio_live_apply.RunContext(
+                    studio_live_apply.RunContext(
                         events_file=ev_path,
                         firmware_confirmed=str(man["firmware"]),
                         confirm_volatile_ram=True,
-                    )
+                    ) as ctx,
+                ):
                     rc = studio_live_apply.run_write_flow(
                         "apply",
                         "zve1_202",
@@ -1641,12 +1641,12 @@ class HardeningRegressionTests(unittest.TestCase):
                     mock.patch.object(studio_live_apply, "private_root", return_value=ct6_root),
                     mock.patch.object(studio_live_apply, "wait_for_drive", side_effect=fake_put_wait_drive),
                     mock.patch.object(studio_live_apply, "run_step_live", side_effect=fake_put_step),
-                ):
-                    ctx = studio_live_apply.RunContext(
+                    studio_live_apply.RunContext(
                         events_file=ev_path,
                         firmware_confirmed=str(man["firmware"]),
                         confirm_volatile_ram=True,
-                    )
+                    ) as ctx,
+                ):
                     rc = studio_live_apply.run_write_flow(
                         "putback",
                         "zve1_202",

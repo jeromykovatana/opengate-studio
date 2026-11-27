@@ -22,3 +22,11 @@ macos/OpenGateStudio/dist/
 __pycache__/
 *.pyc
 .venv/
+
+# Local Android Gradle build outputs and generated kit assets (NEVER commit)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/src/main/assets/opengate_kit.zip
+android/app/src/main/assets/payload_manifest.json

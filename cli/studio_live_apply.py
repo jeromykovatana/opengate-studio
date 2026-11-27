@@ -161,6 +161,12 @@ class RunContext:
         self._events_fh = None
         self._log_fh = None
 
+    def __enter__(self) -> RunContext:
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        self.close()
+
 
 _CTX: RunContext | None = None
 
@@ -541,7 +547,7 @@ def run_step_live(
     active_ctx = _active_ctx(ctx)
     if active_ctx.log_file is None:
         return subprocess.run(cmd).returncode
-    proc = subprocess.Popen(
+    with subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -549,13 +555,13 @@ def run_step_live(
         encoding="utf8",
         errors="replace",
         bufsize=1,
-    )
-    assert proc.stdout is not None
-    for line in proc.stdout:
-        sys.stdout.write(line)
-        sys.stdout.flush()
-        active_ctx.log_raw(line)
-    return proc.wait()
+    ) as proc:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            active_ctx.log_raw(line)
+        return proc.wait()
 
 
 def confirm_firmware(fw: str, *, ctx: RunContext | None = None) -> None:
@@ -645,154 +651,157 @@ def run_readonly(
     ctx: RunContext | None = None,
 ) -> int:
     active_ctx = _active_ctx(ctx)
-    which = "check" if action == "preflight" else "dump"
-    fw = str(man["firmware"])
-    entry = man["readonly"][which]
-    summary = str(entry.get("summary") or f"Read-only {action} ({which})")
-    say(f"{man['camera']} ({body_id}) firmware {fw} — read-only {action} ({which}: {entry['file']}, sha256 {entry['sha256'][:16]}...)")
+    try:
+        which = "check" if action == "preflight" else "dump"
+        fw = str(man["firmware"])
+        entry = man["readonly"][which]
+        summary = str(entry.get("summary") or f"Read-only {action} ({which})")
+        say(f"{man['camera']} ({body_id}) firmware {fw} — read-only {action} ({which}: {entry['file']}, sha256 {entry['sha256'][:16]}...)")
 
-    if dry_run:
-        if active_ctx.simulate_events:
-            return _simulate_readonly(action, body_id, man, which, summary, active_ctx)
-        run_step_dry(body_id, which)
-        say()
-        say("Dry run only: nothing was sent to any device.")
-        return 0
+        if dry_run:
+            if active_ctx.simulate_events:
+                return _simulate_readonly(action, body_id, man, which, summary, active_ctx)
+            run_step_dry(body_id, which)
+            say()
+            say("Dry run only: nothing was sent to any device.")
+            return 0
 
-    if active_ctx.firmware_confirmed is None:
-        confirm_firmware(fw, ctx=active_ctx)
+        if active_ctx.firmware_confirmed is None:
+            confirm_firmware(fw, ctx=active_ctx)
 
-    active_ctx.emit(
-        "plan",
-        action=action,
-        body_id=body_id,
-        camera=man["camera"],
-        firmware=fw,
-        steps=[{"id": which, "summary": summary}],
-        closing_dump=False,
-    )
-    cancel_msg = f"Cancelled safely before step 1 ({which})."
-    active_ctx.check_cancelled(cancel_msg, step_index=1, step_id=which)
-
-    if not wait_for_drive(body_id, first=True, ctx=active_ctx, step_index=1, total_steps=1, step_id=which):
-        return _fail(
-            active_ctx,
-            "The camera did not show up as a USB drive. Nothing was sent.",
-            step_index=1,
-            step_id=which,
-            left_behind_flag=False,
-        )
-
-    active_ctx.check_cancelled(cancel_msg, step_index=1, step_id=which)
-    active_ctx.emit(
-        "step_start",
-        step_index=1,
-        total_steps=1,
-        step_id=which,
-        summary=summary,
-    )
-    kit_dir = studio_cli.KITS_DIR / body_id
-    manifest_sha = studio_cli.compute_kit_manifest_sha256(kit_dir)
-    before_ct6 = snapshot_ct6_folders()
-    rc = run_step_live(body_id, which, fw, writes_memory=False, ctx=active_ctx)
-    ct6_folder, ct6_man = find_new_ct6_session(before_ct6, body_id, which)
-    res_dict, facts = extract_ct6_result_facts(ct6_man)
-    res_sha = res_dict.get("sha256") if isinstance(res_dict, dict) else None
-
-    if (
-        rc == 0
-        and ct6_folder is not None
-        and ct6_man is not None
-        and res_dict is not None
-        and facts is not None
-        and res_dict.get("header_ok") is True
-        and res_dict.get("complete") is True
-        and isinstance(res_sha, str)
-        and _HEX64_RE.fullmatch(res_sha)
-    ):
-        ready = bool(facts.get("ready", False))
-        state = str(facts.get("state") or "not_ready")
-        verdict = str(facts.get("verdict") or "VERDICT NOT READY")
-        res_block = ct6_man.get("results") or {}
-        usb_id = res_block.get("camera_usb_identity") or {}
-        dev_info = man.get("device_info")
-        dev_sha = dev_info.get("sha256") if isinstance(dev_info, dict) else None
-        camera_identity = {
-            "device_info_sha256": dev_sha,
-            "msc_usb_id": usb_id.get("msc_usb_id") or res_block.get("msc_usb_id"),
-            "service_usb_id": usb_id.get("service_usb_id") or res_block.get("service_usb_id"),
-            "serial_sha256": usb_id.get("serial_sha256"),
-            "msc_inquiry": usb_id.get("msc_inquiry") or res_block.get("msc_inquiry"),
-            "kernel_version": facts.get("kernel_version"),
-            "kernel_command_line": facts.get("kernel_command_line"),
-        }
-        now_ts = time.time()
-        expires_at = now_ts + studio_cli.preflight_ttl_seconds()
-        boot_nonce = secrets.token_hex(16)
         active_ctx.emit(
-            "step_done",
+            "plan",
+            action=action,
+            body_id=body_id,
+            camera=man["camera"],
+            firmware=fw,
+            steps=[{"id": which, "summary": summary}],
+            closing_dump=False,
+        )
+        cancel_msg = f"Cancelled safely before step 1 ({which})."
+        active_ctx.check_cancelled(cancel_msg, step_index=1, step_id=which)
+
+        if not wait_for_drive(body_id, first=True, ctx=active_ctx, step_index=1, total_steps=1, step_id=which):
+            return _fail(
+                active_ctx,
+                "The camera did not show up as a USB drive. Nothing was sent.",
+                step_index=1,
+                step_id=which,
+                left_behind_flag=False,
+            )
+
+        active_ctx.check_cancelled(cancel_msg, step_index=1, step_id=which)
+        active_ctx.emit(
+            "step_start",
             step_index=1,
             total_steps=1,
             step_id=which,
-            outcome="DONE",
-            ok=True,
+            summary=summary,
         )
-        sid = studio_cli._write_session(session_dir, {
+        kit_dir = studio_cli.KITS_DIR / body_id
+        manifest_sha = studio_cli.compute_kit_manifest_sha256(kit_dir)
+        before_ct6 = snapshot_ct6_folders()
+        rc = run_step_live(body_id, which, fw, writes_memory=False, ctx=active_ctx)
+        ct6_folder, ct6_man = find_new_ct6_session(before_ct6, body_id, which)
+        res_dict, facts = extract_ct6_result_facts(ct6_man)
+        res_sha = res_dict.get("sha256") if isinstance(res_dict, dict) else None
+
+        if (
+            rc == 0
+            and ct6_folder is not None
+            and ct6_man is not None
+            and res_dict is not None
+            and facts is not None
+            and res_dict.get("header_ok") is True
+            and res_dict.get("complete") is True
+            and isinstance(res_sha, str)
+            and _HEX64_RE.fullmatch(res_sha)
+        ):
+            ready = bool(facts.get("ready", False))
+            state = str(facts.get("state") or "not_ready")
+            verdict = str(facts.get("verdict") or "VERDICT NOT READY")
+            res_block = ct6_man.get("results") or {}
+            usb_id = res_block.get("camera_usb_identity") or {}
+            dev_info = man.get("device_info")
+            dev_sha = dev_info.get("sha256") if isinstance(dev_info, dict) else None
+            camera_identity = {
+                "device_info_sha256": dev_sha,
+                "msc_usb_id": usb_id.get("msc_usb_id") or res_block.get("msc_usb_id"),
+                "service_usb_id": usb_id.get("service_usb_id") or res_block.get("service_usb_id"),
+                "serial_sha256": usb_id.get("serial_sha256"),
+                "msc_inquiry": usb_id.get("msc_inquiry") or res_block.get("msc_inquiry"),
+                "kernel_version": facts.get("kernel_version"),
+                "kernel_command_line": facts.get("kernel_command_line"),
+            }
+            now_ts = time.time()
+            expires_at = now_ts + studio_cli.preflight_ttl_seconds()
+            boot_nonce = secrets.token_hex(16)
+            active_ctx.emit(
+                "step_done",
+                step_index=1,
+                total_steps=1,
+                step_id=which,
+                outcome="DONE",
+                ok=True,
+            )
+            sid = studio_cli._write_session(session_dir, {
+                "kind": action,
+                "body_id": body_id,
+                "mode": "live_usb",
+                "ready": ready,
+                "verified": True,
+                "state": state,
+                "verdict": verdict,
+                "manifest_sha256": manifest_sha,
+                "boot_nonce": boot_nonce,
+                "preflight_result_sha256": res_sha,
+                "ct6_session": ct6_folder.name,
+                "camera_identity": camera_identity,
+                "expires_at": expires_at,
+                "pins_ok": True,
+                "steps_run": [which],
+                "active_packs": [],
+            })
+            say()
+            say(f"Recorded {action} session {sid} in {session_dir}: {verdict} (state={state}, ready={ready})")
+            active_ctx.emit(
+                "complete",
+                ok=True,
+                action=action,
+                body_id=body_id,
+                session_id=sid,
+                verdict=verdict,
+                state=state,
+                ready=ready,
+                verified=True,
+                steps_run=[which],
+                active_packs=[],
+            )
+            return 0
+
+        studio_cli._write_session(session_dir, {
             "kind": action,
             "body_id": body_id,
             "mode": "live_usb",
-            "ready": ready,
-            "verified": True,
-            "state": state,
-            "verdict": verdict,
+            "ready": False,
+            "verified": False,
+            "state": "not_ready",
+            "verdict": "VERDICT NOT READY (session failed or incomplete)",
             "manifest_sha256": manifest_sha,
-            "boot_nonce": boot_nonce,
-            "preflight_result_sha256": res_sha,
-            "ct6_session": ct6_folder.name,
-            "camera_identity": camera_identity,
-            "expires_at": expires_at,
             "pins_ok": True,
             "steps_run": [which],
             "active_packs": [],
         })
-        say()
-        say(f"Recorded {action} session {sid} in {session_dir}: {verdict} (state={state}, ready={ready})")
-        active_ctx.emit(
-            "complete",
-            ok=True,
-            action=action,
-            body_id=body_id,
-            session_id=sid,
-            verdict=verdict,
-            state=state,
-            ready=ready,
-            verified=True,
-            steps_run=[which],
-            active_packs=[],
+        return _fail(
+            active_ctx,
+            f"Read-only {action} ({which}) did not complete cleanly.",
+            step_index=1,
+            step_id=which,
+            left_behind_flag=left_behind(before_ct6),
+            exit_code=rc or 1,
         )
-        return 0
-
-    studio_cli._write_session(session_dir, {
-        "kind": action,
-        "body_id": body_id,
-        "mode": "live_usb",
-        "ready": False,
-        "verified": False,
-        "state": "not_ready",
-        "verdict": "VERDICT NOT READY (session failed or incomplete)",
-        "manifest_sha256": manifest_sha,
-        "pins_ok": True,
-        "steps_run": [which],
-        "active_packs": [],
-    })
-    return _fail(
-        active_ctx,
-        f"Read-only {action} ({which}) did not complete cleanly.",
-        step_index=1,
-        step_id=which,
-        left_behind_flag=left_behind(before_ct6),
-        exit_code=rc or 1,
-    )
+    finally:
+        active_ctx.close()
 
 
 def _simulate_write_flow(
@@ -962,6 +971,33 @@ def run_write_flow(
     ctx: RunContext | None = None,
 ) -> int:
     active_ctx = _active_ctx(ctx)
+    try:
+        return _run_write_flow_impl(
+            action,
+            body_id,
+            man,
+            packs_arg,
+            session_dir,
+            dry_run,
+            no_movie_session,
+            no_closing_check,
+            active_ctx,
+        )
+    finally:
+        active_ctx.close()
+
+
+def _run_write_flow_impl(
+    action: str,
+    body_id: str,
+    man: dict[str, Any],
+    packs_arg: str | None,
+    session_dir: Path,
+    dry_run: bool,
+    no_movie_session: bool,
+    no_closing_check: bool,
+    active_ctx: RunContext,
+) -> int:
     fw = str(man["firmware"])
     saved_active: list[str] = []
     if action == "putback" and packs_arg is None:

@@ -35,13 +35,18 @@ jobs:
       - name: Run clip checker self-test
         run: python3 cli/bionz_clip_check.py --selftest
 
+      - name: Run Android runtime self-test and kit packager dry-run
+        run: |
+          python3 android/python/opengate_android/runtime.py --selftest --json
+          python3 scripts/build_android_kit.py --dry-run --json
+
       - name: Install ffmpeg for proxy integration tests
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
 
       - name: Run Python unit & integration tests
-        run: python3 -B -m unittest discover -s tests -v
+        run: python3 -W error::ResourceWarning -B -m unittest discover -s tests -v
 
   reproducible-helper-build:
     name: Reproducible Helper SHA-256 Verification
@@ -80,3 +85,34 @@ jobs:
 
       - name: Run Swift package tests
         run: bash macos/OpenGateStudio/run_tests.sh
+
+  android-companion-apk:
+    name: Android Companion APK & Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build Android kit and run Gradle unit tests + debug APK
+        run: |
+          python3 scripts/build_android_kit.py --json
+          if [ -f android/gradlew ]; then
+            chmod +x android/gradlew
+            ./android/gradlew -p android testDebugUnitTest assembleDebug
+          else
+            echo "android/gradlew not present yet; skipping Gradle build."
+          fi
