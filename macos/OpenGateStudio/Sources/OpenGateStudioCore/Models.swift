@@ -495,8 +495,48 @@ public enum LiveCommandAction: String, CaseIterable, Codable, Identifiable, Send
     case dump
     case apply
     case putback
+    case expressApply = "express-apply"
+    case expressPutback = "express-putback"
 
     public var id: String { rawValue }
+}
+
+public struct DetectedUsbCameraResult: Codable, Equatable, Sendable {
+    public let ok: Bool
+    public let detected: Bool
+    public let bodyId: String?
+    public let usbProductName: String?
+    public let usbMode: String?
+    public let isFx3aBlocked: Bool
+    public let warning: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case detected
+        case bodyId = "body_id"
+        case usbProductName = "usb_product_name"
+        case usbMode = "usb_mode"
+        case isFx3aBlocked = "is_fx3a_blocked"
+        case warning
+    }
+
+    public init(
+        ok: Bool,
+        detected: Bool,
+        bodyId: String? = nil,
+        usbProductName: String? = nil,
+        usbMode: String? = nil,
+        isFx3aBlocked: Bool = false,
+        warning: String? = nil
+    ) {
+        self.ok = ok
+        self.detected = detected
+        self.bodyId = bodyId
+        self.usbProductName = usbProductName
+        self.usbMode = usbMode
+        self.isFx3aBlocked = isFx3aBlocked
+        self.warning = warning
+    }
 }
 
 public struct LatestSessionResult: Codable, Equatable, Sendable {
@@ -846,7 +886,7 @@ public enum LiveSessionOutcomeEvaluator {
 
         if result.exitCode == 0, let complete = result.completeEvent, complete.ok == true {
             switch action {
-            case .apply:
+            case .apply, .expressApply:
                 if complete.ready == true && complete.verified != false && complete.state == "applied" {
                     return .finished(complete: complete)
                 }
@@ -858,6 +898,13 @@ public enum LiveSessionOutcomeEvaluator {
                     return .finished(complete: complete)
                 }
                 let msg = complete.verdict ?? "Putback did not pass closing stock verification."
+                return .failed(message: msg, leftBehind: existingLeftBehind)
+
+            case .expressPutback:
+                if complete.ready == true && complete.verified == true && complete.state == "stock" {
+                    return .finished(complete: complete)
+                }
+                let msg = complete.verdict ?? "Express putback did not pass closing stock verification."
                 return .failed(message: msg, leftBehind: existingLeftBehind)
 
             case .preflight, .dump:

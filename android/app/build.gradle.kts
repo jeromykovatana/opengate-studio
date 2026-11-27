@@ -18,8 +18,8 @@ android {
         applicationId = "org.opengatestudio.android"
         minSdk = 28
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-alpha"
+        versionCode = 3
+        versionName = "0.3.0-alpha"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")

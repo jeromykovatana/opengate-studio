@@ -152,6 +152,43 @@ class AndroidCompanionTests(unittest.TestCase):
         self.assertEqual(ready.decision, QuickReapplyDecision.READY_FOR_SAFE_DAILY_APPLY)
         self.assertEqual(ready.packs, ("mp4_3x2", "screen_3x2"))
 
+        # Verified live express_apply counts as ALREADY_APPLIED; unverified express_apply forces recovery
+        exp_applied = plan_quick_reapply(
+            pins_verified=True,
+            selected_body_id="zve1_202",
+            offline_mock_camera=False,
+            latest_session={
+                "found": True,
+                "mode": "live_usb",
+                "kind": "express_apply",
+                "ok": True,
+                "ready": True,
+                "verified": True,
+                "state": "applied",
+                "body_id": "zve1_202",
+            },
+            result_source="android_usb",
+        )
+        self.assertEqual(exp_applied.decision, QuickReapplyDecision.ALREADY_APPLIED)
+
+        exp_unverified = plan_quick_reapply(
+            pins_verified=True,
+            selected_body_id="zve1_202",
+            offline_mock_camera=False,
+            latest_session={
+                "found": True,
+                "mode": "live_usb",
+                "kind": "express_apply",
+                "ok": False,
+                "ready": False,
+                "verified": False,
+                "state": "unverified",
+                "body_id": "zve1_202",
+            },
+            result_source="android_usb",
+        )
+        self.assertEqual(exp_unverified.decision, QuickReapplyDecision.RUN_RECOVERY_PREFLIGHT_FIRST)
+
     def test_usb_bridge_shim_and_cancel(self) -> None:
         bridge = _DummyBridge()
         cancelled = False
@@ -333,6 +370,64 @@ class AndroidCompanionTests(unittest.TestCase):
                 unpack_dir, sessions_dir, "putback", "zve1_202", True, None, "2.02", True, None, None
             ))
             self.assertTrue(put["ok"], put)
+
+            # Express-apply & express-putback in offline mock mode + mixed_powerswitch block + volatile RAM gate
+            exp_events: list[dict] = []
+            exp_app = json.loads(execute_companion_run(
+                unpack_dir,
+                sessions_dir,
+                "express-apply",
+                "zve1_202",
+                offline_mock=True,
+                usb_bridge=None,
+                firmware_confirmed="2.02",
+                confirm_volatile_ram=True,
+                cancel_file=None,
+                on_event=exp_events.append,
+                packs="mp4_3x2,screen_3x2",
+                mock_state="stock",
+            ))
+            self.assertTrue(exp_app["ok"], exp_app)
+            self.assertEqual(exp_app["state"], "applied")
+            self.assertTrue(any(ev.get("type") == "complete" and ev.get("action") == "express-apply" for ev in exp_events))
+
+            exp_blocked = json.loads(execute_companion_run(
+                unpack_dir,
+                sessions_dir,
+                "express-apply",
+                "zve1_202",
+                offline_mock=True,
+                usb_bridge=None,
+                firmware_confirmed="2.02",
+                confirm_volatile_ram=True,
+                cancel_file=None,
+                on_event=None,
+                packs="mp4_3x2,screen_3x2",
+                mock_state="mixed_powerswitch",
+            ))
+            self.assertFalse(exp_blocked["ok"])
+
+            exp_put = json.loads(execute_companion_run(
+                unpack_dir,
+                sessions_dir,
+                "express-putback",
+                "zve1_202",
+                offline_mock=True,
+                usb_bridge=None,
+                firmware_confirmed="2.02",
+                confirm_volatile_ram=True,
+                cancel_file=None,
+                on_event=None,
+                mock_state="applied",
+            ))
+            self.assertTrue(exp_put["ok"], exp_put)
+            self.assertEqual(exp_put["state"], "stock")
+
+            no_confirm_exp = json.loads(execute_companion_run(
+                unpack_dir, sessions_dir, "express-apply", "zve1_202", False, _DummyBridge(), "2.02", False, None, None
+            ))
+            self.assertFalse(no_confirm_exp["ok"])
+            self.assertIn("confirm-volatile-ram", no_confirm_exp["error"])
 
             (sessions_dir / "camera_private" / "CT6_mock").mkdir(parents=True, exist_ok=True)
             (sessions_dir / "camera_private" / "CT6_mock" / "raw.bin").write_bytes(b"SECRET")

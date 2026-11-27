@@ -1030,6 +1030,12 @@ _REPAIR_BODY_MODEL_NAMES = {
     "a7iv": "ILCE-7M4",
     "a7iv_602": "ILCE-7M4",
     "ilce-7m4": "ILCE-7M4",
+    "a7c": "ILCE-7C",
+    "a7c_203": "ILCE-7C",
+    "ilce-7c": "ILCE-7C",
+    "zve10": "ZV-E10",
+    "zve10_203": "ZV-E10",
+    "zv-e10": "ZV-E10",
 }
 
 _SONY_NRT_FPS_MAP = {

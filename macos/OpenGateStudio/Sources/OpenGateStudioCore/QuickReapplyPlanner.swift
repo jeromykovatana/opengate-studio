@@ -78,7 +78,10 @@ public enum QuickReapplyPlanner {
             if !ls.ok || !ls.ready || ls.verified == false || unverifiedStates.contains(ls.state) {
                 return .runRecoveryPreflightFirst
             }
-            if ls.kind == "putback" && ls.state != "stock" {
+            if (ls.kind == "putback" || ls.kind == "express_putback") && ls.state != "stock" {
+                return .runRecoveryPreflightFirst
+            }
+            if (ls.kind == "apply" || ls.kind == "closing_dump" || ls.kind == "express_apply") && ls.state != "applied" {
                 return .runRecoveryPreflightFirst
             }
         }
@@ -111,7 +114,8 @@ public enum QuickReapplyPlanner {
         let hasLiveSource = (resultSource == .liveInApp || resultSource == .liveTerminal)
 
         if let ls = liveSession {
-            if ls.state == "applied" && ls.ok && ls.ready && ls.verified != false {
+            let isVerifiedAppliedKind = ls.kind == "closing_dump" || ls.kind == "express_apply" || ls.kind == "apply"
+            if (isVerifiedAppliedKind || ls.state == "applied") && ls.state == "applied" && ls.ok && ls.ready && ls.verified != false {
                 return .alreadyApplied
             }
             let isPreflightKind = (ls.kind == "preflight" || ls.kind == "dump")

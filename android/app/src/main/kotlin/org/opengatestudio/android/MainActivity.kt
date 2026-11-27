@@ -1,5 +1,6 @@
 package org.opengatestudio.android
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
@@ -30,6 +31,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -49,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -91,6 +94,15 @@ private enum class CameraBodyOption(val bodyId: String, val label: String, val f
     FX3("fx3_702", "FX3", "7.02")
 }
 
+private enum class ExpressPreset(val label: String, val packs: List<String>) {
+    SAFE_DAILY("Safe Daily 3:2", QuickReapplyPlanner.safeDailyPacks),
+    CINEMA_FULL("Cinema Full 3:2", QuickReapplyPlanner.cinemaFullPacks)
+}
+
+private const val COMPANION_PREFS_NAME = "opengate_companion_prefs"
+
+private fun ramAckKey(body: CameraBodyOption): String = "ack_ram_${body.bodyId}_${body.firmware}"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
@@ -98,12 +110,19 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val bridge = remember(context) { ChaquopyRuntimeBridge(context) }
     val usbBridge = remember(context) { UsbBridge(context) }
+    val prefs = remember(context) {
+        context.getSharedPreferences(COMPANION_PREFS_NAME, Context.MODE_PRIVATE)
+    }
 
     var selectedBody by remember { mutableStateOf(CameraBodyOption.ZVE1) }
+    var selectedPreset by remember { mutableStateOf(ExpressPreset.SAFE_DAILY) }
     var offlineMockMode by remember { mutableStateOf(false) }
     var batteryPulled10s by remember { mutableStateOf(false) }
     var inStillsMode by remember { mutableStateOf(false) }
-    var confirmFirmwareAndRam by remember { mutableStateOf(false) }
+    var confirmFirmwareAndRam by remember {
+        mutableStateOf(prefs.getBoolean(ramAckKey(CameraBodyOption.ZVE1), false))
+    }
+    var showAdvanced by remember { mutableStateOf(false) }
 
     var bootstrapping by remember { mutableStateOf(true) }
     var pinsVerified by remember { mutableStateOf(false) }
@@ -120,6 +139,8 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
     var lastRunResult by remember { mutableStateOf<ChaquopyRuntimeBridge.RunResult?>(null) }
     var exportNotice by remember { mutableStateOf<String?>(null) }
     var usbDeviceSummary by remember { mutableStateOf("Scanning USB-OTG…") }
+    var isFx3aBlocked by remember { mutableStateOf(false) }
+    var usbWarning by remember { mutableStateOf<String?>(null) }
     val eventLog = remember { mutableStateListOf<String>() }
 
     DisposableEffect(isRunning) {
@@ -127,14 +148,34 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
         onDispose { onKeepScreenOn(false) }
     }
 
+    fun selectBody(option: CameraBodyOption) {
+        if (selectedBody != option) {
+            selectedBody = option
+            confirmFirmwareAndRam = prefs.getBoolean(ramAckKey(option), false)
+            lastRunResult = null
+        }
+    }
+
     fun refreshUsbSummary() {
         val devs = runCatching { usbBridge.findDevices(UsbBridge.SONY_VID) }.getOrDefault(emptyList())
+        val detected = QuickReapplyPlanner.detectCameraFromUsbDevices(devs)
+        isFx3aBlocked = detected.isFx3aBlocked
+        usbWarning = detected.warning
+
+        if (!isRunning && !detected.isFx3aBlocked && detected.bodyId != null) {
+            val matchedBody = CameraBodyOption.entries.firstOrNull { it.bodyId == detected.bodyId }
+            if (matchedBody != null && matchedBody != selectedBody) {
+                selectBody(matchedBody)
+            }
+        }
+
         usbDeviceSummary = if (devs.isEmpty()) {
             "No Sony USB device detected (VID 0x054C)"
         } else {
             val ids = devs.joinToString(", ") { d ->
                 val pid = (d["idProduct"] as? Int) ?: 0
-                "054c:%04x".format(pid)
+                val name = (d["productName"] as? String)?.trim().orEmpty()
+                if (name.isNotEmpty()) "054c:%04x (%s)".format(pid, name) else "054c:%04x".format(pid)
             }
             "${devs.size} Sony USB device(s) detected: $ids"
         }
@@ -175,6 +216,15 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
         if (!bootstrapping && pinsVerified) {
             refreshState()
             refreshUsbSummary()
+        }
+    }
+
+    LaunchedEffect(isRunning, offlineMockMode) {
+        if (!isRunning && !offlineMockMode) {
+            while (true) {
+                refreshUsbSummary()
+                delay(2500L)
+            }
         }
     }
 
@@ -314,6 +364,9 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
         QuickReapplyDecision.RunPreflightThenSafeDailyApply
     }
     val checklistReady = batteryPulled10s && inStillsMode
+    val liveUsbAllowed = !isFx3aBlocked || offlineMockMode
+    val expressEnabled = !bootstrapping && !isRunning && (!pinsVerified || (confirmFirmwareAndRam && liveUsbAllowed))
+    val expressPutbackEnabled = !bootstrapping && !isRunning && pinsVerified && confirmFirmwareAndRam && liveUsbAllowed
 
     Scaffold(
         topBar = {
@@ -359,17 +412,35 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
                 }
             }
 
+            // Unsupported FX3A hardware block banner
+            if (isFx3aBlocked) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = AlertRedBg),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Unsupported Camera Detected — Live USB Disabled",
+                            color = AlertRedInk,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = usbWarning ?: "ILME-FX3A is not supported by FX3 7.02 kits",
+                            color = AlertRedInk,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+
             // Body selector
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CameraBodyOption.entries.forEach { option ->
                     FilterChip(
                         selected = selectedBody == option,
                         enabled = !isRunning,
-                        onClick = {
-                            selectedBody = option
-                            confirmFirmwareAndRam = false
-                            lastRunResult = null
-                        },
+                        onClick = { selectBody(option) },
                         label = { Text("${option.label} ${option.firmware}") }
                     )
                 }
@@ -427,7 +498,7 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
                 }
             }
 
-            // Main planner & action card
+            // Main 1-Tap Express Apply & planner card
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -438,21 +509,19 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
                             QuickReapplyDecision.BlockedPinsUnverified ->
                                 "Kit Verification Required"
                             QuickReapplyDecision.RunRecoveryPreflightFirst ->
-                                "Recovery Check Required"
-                            QuickReapplyDecision.RunPreflightThenSafeDailyApply ->
-                                if (offlineMockMode) "Ready for Mock Preflight (${selectedBody.label})"
-                                else "Ready to Check ${selectedBody.label}"
-                            is QuickReapplyDecision.ReadyForSafeDailyApply ->
-                                "Verified Clean RAM — Ready for Safe Daily 3:2"
+                                "1-Tap Express Ready (${selectedBody.label} — Recovery Recommended)"
                             QuickReapplyDecision.AlreadyApplied ->
-                                "Safe Daily 3:2 Active"
+                                "Open-Gate 3:2 Active (${selectedBody.label})"
+                            else ->
+                                if (offlineMockMode) "1-Tap Express Simulation (${selectedBody.label})"
+                                else "1-Tap Express Open-Gate (${selectedBody.label})"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
 
                     Text(
-                        text = "Volatile RAM only — zero flash or SD card writes. Pull camera battery >= 10s anytime to restore stock.",
+                        text = "Volatile RAM only — zero flash or SD card writes. Fused Q19/F19 verifies stock RAM & mixed power-switch atomically before writing (~6s, 1 USB session).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -465,99 +534,58 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
                         )
                     }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = batteryPulled10s,
-                            enabled = !isRunning,
-                            onCheckedChange = { batteryPulled10s = it }
-                        )
-                        Text("Pulled battery >= 10 seconds (cold RAM baseline)")
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = inStillsMode,
-                            enabled = !isRunning,
-                            onCheckedChange = { inStillsMode = it }
-                        )
-                        Text("Camera is in Stills mode (Mass Storage)")
+                    // Express preset selector
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ExpressPreset.entries.forEach { preset ->
+                            FilterChip(
+                                selected = selectedPreset == preset,
+                                enabled = !isRunning,
+                                onClick = { selectedPreset = preset },
+                                label = { Text(preset.label) }
+                            )
+                        }
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
                             checked = confirmFirmwareAndRam,
                             enabled = !isRunning,
-                            onCheckedChange = { confirmFirmwareAndRam = it }
+                            onCheckedChange = { checked ->
+                                confirmFirmwareAndRam = checked
+                                prefs.edit().putBoolean(ramAckKey(selectedBody), checked).apply()
+                            }
                         )
-                        Text("Confirm firmware ${selectedBody.firmware} & volatile RAM writes only")
+                        Text("Confirm firmware ${selectedBody.firmware} & volatile RAM only (remembered)")
                     }
 
                     Spacer(modifier = Modifier.height(2.dp))
 
-                    val isApplyPrimary = decision is QuickReapplyDecision.ReadyForSafeDailyApply
-                    val primaryLabel = when (decision) {
-                        QuickReapplyDecision.BlockedPinsUnverified -> "Re-Verify Payload Integrity"
-                        QuickReapplyDecision.RunRecoveryPreflightFirst -> "Run Read-Only Recovery Check"
-                        QuickReapplyDecision.RunPreflightThenSafeDailyApply ->
-                            if (offlineMockMode) "Run Mock Preflight" else "Check Camera (Read-Only)"
-                        is QuickReapplyDecision.ReadyForSafeDailyApply -> "Apply Safe Daily 3:2"
-                        QuickReapplyDecision.AlreadyApplied -> "Swapped Battery? Re-Check"
+                    val primaryLabel = when {
+                        !pinsVerified -> "Re-Verify Payload Integrity"
+                        offlineMockMode -> "Simulate 1-Tap ${selectedPreset.label} (Mock)"
+                        else -> "Apply ${selectedPreset.label} (~6s, 1-Tap)"
                     }
 
                     Button(
                         onClick = {
-                            when (decision) {
-                                QuickReapplyDecision.BlockedPinsUnverified -> {
-                                    scope.launch { runBootstrapAndQuery() }
-                                }
-                                is QuickReapplyDecision.ReadyForSafeDailyApply -> {
-                                    launchAction("apply", decision.packs)
-                                }
-                                else -> {
-                                    launchAction("preflight")
-                                }
+                            if (!pinsVerified) {
+                                scope.launch { runBootstrapAndQuery() }
+                            } else {
+                                launchAction("express-apply", selectedPreset.packs)
                             }
                         },
-                        enabled = !bootstrapping && !isRunning && (
-                            decision == QuickReapplyDecision.BlockedPinsUnverified ||
-                                (checklistReady && pinsVerified && (!isApplyPrimary || confirmFirmwareAndRam))
-                            ),
+                        enabled = expressEnabled,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(primaryLabel)
                     }
 
-                    if (offlineMockMode) {
-                        val mockReadyForApply = companionState?.latestSession?.let {
-                            it.mode == "mock" && it.kind == "preflight" && it.ok && it.ready && it.state == "stock"
-                        } == true
-                        OutlinedButton(
-                            onClick = { launchAction("apply", QuickReapplyPlanner.safeDailyPacks) },
-                            enabled = !isRunning && pinsVerified && checklistReady && confirmFirmwareAndRam && mockReadyForApply,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Simulate Safe Daily 3:2 Apply (Mock Only)")
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    OutlinedButton(
+                        onClick = { launchAction("express-putback", selectedPreset.packs) },
+                        enabled = expressPutbackEnabled,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        OutlinedButton(
-                            onClick = { launchAction("dump") },
-                            enabled = !isRunning && pinsVerified && checklistReady,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Read-Only Dump")
-                        }
-                        OutlinedButton(
-                            onClick = { launchAction("putback") },
-                            enabled = !isRunning && pinsVerified && checklistReady && confirmFirmwareAndRam,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Put Back Stock")
-                        }
+                        Text("Restore Stock RAM (1-Tap)")
                     }
 
                     if (isRunning) {
@@ -570,41 +598,113 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
                         }
                     }
 
-                    OutlinedButton(
-                        onClick = {
-                            scope.launch {
-                                val exp = withContext(Dispatchers.IO) { bridge.exportBundle() }
-                                if (exp.ok) {
-                                    val file = File(exp.zipPath)
-                                    val uri = FileProvider.getUriForFile(
-                                        context,
-                                        "${context.packageName}.fileprovider",
-                                        file
-                                    )
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "application/zip"
-                                        putExtra(Intent.EXTRA_STREAM, uri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    exportNotice = "Exported ${exp.exportedCount} safe file(s); skipped ${exp.skippedPrivate} private file(s)."
-                                    context.startActivity(Intent.createChooser(shareIntent, "Share OpenGate Session Bundle"))
-                                } else {
-                                    exportNotice = "Export failed."
-                                }
-                            }
-                        },
-                        enabled = !isRunning,
+                    TextButton(
+                        onClick = { showAdvanced = !showAdvanced },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Export Session Bundle (Excludes Private Dumps)")
+                        Text(
+                            if (showAdvanced) "Hide Advanced & Diagnostics"
+                            else "Advanced & Diagnostics"
+                        )
                     }
 
-                    exportNotice?.let {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    if (showAdvanced) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = batteryPulled10s,
+                                    enabled = !isRunning,
+                                    onCheckedChange = { batteryPulled10s = it }
+                                )
+                                Text("Pulled battery >= 10 seconds (cold RAM baseline)")
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = inStillsMode,
+                                    enabled = !isRunning,
+                                    onCheckedChange = { inStillsMode = it }
+                                )
+                                Text("Camera is in Stills mode (Mass Storage)")
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { launchAction("preflight") },
+                                    enabled = !isRunning && pinsVerified && liveUsbAllowed,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Check Camera (Read-Only)")
+                                }
+                                OutlinedButton(
+                                    onClick = { launchAction("dump") },
+                                    enabled = !isRunning && pinsVerified && liveUsbAllowed,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Read-Only Dump")
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { launchAction("apply", selectedPreset.packs) },
+                                    enabled = !isRunning && pinsVerified && checklistReady && confirmFirmwareAndRam && liveUsbAllowed,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Legacy Multi-Step Apply")
+                                }
+                                OutlinedButton(
+                                    onClick = { launchAction("putback", selectedPreset.packs) },
+                                    enabled = !isRunning && pinsVerified && checklistReady && confirmFirmwareAndRam && liveUsbAllowed,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Legacy Putback")
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    scope.launch {
+                                        val exp = withContext(Dispatchers.IO) { bridge.exportBundle() }
+                                        if (exp.ok) {
+                                            val file = File(exp.zipPath)
+                                            val uri = FileProvider.getUriForFile(
+                                                context,
+                                                "${context.packageName}.fileprovider",
+                                                file
+                                            )
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "application/zip"
+                                                putExtra(Intent.EXTRA_STREAM, uri)
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            }
+                                            exportNotice = "Exported ${exp.exportedCount} safe file(s); skipped ${exp.skippedPrivate} private file(s)."
+                                            context.startActivity(Intent.createChooser(shareIntent, "Share OpenGate Session Bundle"))
+                                        } else {
+                                            exportNotice = "Export failed."
+                                        }
+                                    }
+                                },
+                                enabled = !isRunning,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Export Session Bundle (Excludes Private Dumps)")
+                            }
+
+                            exportNotice?.let {
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
             }

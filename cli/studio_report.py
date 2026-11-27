@@ -106,8 +106,11 @@ def _collect_sessions(session_dir: Path, body_id: str, limit: int = 12) -> list[
         summary = {
             "session_id": raw.get("session_id"),
             "kind": raw.get("kind"),
+            "mode": raw.get("mode"),
+            "closing_kind": raw.get("closing_kind"),
             "timestamp": raw.get("timestamp"),
             "ready": bool(raw.get("ready", False)),
+            "verified": raw.get("verified"),
             "state": raw.get("state"),
             "verdict": raw.get("verdict"),
             "active_packs": list(raw.get("active_packs") or []),
@@ -218,8 +221,13 @@ def _render_markdown(report: dict[str, Any]) -> str:
         latest = sessions[0]
         steps_str = ", ".join(_format_step_label(s) for s in latest.get("steps_run", [])) or "none"
         packs_str = ", ".join(latest.get("active_packs", [])) or "none"
+        kind_label = str(latest.get("kind") or "unknown")
+        if kind_label == "express_apply":
+            kind_detail = f"express_apply ({latest.get('closing_kind') or 'single_session'})"
+        else:
+            kind_detail = kind_label
         lines.extend([
-            f"- **Latest Session:** `{latest.get('session_id')}` (`{latest.get('kind')}`)",
+            f"- **Latest Session:** `{latest.get('session_id')}` (`{kind_detail}`)",
             f"- **Verdict:** `{latest.get('verdict')}` (`state={latest.get('state')}`, `ready={latest.get('ready')}`)",
             f"- **Active Packs:** `{packs_str}`",
             f"- **Steps:** `{steps_str}`",

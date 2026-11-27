@@ -56,6 +56,12 @@ _BODY_ALIASES: dict[str, str] = {
     "a7iv": "a7iv_602",
     "a7iv_602": "a7iv_602",
     "ilce-7m4": "a7iv_602",
+    "a7c": "a7c_203",
+    "a7c_203": "a7c_203",
+    "ilce-7c": "a7c_203",
+    "zve10": "zve10_203",
+    "zve10_203": "zve10_203",
+    "zv-e10": "zve10_203",
 }
 
 _FPS_TOKEN_MAP: dict[str, set[str]] = {

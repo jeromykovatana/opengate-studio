@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Multi-body CT6 volatile RAM step runner for OpenGate Studio (zve1_202, a7s3_501, fx3_702)."""
+"""Multi-body CT6 volatile RAM step runner for OpenGate Studio (zve1_202, a7s3_501, fx3_702, a7c_203, zve10_203)."""
 from __future__ import annotations
 
 import argparse
@@ -8,7 +8,9 @@ import hashlib
 import json
 import os
 import platform
+import posixpath
 import re
+import struct
 import sys
 import time
 from pathlib import Path
@@ -69,6 +71,32 @@ BODY_CONFIG: dict[str, dict[str, str]] = {
             "On the FX3 / a7S III coprocessor software the power switch may clear only part of it: keep the camera on between steps, and pull the battery >= 10s to restore stock."
         ),
     },
+    "a7c_203": {
+        "prefix": "a7c",
+        "model": "ILCE-7C",
+        "header_model": "ILCE-7C",
+        "reader": "a7cread",
+        "firmware": "2.03",
+        "expected_json": "a7c_expected.json",
+        "report_name": "a7c_report.txt",
+        "power_switch_note": (
+            "This was a WRITE step. A cold boot (battery out for 10 seconds) undoes everything written. "
+            "Keep the camera powered on between steps, and pull the battery >= 10s to restore stock."
+        ),
+    },
+    "zve10_203": {
+        "prefix": "zve10",
+        "model": "ZV-E10",
+        "header_model": "ZV-E10",
+        "reader": "zve10read",
+        "firmware": "2.03",
+        "expected_json": "zve10_expected.json",
+        "report_name": "zve10_report.txt",
+        "power_switch_note": (
+            "This was a WRITE step. A cold boot (battery out for 10 seconds) undoes everything written. "
+            "Keep the camera powered on between steps, and pull the battery >= 10s to restore stock."
+        ),
+    },
 }
 
 STEP_LEVEL_BASE: dict[str, int] = {
@@ -81,7 +109,12 @@ STEP_LEVEL_BASE: dict[str, int] = {
     "B": 800,
     "I": 900,
     "P": 1000,
+    "Q": 1100,
+    "F": 1200,
 }
+
+MultiStepGuard = R.MultiStepGuard
+VALID_READER_PREFIXES: tuple[str, ...] = tuple(f"{cfg['reader']} " for cfg in BODY_CONFIG.values())
 
 # Superseded studio + upstream ArcaneLantern helper SHA-256 hashes (auto-cleaned if left on /tmp/jiritsu/libJit.so).
 EARLIER_LIBS: dict[str, str] = {
@@ -142,6 +175,22 @@ EARLIER_LIBS: dict[str, str] = {
     "2670d65b38a3a17c0a5600e605afdc2f3697324aca2d81d395a02e50f89bd32e": "v0.1.3-alpha fx3_702 V20 (libJit_fx3_ogfile2560_hs_s_v3_60p.so)",
     "51cc4c86d2d2f40436dd02dc2b101bf0dcdb6ad88d726b64156c696695987941": "v0.1.3-alpha fx3_702 I19 (libJit_fx3_ogfile2560_i.so)",
     "9d0ea28bbd768315553d47486ed810c62518d7e00faf34033065a004a1a95f1c": "v0.1.3-alpha fx3_702 I20 (libJit_fx3_ogfile2560_i_60p.so)",
+    "4c1892e449447d42d32d1e5d27ac2a9e6aa2a5520cd6d48f84ad71ae7cd912ac": "upstream a7c (libJit_a7c_L16.so)",
+    "54efa61db10f1857a59c6d9d1b99af81b1fdbd7d99050c6358d552cec70431d0": "upstream a7c (libJit_a7c_L17.so)",
+    "dc57b8b58487b68c8f11faf265106aa016c683bf8baedbc540335a313208b895": "upstream a7c (libJit_a7c_L19.so)",
+    "c0bad2f024e05a0d8c4e4bbce69e35b15f7f525cdb3209133ecf2189583eb10b": "upstream a7c (libJit_a7c_L20.so)",
+    "4deb370a3376a99477146afec7d8292462215a1f98f5716e3f841071f41ff5ba": "upstream a7c (libJit_a7c_L5.so)",
+    "9606475c32a27999ed74748baac1a89616f92105857dff35eec01a03efa5f931": "upstream a7c (libJit_a7c_L6.so)",
+    "41f1f28a0388ab9642b326b84f2d129cccdb4d2ec65abda0a58a6dfc46e04a81": "upstream a7c (libJit_a7c_check.so)",
+    "4f88f9bc2615855b05dc340fb7549660c1e97f8a22bfc23298ed052765364090": "upstream a7c (libJit_a7c_dump.so)",
+    "78b01eb1397f708d6aea397080ac33c6b6c6aee9cee7981627ebe949f3a731e5": "upstream zve10 (libJit_zve10_L16.so)",
+    "f64e55b1348c8c6b7634bb6abf335d94aae07cf9b3eec3499adc698307ba8f62": "upstream zve10 (libJit_zve10_L17.so)",
+    "714ffb1315280d019c53248cbd6ddc9af20701854aacc576818fb8e49edbf7d1": "upstream zve10 (libJit_zve10_L19.so)",
+    "b89aa077025f2827a8eeffc95904c69891620a8b8efbd3380931f23cc6efb7be": "upstream zve10 (libJit_zve10_L20.so)",
+    "971fa595d65cc518dd1615e7a1f2b7591dad1e75535da4b9104c164f4c2a3f77": "upstream zve10 (libJit_zve10_L5.so)",
+    "196cdf731cd21860256cbb772467f20749ea6e3b1721841c70d51bf824e2ebf6": "upstream zve10 (libJit_zve10_L6.so)",
+    "fc8dd57f6f373fb9695493b9d2e4c9260f846bfbc9b79f2a02be0b42a3959e46": "upstream zve10 (libJit_zve10_check.so)",
+    "06f163b51d828b4bfb787816302b37cb2c4065bac60b70246da1139efaa1e678": "upstream zve10 (libJit_zve10_dump.so)",
 }
 EXTRA_LIBS: dict[str, str] = {}
 
@@ -317,7 +366,7 @@ def parse_readonly_result(
 
     pages: dict[int, tuple[str, bytes]] = {}
     for ln in lines:
-        if ln.startswith("cppage "):
+        if ln.startswith(("cppage ", "ddrpage ")):
             _, name, addr, hx = ln.split(" ", 3)
             pages[int(addr, 16)] = (name, bytes.fromhex(hx.strip()))
 
@@ -430,11 +479,20 @@ def check_result(data: bytes) -> dict[str, Any]:
     return parse_readonly_result(CURRENT_BODY, CURRENT_WHICH, data, CURRENT_EXPECTED)
 
 
-def known_answer(session: Any, camera: Any) -> None:
-    cfg = BODY_CONFIG[CURRENT_BODY]
-    with (CURRENT_KIT_DIR / "DeviceInfo.xml").open("rb") as f:
+def has_valid_toolkit_result_header(data: bytes, body_id: str | None = None) -> bool:
+    """Return True if data starts with a recognized OpenGate Studio / readcheck header."""
+    head = data.split(b"\n", 1)[0].decode("utf8", "replace")
+    if head.startswith("readcheck 1 level "):
+        return True
+    if body_id and body_id in BODY_CONFIG:
+        return head.startswith(f"{BODY_CONFIG[body_id]['reader']} ")
+    return head.startswith(VALID_READER_PREFIXES)
+
+
+def known_answer_for(session: Any, camera: Any, kit_dir: Path, manifest: dict[str, Any], cfg: dict[str, str]) -> None:
+    with (kit_dir / "DeviceInfo.xml").open("rb") as f:
         want = f.read()
-    dev_pin = CURRENT_MANIFEST.get("device_info", {})
+    dev_pin = manifest.get("device_info", {})
     if isinstance(dev_pin, dict) and dev_pin.get("sha256"):
         if c.sha256(want) != dev_pin["sha256"]:
             raise c.StopTest("Kit DeviceInfo.xml SHA-256 mismatch; nothing sent")
@@ -449,6 +507,10 @@ def known_answer(session: Any, camera: Any) -> None:
             f"DeviceInfo.xml is not the file of the {cfg['firmware']} update ({detail}); nothing else is sent"
         )
     session.say(f"Known-answer read: DeviceInfo.xml equals the {cfg['firmware']} file")
+
+
+def known_answer(session: Any, camera: Any) -> None:
+    known_answer_for(session, camera, CURRENT_KIT_DIR, CURRENT_MANIFEST, BODY_CONFIG[CURRENT_BODY])
 
 
 def run_helper(data: bytes) -> tuple[bytes, str]:
@@ -694,7 +756,499 @@ def selftest(lib: bytes) -> list[str]:
 
     refused = R.refusals(lib)
     check(len(refused) == 15, "guard refuses all 15 forbidden packet classes")
+
+    # Verify single-step Guard still refuses a second file write in one session
+    s_dup, _sim_dup, stopped_dup = R.simulate(
+        lib,
+        lambda _sess, cam, _lib: (
+            R.select(cam, R.LIB_PATH),
+            R.command(cam, R.SET_FILE2, b"\x00\xff\x00" + lib),
+            R.select(cam, R.LIB_PATH),
+            R.command(cam, R.SET_FILE2, b"\x00\xff\x00" + lib),
+        ),
+    )
+    check(
+        bool(stopped_dup) and "second file write" in stopped_dup and R.sent(s_dup).count(w_cmd) == 1,
+        "single-step Guard refuses a second write in one session",
+    )
+
+    # Verify MultiStepGuard batch execution & per-step re-arming
+    batch_steps = ["check", CURRENT_WHICH] if CURRENT_WHICH != "check" else ["check", "dump"]
+    pins, _ = step_pins(CURRENT_MANIFEST)
+    batch_libs = {sid: (CURRENT_KIT_DIR / pins[sid][0]).read_bytes() for sid in batch_steps}
+    sim_multi = make_sim_multi(
+        batch_libs,
+        body_id=CURRENT_BODY,
+        files={"/tmp_wbshd/readcheck_result.txt": f"{BODY_CONFIG[CURRENT_BODY]['reader']} prior run\n".encode("utf8")},
+    )
+    seen_callbacks: list[str] = []
+    import contextlib
+    import io
+    with contextlib.redirect_stdout(io.StringIO()):
+        batch_res = run_batch_single_session(
+            CURRENT_BODY,
+            batch_steps,
+            BODY_CONFIG[CURRENT_BODY]["firmware"],
+            writes_memory=True,
+            express=True,
+            on_step_result=lambda _idx, _tot, sid, _facts, _out: seen_callbacks.append(sid) is None,
+            sim_driver=sim_multi,
+            settle_seconds=0.0,
+        )
+    check(
+        batch_res["ok"]
+        and seen_callbacks == batch_steps
+        and sim_multi.loads == len(batch_steps)
+        and not sim_multi.unexpected
+        and R.LIB_PATH.decode() not in sim_multi.fs,
+        "MultiStepGuard batch: clears valid toolkit result, executes all steps sequentially in 1 session",
+    )
+
+    # MultiStepGuard must reject writing step B's library while armed for step A
+    step_a, step_b = batch_steps[0], batch_steps[1]
+    lib_a, lib_b = batch_libs[step_a], batch_libs[step_b]
+    if lib_a != lib_b:
+        c.use_pmca()
+        sess_mm = c.Session("selftest_multiguard_mismatch", write=False, test="CT6")
+        sim_mm = make_sim_multi(batch_libs, body_id=CURRENT_BODY)
+        mm_stopped = None
+        try:
+            def _bad_write(cam: Any, guard: MultiStepGuard) -> None:
+                guard.arm_step(lib_a, c.sha256(lib_a))
+                R.select(cam, R.LIB_PATH)
+                R.command(cam, R.SET_FILE2, b"\x00\xff\x00" + lib_b)
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                R.service_session_multi(sess_mm, sim_mm, _bad_write)
+        except c.StopTest as exc:
+            mm_stopped = str(exc)
+        check(
+            bool(mm_stopped) and sim_mm.loads == 0,
+            "MultiStepGuard refuses writing unpinned/other-step library while armed for step A",
+        )
     return done
+
+
+def make_sim_multi(
+    libs_by_step: dict[str, bytes],
+    *,
+    body_id: str = "zve1_202",
+    files: dict[str, bytes] | None = None,
+    fault: str | None = None,
+    result_fn: Any = None,
+) -> Any:
+    """Create a SimDriver that accepts any step library in libs_by_step for multi-step batch testing."""
+    kit_dir, man = load_body_manifest(body_id)
+    expected = load_body_expected(body_id)
+    cfg = BODY_CONFIG[body_id]
+    _, write_steps = step_pins(man)
+    dev_info = (kit_dir / "DeviceInfo.xml").read_bytes()
+    sha_to_step = {c.sha256(blob): sid for sid, blob in libs_by_step.items()}
+    allowed_blobs = set(libs_by_step.values())
+
+    multi_rules = {
+        **R.readonly_rules(),
+        (c.PFUNC_ADJUST, 0x1001, R.SET_FILE2): (
+            "SET_FILE2",
+            lambda p: p[:3] == b"\x00\xff\x00" and p[3:] in allowed_blobs,
+        ),
+    }
+
+    def _default_result(lib_bytes: bytes) -> tuple[bytes, str]:
+        if result_fn is not None:
+            return result_fn(lib_bytes)
+        sid = sha_to_step.get(c.sha256(lib_bytes), "check")
+        if sid in write_steps:
+            lvl = sid[1:]
+            text = (
+                f"readcheck 1 level {lvl}\n"
+                "euid 0\n"
+                f"== level {lvl}\n"
+                "DONE: every site holds the target bytes (canned)\n"
+                "== done, bytes written before this line: 0\n"
+            )
+            return text.encode("utf8"), "canned"
+        text = (
+            f"{cfg['reader']} {expected['label']} {sid} for {cfg['header_model']} {cfg['firmware']}; read-only\n"
+            "== file /proc/version\n"
+            "Linux (simulated)\n\n"
+            "== end 18 bytes\n"
+            "== summary\n"
+            "VERDICT NOT READY (simulated transport only)\n"
+            "== done\n"
+        )
+        return text.encode("utf8"), "canned"
+
+    class SimMulti(ct1_sim.SimDriver):
+        def __init__(self) -> None:
+            super().__init__("senser", rules=multi_rules)
+            self.fs: dict[str, bytes] = {"/usr/share/pmbp/DeviceInfo.xml": dev_info}
+            self.fs.update(files or {})
+            self.loads = 0
+            self.loaded_steps: list[str] = []
+            self.how: str | None = None
+            self.dead = False
+
+        def write(self, data: bytes, ep: int = 0) -> Any:
+            if self.dead:
+                raise ct1_sim.SimUsbError("the simulated camera no longer answers")
+            return super().write(data, ep)
+
+        def _handle(self, pfunc: int, body: bytes) -> tuple[int, bytes]:
+            try:
+                name = c.classify_service_packet(pfunc, body, self.rules)
+            except c.GuardRefusal as exc:
+                self.unexpected.append(("service packet", pfunc, body[:16].hex(), str(exc)))
+                return 0xEE, b""
+            st = lambda v: struct.pack("<I", v)
+            if name == "SET_FILE_PATH":
+                p = body[5:].decode()
+                self._path = p if p.startswith("/tmp/jiritsu") else posixpath.normpath("/tmp/jiritsu/" + p)
+                return 0, st(R.ST_OK)
+            path, self._path = self._path, None
+            if path is None:
+                return 0, st(0x10000201)
+            if name == "GET_FILE2":
+                return (0, st(R.ST_OK) + self.fs[path]) if path in self.fs else (0, st(R.ST_NO_FILE))
+            if name == "SET_FILE2":
+                if body[4:7] != b"\x00\xff\x00":
+                    return 0, st(0x10000201)
+                if path == R.LIB_PATH.decode() and "/tmp/jbusy" in self.fs:
+                    return 0, st(R.ST_BUSY)
+                if fault == "dead":
+                    self.dead = True
+                    self.fs[path] = body[7:]
+                    raise ct1_sim.SimUsbError("the simulated camera died during the write")
+                self.fs[path] = body[7:]
+                if path != R.LIB_PATH.decode():
+                    return 0, st(R.ST_OK)
+                if fault == "load":
+                    return 0, st(R.ST_LOAD_FAILED)
+                self.loads += 1
+                self.loaded_steps.append(sha_to_step.get(c.sha256(body[7:]), "?"))
+                if "/tmp_wbshd/readcheck_result.txt" not in self.fs:
+                    self.fs["/tmp_wbshd/readcheck_result.txt"], self.how = _default_result(body[7:])
+                return 0, st(R.ST_OK)
+            if name == "FILE_DELETE2":
+                if fault == "sticky" or path not in self.fs:
+                    return 0, st(R.ST_REMOVE_FAILED)
+                del self.fs[path]
+                return 0, st(R.ST_OK)
+            raise AssertionError(name)
+
+    return SimMulti()
+
+
+def _check_batch_guard_refusals(lib: bytes, sha: str) -> None:
+    """Verify MultiStepGuard rules refuse all 15 forbidden packet classes."""
+    saved_sha = R.LIB_SHA256
+    R.LIB_SHA256 = sha
+    try:
+        R.refusals(lib)
+    finally:
+        R.LIB_SHA256 = saved_sha
+
+
+def run_batch_single_session(
+    body_id: str,
+    step_ids: list[str],
+    firmware: str,
+    *,
+    writes_memory: bool = True,
+    express: bool = True,
+    expect_serial_sha256: str | None = None,
+    expect_msc_usb_id: str | None = None,
+    remove_libraries: list[str] | None = None,
+    on_step_start: Any = None,
+    on_step_result: Any = None,
+    cancel_check: Any = None,
+    sim_driver: Any = None,
+    connect_fn: Any = None,
+    settle_seconds: float = 0.5,
+    session_root: Path | None = None,
+) -> dict[str, Any]:
+    """Execute one or more pinned steps sequentially inside a single MSC->Service Mode USB session."""
+    if not step_ids:
+        raise ValueError("step_ids must not be empty")
+    if body_id not in BODY_CONFIG:
+        raise ValueError(f"Unsupported body_id: {body_id!r}")
+
+    cfg = BODY_CONFIG[body_id]
+    if firmware != cfg["firmware"]:
+        raise SystemExit(
+            f"A live run needs --firmware-shown {cfg['firmware']} "
+            "(the version shown on the camera's menu). Nothing was sent."
+        )
+
+    kit_dir, manifest = load_body_manifest(body_id)
+    expected = load_body_expected(body_id)
+    pins, write_steps = step_pins(manifest)
+
+    loaded_steps: dict[str, tuple[bytes, str, str]] = {}
+    for sid in step_ids:
+        if sid not in pins:
+            raise ValueError(f"{sid!r} is not a valid step for {body_id}. Choices: {sorted(pins)}")
+        if sid in write_steps and not writes_memory:
+            raise SystemExit(
+                f"{sid} is a write step ({write_steps[sid][2]}). "
+                "It needs --writes-memory as well. Nothing was sent."
+            )
+        fname, want_sha = pins[sid]
+        lib_path = kit_dir / fname
+        if not lib_path.is_file():
+            raise SystemExit(f"{lib_path} is missing. Nothing was sent.")
+        lib_bytes = lib_path.read_bytes()
+        if c.sha256(lib_bytes) != want_sha or not 0 < len(lib_bytes) <= R.LIB_MAX:
+            raise SystemExit(
+                f"{lib_path.name} is not the pinned build (SHA-256 {c.sha256(lib_bytes)}, {len(lib_bytes)} bytes). Nothing was sent."
+            )
+        summary = write_steps[sid][2] if sid in write_steps else str(manifest.get("readonly", {}).get(sid, {}).get("summary") or sid)
+        loaded_steps[sid] = (lib_bytes, want_sha, summary)
+
+    for extra in (remove_libraries or []):
+        hx = extra.strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", hx):
+            raise SystemExit(f"Invalid --remove-library SHA-256: {extra!r} (expected 64 hex chars). Nothing was sent.")
+        EXTRA_LIBS[hx] = "--remove-library argument"
+
+    # Guard refusal check for every distinct pinned library before touching USB
+    checked_shas: set[str] = set()
+    for lib_bytes, want_sha, _summary in loaded_steps.values():
+        if want_sha not in checked_shas:
+            _check_batch_guard_refusals(lib_bytes, want_sha)
+            checked_shas.add(want_sha)
+
+    saved_known = R.KNOWN_LIBS
+    saved_expected_fw = c.EXPECTED_FIRMWARE
+    saved_private = c.PRIVATE_ROOT
+    R.KNOWN_LIBS = known_libs()
+    c.EXPECTED_FIRMWARE = cfg["firmware"]
+    eff_private = session_root if session_root is not None else private_root()
+    c.PRIVATE_ROOT = eff_private
+
+    step_results: list[dict[str, Any]] = []
+    completed_steps: list[str] = []
+    stopped_reason: str | None = None
+    cancelled = False
+    cancelled_step_index: int | None = None
+    cancelled_step_id: str | None = None
+    any_left_behind = False
+    aborted_by_callback = False
+
+    if sim_driver is not None:
+        c.use_pmca()
+
+    stage_name = f"{cfg['prefix']}_{step_ids[0]}" if len(step_ids) == 1 else f"{cfg['prefix']}_express_batch"
+    write_session = sim_driver is None or session_root is not None
+    ct6_session_name: str | None = None
+
+    try:
+        with c.Session(stage_name, write=write_session, test="CT6", root=eff_private) as session:
+            if session.dir is not None:
+                ct6_session_name = session.dir.name
+            session.results.update(
+                body_id=body_id,
+                firmware_shown_on_camera=firmware,
+                model=cfg["model"],
+                which=step_ids[0] if len(step_ids) == 1 else "batch",
+                steps_planned=list(step_ids),
+                express=bool(express),
+                library_sha256=loaded_steps[step_ids[0]][1],
+                pc={"platform": platform.platform(), "python": sys.version.split()[0]},
+            )
+            batch_out: dict[str, Any] = {
+                "express": bool(express),
+                "steps": [],
+                "library_sent": False,
+                "library_on_camera_after": None,
+            }
+            session.results["ct6"] = batch_out
+
+            if sim_driver is not None:
+                inner = sim_driver
+            else:
+                import ct1_stage2_service as service
+
+                inner = (connect_fn or service.connect)(session)
+                verify_connected_camera_identity(
+                    session.results,
+                    expect_serial_sha256=expect_serial_sha256,
+                    expect_msc_usb_id=expect_msc_usb_id,
+                )
+
+            def _clear_result_file(camera: Any, guard: MultiStepGuard, reason_label: str) -> None:
+                guard.allow_result_delete = True
+                R.select(camera, R.RESULT_PATH)
+                del_status, _ = R.command(camera, R.FILE_DELETE2, b"\x00\xff")
+                still_there = R.read(camera, R.RESULT_PATH)[0]
+                session.say(
+                    f"Cleared {reason_label} result file (status {R.text(del_status)}; "
+                    f"now {'STILL THERE' if still_there else 'gone'})"
+                )
+                if still_there:
+                    raise c.StopTest(f"could not clear /tmp_wbshd/readcheck_result.txt ({reason_label}); nothing was written.")
+
+            def _run_batch(camera: Any, guard: MultiStepGuard) -> None:
+                nonlocal any_left_behind, aborted_by_callback, cancelled, cancelled_step_index, cancelled_step_id
+                known_answer_for(session, camera, kit_dir, manifest, cfg)
+
+                there, data = R.read(camera, R.LIB_PATH)
+                if there and (R._known_label(c.sha256(data)) is not None or c.sha256(data) in checked_shas):
+                    R.remove_leftover(session, camera, batch_out, data)
+                    there = False
+                if there:
+                    sha = c.sha256(data)
+                    raise c.StopTest(
+                        "a libJit.so is already on the service partition (%d bytes, SHA-256 %s). Nothing was written. "
+                        "It is NOT a known library from this toolkit and is left alone. "
+                        "If it is an earlier build of ours, pass --remove-library %s."
+                        % (len(data), sha, sha)
+                    )
+
+                there, old = R.read(camera, R.RESULT_PATH)
+                if there:
+                    if express and has_valid_toolkit_result_header(old, body_id):
+                        session.say(
+                            f"Found prior toolkit result on RAM disk ({len(old)} bytes, sha256 {c.sha256(old)[:16]}...); clearing it."
+                        )
+                        _clear_result_file(camera, guard, "prior express")
+                    else:
+                        raise c.StopTest(
+                            "a result file is already on the RAM disk with an unrecognized header; "
+                            "cold boot the camera first. Nothing was written."
+                        )
+
+                total = len(step_ids)
+                for idx, step_id in enumerate(step_ids, 1):
+                    if cancel_check is not None and cancel_check():
+                        cancelled = True
+                        cancelled_step_index = idx
+                        cancelled_step_id = step_id
+                        raise c.StopTest(f"Cancelled safely before step {idx} ({step_id}).")
+
+                    if R.read(camera, R.BUSY_PATH)[0]:
+                        raise c.StopTest("/tmp/jbusy exists; the camera would refuse the library. Nothing was written.")
+
+                    lib_bytes, sha, summary = loaded_steps[step_id]
+                    if on_step_start is not None:
+                        on_step_start(idx, total, step_id, summary)
+
+                    step_out: dict[str, Any] = {
+                        "step_id": step_id,
+                        "step_index": idx,
+                        "library_bytes": len(lib_bytes),
+                        "library_sha256": sha,
+                        "library_sent": False,
+                    }
+                    batch_out["steps"].append(step_out)
+
+                    guard.arm_step(lib_bytes, sha)
+                    try:
+                        R.select(camera, R.LIB_PATH)
+                        session.say(f"[{idx}/{total}] Sending {step_id} ({len(lib_bytes)} bytes)")
+                        step_out["library_sent"] = True
+                        batch_out["library_sent"] = True
+                        status = None
+                        try:
+                            status, _ = R.command(camera, R.SET_FILE2, b"\x00\xff\x00" + lib_bytes)
+                        except c.GuardRefusal:
+                            step_out["library_sent"] = False
+                            raise
+                        except Exception as exc:
+                            step_out["write_error"] = f"{type(exc).__name__}: {exc}"
+                            session.say(f"The write got no answer ({step_out['write_error']})")
+                        step_out["write_status"] = status
+                        if "write_error" not in step_out:
+                            session.say(f"[{idx}/{total}] Write and load: status {R.text(status)}")
+
+                        R.remove(session, camera, step_out)
+                        batch_out["library_on_camera_after"] = step_out.get("library_on_camera_after")
+                        if step_out.get("library_on_camera_after") is True or (
+                            step_out.get("library_on_camera_after") is None and step_out.get("library_sent")
+                        ):
+                            any_left_behind = True
+                    finally:
+                        guard.disarm_step()
+
+                    if "write_error" in step_out:
+                        raise c.StopTest("the write got no answer; the result is not read")
+
+                    there, result = R.read(camera, R.RESULT_PATH)
+                    step_out["result_found"] = there
+                    if not there:
+                        raise c.StopTest(
+                            f"no result file after {step_id}: the helper did not create it (status: {R.text(status)})"
+                        )
+
+                    res_fname = f"{idx:02d}_{step_id}_readcheck_result.txt" if total > 1 else "readcheck_result.txt"
+                    session.save_bytes(res_fname, result)
+                    if step_id in write_steps:
+                        facts = parse_write_result(step_id, summary, result)
+                    else:
+                        facts = parse_readonly_result(body_id, step_id, result, expected)
+                    step_out["result"] = facts
+                    batch_out["result"] = facts
+
+                    pages = facts.pop("_pages", {})
+                    for addr, (pname, blob) in sorted(pages.items()):
+                        prefix = f"{idx:02d}_" if total > 1 else ""
+                        session.save_bytes(f"{prefix}cp_{pname}_{addr:08x}.bin", blob)
+
+                    step_entry = {
+                        "step_id": step_id,
+                        "step_index": idx,
+                        "facts": facts,
+                        "out": step_out,
+                        "sha256": facts.get("sha256"),
+                    }
+                    step_results.append(step_entry)
+                    completed_steps.append(step_id)
+
+                    if on_step_result is not None:
+                        keep_going = on_step_result(idx, total, step_id, facts, step_out)
+                        if keep_going is False:
+                            aborted_by_callback = True
+                            break
+
+                    if idx < total:
+                        _clear_result_file(camera, guard, f"step {step_id}")
+
+            try:
+                R.service_session_multi(session, inner, _run_batch)
+            except c.StopTest as exc:
+                stopped_reason = str(exc)
+                raise
+            finally:
+                if settle_seconds > 0:
+                    time.sleep(settle_seconds)
+                if sim_driver is None:
+                    c.print_pnp(session, "after the stop request")
+    finally:
+        R.KNOWN_LIBS = saved_known
+        c.EXPECTED_FIRMWARE = saved_expected_fw
+        c.PRIVATE_ROOT = saved_private
+
+    ok = (
+        not cancelled
+        and stopped_reason is None
+        and not aborted_by_callback
+        and len(completed_steps) == len(step_ids)
+    )
+    return {
+        "ok": ok,
+        "body_id": body_id,
+        "steps_planned": list(step_ids),
+        "steps_run": completed_steps,
+        "step_results": step_results,
+        "ct6_session": ct6_session_name,
+        "camera_usb_identity": session.results.get("camera_usb_identity") or {},
+        "library_on_camera_after": any_left_behind,
+        "stopped": stopped_reason,
+        "cancelled": cancelled,
+        "cancelled_step_index": cancelled_step_index,
+        "cancelled_step_id": cancelled_step_id,
+        "aborted": aborted_by_callback,
+    }
 
 
 def verify_connected_camera_identity(
@@ -784,6 +1338,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--expect-msc-usb-id", metavar="VID:PID", help="Optional USB Mass Storage VID:PID binding from preflight")
     ap.add_argument("--firmware-shown")
     ap.add_argument("--writes-memory", action="store_true")
+    ap.add_argument("--express", action="store_true", help="Allow clearing prior toolkit result headers and use 0.5s settle")
     ap.add_argument(
         "--remove-library",
         metavar="SHA256",
@@ -841,6 +1396,23 @@ def main(argv: list[str] | None = None) -> int:
 
     R.refusals(lib)
     selftest(lib)
+
+    is_express = bool(args.express or args.which[0] in ("Q", "F")) and not args.remove_only and not args.require_result
+    if is_express:
+        res = run_batch_single_session(
+            args.body,
+            [args.which],
+            args.firmware_shown,
+            writes_memory=args.writes_memory,
+            express=True,
+            expect_serial_sha256=args.expect_serial_sha256,
+            expect_msc_usb_id=args.expect_msc_usb_id,
+            remove_libraries=args.remove_library,
+            settle_seconds=0.5,
+        )
+        if not res["ok"]:
+            raise SystemExit(res.get("stopped") or f"Express step {args.which} failed.")
+        return 0
 
     import ct1_stage2_service as service
 

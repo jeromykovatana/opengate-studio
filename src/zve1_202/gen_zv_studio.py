@@ -501,6 +501,361 @@ def build_h16(cp: bytes) -> None:
     print(f"PASS expected_words_hdmi32_zv_202.h: words={len(words)}, guards={len(guards)}, 0 overlaps")
 
 
+def _merge_mp_guards_nonoverlap(
+    guards: list[tuple[int, bytes]],
+    sites: list[tuple[int, bytes, bytes]],
+) -> list[tuple[int, bytes]]:
+    """Deduplicate and trim overlapping guards cleanly; assert zero site collisions."""
+    site_spans = [(o, o + len(old)) for o, old, _ in sites]
+    for go, gb in guards:
+        ge = go + len(gb)
+        for so, se in site_spans:
+            assert not (go < se and so < ge), f"Fused guard 0x{go:x}..0x{ge:x} collides with site 0x{so:x}..0x{se:x}"
+
+    # Sort longest-first per start offset, then trim any partial overlaps with already-kept guards
+    kept_intervals: list[tuple[int, int, bytes]] = []
+    for go, gb in sorted(set(guards), key=lambda x: (x[0], -len(x[1]))):
+        intervals = [(go, go + len(gb))]
+        for ka, ke, kb in kept_intervals:
+            next_iv = []
+            for a, z in intervals:
+                if ke <= a or z <= ka:
+                    next_iv.append((a, z))
+                else:
+                    ov_a, ov_z = max(a, ka), min(z, ke)
+                    assert gb[ov_a - go : ov_z - go] == kb[ov_a - ka : ov_z - ka], (
+                        f"Conflicting guard bytes at 0x{ov_a:x}..0x{ov_z:x}"
+                    )
+                    if a < ka:
+                        next_iv.append((a, ka))
+                    if ke < z:
+                        next_iv.append((ke, z))
+            intervals = next_iv
+        for a, z in intervals:
+            if z > a:
+                kept_intervals.append((a, z, gb[a - go : z - go]))
+    kept_intervals.sort(key=lambda x: x[0])
+    for k in range(len(kept_intervals) - 1):
+        assert kept_intervals[k][1] <= kept_intervals[k + 1][0], "Guard coalesce overlap"
+    return [(a, b) for a, _, b in kept_intervals]
+
+
+def _merge_words_and_guards(
+    words: list[tuple[int, bytes, bytes]],
+    guards: list[tuple[int, bytes]],
+    cp_sites: list[tuple[int, bytes, bytes]],
+    extra_sites: list[tuple[int, bytes, bytes]] | None = None,
+) -> tuple[list[tuple[int, bytes, bytes]], list[tuple[int, bytes]]]:
+    words_sorted = sorted(words, key=lambda x: x[0])
+    for a, b in zip(words_sorted, words_sorted[1:]):
+        assert a[0] + 4 <= b[0], f"Overlapping CP ram_word at 0x{a[0]:x} vs 0x{b[0]:x}"
+    for w, _, _ in words_sorted:
+        for co, col, _ in cp_sites:
+            assert not (w < co + len(col) and co < w + 4), f"ram_word 0x{w:x} overlaps cp_site 0x{co:x}"
+        for eo, eol, _ in extra_sites or ():
+            assert not (w < eo + len(eol) and eo < w + 4), f"ram_word 0x{w:x} overlaps extra site 0x{eo:x}"
+    site_as_mp = [(w, st, ch) for w, st, ch in words_sorted] + list(cp_sites) + list(extra_sites or ())
+    guards_clean = _merge_mp_guards_nonoverlap(guards, site_as_mp)
+    return words_sorted, guards_clean
+
+
+def _load_words_json_zv(cp: bytes, name: str, in_file: bool) -> tuple[list[tuple[int, bytes, bytes]], list[tuple[int, bytes]]]:
+    d = json.loads(resolve_design(name).read_text(encoding="utf8"))
+    if in_file:
+        assert d["artifact_sha256"] == hashlib.sha256(cp).hexdigest()
+    words: list[tuple[int, bytes, bytes]] = []
+    for s in d["sites"]:
+        ra = int(s["ram_address"], 16)
+        old, new = bytes.fromhex(s["old"]), bytes.fromhex(s["new"])
+        assert ra % 4 == 0 and len(old) == len(new) == 4 and old != new
+        if in_file:
+            assert cp[ra - CPAPP_BASE : ra - CPAPP_BASE + 4] == old
+        words.append((ra, old, new))
+    guards: list[tuple[int, bytes]] = []
+    for g in d["guards"]:
+        ga = int(g["ram_address"], 16)
+        gb = bytes.fromhex(g["bytes"])
+        assert 0 < len(gb) <= 16
+        if in_file:
+            assert cp[ga - CPAPP_BASE : ga - CPAPP_BASE + len(gb)] == gb
+        guards.append((ga, gb))
+    return words, guards
+
+
+def _load_hdmi_words_zv(cp: bytes) -> tuple[list[tuple[int, bytes, bytes]], list[tuple[int, bytes]]]:
+    hd = json.loads(resolve_design("hdmi32_zv_202").read_text(encoding="utf8"))
+    assert hd["build"] == "zve1_202" and hd["persistent_writes"] is False
+    assert hd["artifact_sha256"]["cpapp-b.bin"] == hashlib.sha256(cp).hexdigest()
+    word_map: dict[int, tuple[bytes, bytearray]] = {}
+    for p in hd["patches"]:
+        ra = int(p["ram_address"], 16)
+        old, new = bytes.fromhex(p["old"]), bytes.fromhex(p["new"])
+        assert cp[ra - CPAPP_BASE : ra - CPAPP_BASE + len(old)] == old
+        for i in range(len(old)):
+            addr = ra + i
+            w = addr & ~3
+            if w not in word_map:
+                st = cp[w - CPAPP_BASE : w - CPAPP_BASE + 4]
+                word_map[w] = (st, bytearray(st))
+            word_map[w][1][addr & 3] = new[i]
+    words = [(w, word_map[w][0], bytes(word_map[w][1])) for w in sorted(word_map)]
+    guards = [(int(g["ram_address"], 16), bytes.fromhex(g["bytes"])) for g in hd["guards"]]
+    return words, guards
+
+
+def _load_appfw_zv(app: bytes, av: bytes) -> tuple[list[tuple[int, int, bytes, bytes]], list[tuple[int, bytes]]]:
+    d = json.loads(resolve_design("lcdcycle_zv_v1").read_text(encoding="utf8"))
+    assert d["artifact_sha256"]["appFw.so"] == hashlib.sha256(app).hexdigest()
+    phoff = struct.unpack_from("<Q", app, 0x20)[0]
+    phentsize, phnum = struct.unpack_from("<HH", app, 0x36)
+    load0 = next(
+        struct.unpack_from("<IIQQQQQQ", app, phoff + k * phentsize)
+        for k in range(phnum)
+        if struct.unpack_from("<I", app, phoff + k * phentsize)[0] == 1
+    )
+    app_seg_end = (load0[5] + 0xFFF) & ~0xFFF
+
+    cave_from = int(d["cave"]["from"], 16)
+    hooks = [p for p in d["patches"] if p["kind"] == "hook"]
+    assert len(hooks) == 1
+    hook_off = int(hooks[0]["file_off"], 16)
+
+    guards = [
+        (0, app[:16]),
+        (cave_from - 0x18, app[cave_from - 0x18 : cave_from - 0x8]),
+        (hook_off - 0x10, app[hook_off - 0x10 : hook_off]),
+        (hook_off + 4, app[hook_off + 4 : hook_off + 20]),
+        (int(d["calls"]["appfw_dlsym"], 16), app[int(d["calls"]["appfw_dlsym"], 16) : int(d["calls"]["appfw_dlsym"], 16) + 16]),
+        (int(d["calls"]["appfw_system_mode"], 16), app[int(d["calls"]["appfw_system_mode"], 16) : int(d["calls"]["appfw_system_mode"], 16) + 16]),
+        (int(d["calls"]["appfw_vdf_layout"], 16), app[int(d["calls"]["appfw_vdf_layout"], 16) : int(d["calls"]["appfw_vdf_layout"], 16) + 16]),
+    ]
+    sites: list[tuple[int, int, bytes, bytes]] = []
+    for p in d["patches"]:
+        assert p["binary"] == "appFw.so"
+        off = int(p["file_off"], 16)
+        old, new = bytes.fromhex(p["old"]), bytes.fromhex(p["new"])
+        assert 0 < len(old) == len(new) <= 16 and old != new and app[off : off + len(old)] == old
+        assert off + len(old) <= app_seg_end
+        sites.append((off, 1, old, new))
+    assert d["patches"][-1]["kind"] == "hook"
+    # Verify guards don't collide with any site or exceed PT_LOAD[0]
+    entries = [(off, 0, gb, b"") for off, gb in guards] + sites
+    for go, gb in guards:
+        assert go + len(gb) <= app_seg_end
+        for so, _, sold, _ in sites:
+            assert not (go < so + len(sold) and so < go + len(gb))
+    return entries, av_base_guards(av)
+
+
+def _pack_mp_pool(tables: list[list[tuple[int, int, bytes, bytes]]]) -> tuple[bytes, list[list[tuple[int, int, int, int]]]]:
+    pool = bytearray()
+    blob_cache: dict[bytes, int] = {}
+    packed_tables: list[list[tuple[int, int, int, int]]] = []
+    for tab in tables:
+        rows = []
+        for off, kind, old, new in tab:
+            blob = old if kind == 0 else (old + new)
+            assert (kind == 0 and len(new) == 0) or (kind == 1 and len(old) == len(new))
+            assert 0 < len(old) <= 16
+            if blob not in blob_cache:
+                blob_cache[blob] = len(pool)
+                pool.extend(blob)
+            rows.append((off, blob_cache[blob], len(old), kind))
+        packed_tables.append(rows)
+    return bytes(pool), packed_tables
+
+
+def emit_fused_zv(fw: Path, cp: bytes, av: bytes, lm: bytes, lm_filesz: int, v19: dict, b19: dict, i19: dict) -> None:
+    import re
+
+    app = (fw / "appFw.so").read_bytes()
+    d_og = json.loads(resolve_design("ogsq_zv_v3").read_text(encoding="utf8"))
+    assert d_og["artifact_sha256"] == hashlib.sha256(cp).hexdigest()
+    cp_sites = sorted((int(p["addr"], 16), bytes.fromhex(p["old"]), bytes.fromhex(p["new"])) for p in d_og["patches"])
+    assert len(cp_sites) == 40
+    rec_size = 0x170
+    modes = sorted(int(m, 16) for m in d_og["stored_records"])
+    offs = [int(x, 16) for x in d_og["stored_records"][hex(modes[0])]["offsets_that_differ"]]
+    stock_m, new_m = [], []
+    for m in modes:
+        sr = d_og["stored_records"][hex(m)]
+        st_v, nw_v = [], []
+        for v in ("ntsc", "pal"):
+            s, n = bytes.fromhex(sr[v]["stock"]), bytes.fromhex(sr[v]["design"])
+            st_v.append(bytes(s[i] for i in offs))
+            nw_v.append(bytes(n[i] for i in offs))
+        stock_m.append(st_v)
+        new_m.append(nw_v)
+
+    # DMM (dmmwb_zv_v1)
+    dm_j = json.loads(resolve_design("dmmwb_zv_v1").read_text(encoding="utf8"))
+    dm_h = (HERE / "expected_dmm_dmmwb_zv_v1.h").read_text(encoding="utf8")
+    dmm_sites_parsed = []
+    for m in re.finditer(r"\{\s*(0x[0-9a-fA-F]+),\s*\{\s*([^}]+)\},\s*\{\s*([^}]+)\}\s*\}", dm_h.split("dmm_sites[]")[1].split("};")[0]):
+        dmm_sites_parsed.append((
+            int(m.group(1), 16),
+            bytes(int(x, 16) for x in m.group(2).split(",")),
+            bytes(int(x, 16) for x in m.group(3).split(",")),
+        ))
+    assert len(dmm_sites_parsed) == 1 and dmm_sites_parsed[0][0] == int(dm_j["sites"][0]["ram_address"], 16)
+    if (fw / "DmmCfg.bin").is_file():
+        dmmcfg = (fw / "DmmCfg.bin").read_bytes()
+        foff = int(dm_j["sites"][0]["file_offset_of_the_same_field"], 16)
+        assert dmmcfg[foff : foff + 4] == dmm_sites_parsed[0][1]
+    dmm_extra_sites = [(a, st, ch) for a, st, ch in dmm_sites_parsed]
+
+    # ID files (including appFw.so) and ID pages
+    id_files = (
+        ("/libmpr.so", hashlib.sha256(lm).digest()),
+        ("/libsencore.so", hashlib.sha256((fw / "libsencore.so").read_bytes()).digest()),
+        ("/libJiritsu.so", hashlib.sha256((fw / "libJiritsu.so").read_bytes()).digest()),
+        ("/appFw.so", hashlib.sha256(app).digest()),
+    )
+    id_page_addrs = (0x128000, 0x4AA000, 0x96D000, 0x788000)
+    id_pages = [(a, hashlib.sha256(cp[a - CPAPP_BASE : a - CPAPP_BASE + 4096]).digest()) for a in id_page_addrs]
+
+    w_out, g_out = _load_words_json_zv(cp, "outsz2560_zv_v1", in_file=False)
+    w_lcd, g_lcd = _load_words_json_zv(cp, "lcdfill_zv_v2", in_file=True)
+    w_hdmi, g_hdmi = _load_hdmi_words_zv(cp)
+    app_lm_entries, c19_av_guards = _load_appfw_zv(app, av)
+
+    presets = [
+        (
+            "safe_daily",
+            "expected_fused_safe_daily_zv.h",
+            w_out + w_lcd,
+            g_out + g_lcd,
+            [v19],
+        ),
+        (
+            "cinema_full",
+            "expected_fused_cinema_full_zv.h",
+            w_out + w_lcd + w_hdmi,
+            g_out + g_lcd + g_hdmi,
+            [v19, b19, i19],
+        ),
+    ]
+
+    for preset_name, hdr_name, words_raw, wguards_raw, mp_packs in presets:
+        words, wguards = _merge_words_and_guards(words_raw, wguards_raw, cp_sites, dmm_extra_sites)
+
+        av_sites, lm_sites, av_guards, lm_guards = [], [], list(c19_av_guards), []
+        for pk in mp_packs:
+            av_sites.extend(pk["av_sites"])
+            lm_sites.extend(pk["lm_sites"])
+            av_guards.extend(pk["av_guards"])
+            lm_guards.extend(pk["lm_guards"])
+
+        av_sites_s = sorted(av_sites, key=lambda x: x[0])
+        lm_sites_s = sorted(lm_sites, key=lambda x: x[0])
+        for x, y in zip(av_sites_s, av_sites_s[1:]):
+            assert x[0] + len(x[1]) <= y[0], f"{preset_name} av overlap"
+        for x, y in zip(lm_sites_s, lm_sites_s[1:]):
+            assert x[0] + len(x[1]) <= y[0], f"{preset_name} lm overlap"
+
+        av_guards_c = _merge_mp_guards_nonoverlap(av_guards, av_sites_s)
+        lm_guards_c = _merge_mp_guards_nonoverlap(lm_guards, lm_sites_s)
+
+        av_tab = sorted(
+            [(o, 1, old, new) for o, old, new in av_sites_s] + [(o, 0, b, b"") for o, b in av_guards_c],
+            key=lambda x: (x[0], x[1]),
+        )
+        lm_tab = sorted(
+            [(o, 1, old, new) for o, old, new in lm_sites_s] + [(o, 0, b, b"") for o, b in lm_guards_c],
+            key=lambda x: (x[0], x[1]),
+        )
+        for tab_name, tab in (("mp_av", av_tab), ("mp_lm", lm_tab)):
+            for x, y in zip(tab, tab[1:]):
+                assert x[0] + len(x[2]) <= y[0], f"{preset_name} {tab_name} overlap at 0x{x[0]:x}"
+        assert max(o + len(old) for o, _, old, _ in lm_tab) <= lm_filesz
+
+        av_first = av_tab[0][0] & ~0xFFF
+        av_last = max(o + len(old) for o, _, old, _ in av_tab)
+        av_bytes = ((av_last - av_first) + 0xFFF) & ~0xFFF
+
+        mp_pool, (av_packed, lm_packed, app_packed) = _pack_mp_pool([av_tab, lm_tab, app_lm_entries])
+
+        arr = lambda tbl: "{ " + ", ".join("{ " + ", ".join(f"{{ {hx(v)} }}" for v in row) + " }" for row in tbl) + " }"
+        out = [
+            f"/* Generated by gen_zv_studio.py for fused preset {preset_name} (ZV-E1 2.02). Do not edit. */",
+            f'#define FUSED_LABEL "{preset_name}_zv"',
+            "#define CP_LO 0x108000UL",
+            "#define CP_HI 0x10000000UL",
+            "#define AVCAM_PHYS 0x401000000UL",
+            '#define AVCAM_RESERVE "@0x401000000"',
+            "#define IMAGER 0x17f1f64UL",
+            "#define CTRL_DRVPARAM 0x684U",
+            "#define REC 0x170U",
+            "#define MULTI_REC 1",
+            f"#define N_RECS {len(modes)}",
+            "#define REC_VARIANTS 2",
+            f"#define REC_BYTES {len(offs)}",
+            "#define FUSED_HAS_DMM 1",
+            "#define DMM_GLOBALS 0x019cf000UL",
+            "#define G_WORKSPACE 0x8f0U",
+            "#define G_UNITS 0x444U",
+            "#define FUSED_HAS_APPFW 1",
+            f"#define MP_AV_FIRST 0x{av_first:x}UL",
+            f"#define MP_AV_BYTES 0x{av_bytes:x}UL",
+            "",
+            "static const struct fused_id_file fused_id_files[] = {",
+            *[f'    {{ "{n}", {{ {hx(d)} }} }},' for n, d in id_files],
+            "};",
+            "static const struct fused_id_page fused_id_pages[] = {",
+            *[f"    {{ 0x{a:x}U, {{ {hx(d)} }} }}," for a, d in id_pages],
+            "};",
+            "",
+            "/* DMM stage (dmmwb_zv_v1) */",
+            re.search(r"static const u32 dmm_fit\[2\][^;]+;", dm_h).group(0),
+            re.search(r"static const struct dmm_site dmm_sites\[\]\s*=\s*\{.*?\};", dm_h, re.S).group(0),
+            re.search(r"static const struct dmm_rec dmm_recs\[\]\s*=\s*\{.*?\};", dm_h, re.S).group(0),
+            re.search(r"static const struct dmm_rec dmm_parents\[\]\s*=\s*\{.*?\};", dm_h, re.S).group(0),
+            re.search(r"static const u32 dmm_busy_keys\[\][^;]+;", dm_h).group(0),
+            "",
+            "/* Sensor MULTI_REC stage (ogsq_zv_v3) */",
+            f"static const u32 rec_modes[N_RECS] = {{ {', '.join(f'0x{m:x}' for m in modes)} }};",
+            'static const char *const rec_variant_name[REC_VARIANTS] = { "NTSC (60 Hz)", "PAL (50 Hz)" };',
+            f"static const unsigned short rec_offs[REC_BYTES] = {{ {', '.join(f'0x{k:x}' for k in offs)} }};",
+            f"static const u8 rec_stock[N_RECS][REC_VARIANTS][REC_BYTES] = {arr(stock_m)};",
+            f"static const u8 rec_new[N_RECS][REC_VARIANTS][REC_BYTES] = {arr(new_m)};",
+        ]
+        cp_rows = []
+        for k, (a, old, new) in enumerate(cp_sites):
+            out.append(f"static const u8 cp_s{k}_old[{len(old)}] = {{ {hx(old)} }};")
+            out.append(f"static const u8 cp_s{k}_new[{len(new)}] = {{ {hx(new)} }};")
+            cp_rows.append(f"    {{ 0x{a:x}, {len(old)}, cp_s{k}_old, cp_s{k}_new, 0, 0 }},")
+        out += [
+            "static const struct cp_site cp_sites[] = {",
+            *cp_rows,
+            "};",
+            "",
+            f"/* Merged CP words ({len(words)} words, {len(wguards)} guards) */",
+            "static const struct ram_word ram_words[] = {",
+            *[f"    {{ 0x{w:x}U, {{ {hx(st)} }}, {{ {hx(ch)} }} }}," for w, st, ch in words],
+            "};",
+            "static const struct ram_guard ram_guards[] = {",
+            *[f"    {{ 0x{ga:x}U, {len(gb)}U, {{ {h16(gb)} }} }}," for ga, gb in wguards],
+            "};",
+            "",
+            f"/* Compact deduplicated MP byte pool ({len(mp_pool)} bytes) */",
+            f"static const u8 mp_pool[{len(mp_pool)}] = {{ {hx(mp_pool)} }};",
+            f"static const struct mp_ent mp_av[] = {{",
+            *[f"    {{ 0x{off:x}U, {boff}U, {ln}U, {knd}U }}," for off, boff, ln, knd in av_packed],
+            "};",
+            f"static const struct mp_ent mp_lm[] = {{",
+            *[f"    {{ 0x{off:x}U, {boff}U, {ln}U, {knd}U }}," for off, boff, ln, knd in lm_packed],
+            "};",
+            f"static const struct mp_ent app_lm[] = {{",
+            *[f"    {{ 0x{off:x}U, {boff}U, {ln}U, {knd}U }}," for off, boff, ln, knd in app_packed],
+            "};",
+        ]
+        (HERE / hdr_name).write_text("\n".join(out) + "\n", encoding="utf8", newline="\n")
+        print(
+            f"PASS {hdr_name}: cp={len(cp_sites)}+{len(modes)}, words={len(words)}/{len(wguards)}g, "
+            f"av={len(av_packed)}, lm={len(lm_packed)}, app={len(app_packed)}, pool={len(mp_pool)}B"
+        )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Generate ZV-E1 2.02 studio patch headers")
     ap.add_argument("--fw-dir", type=Path, default=DEFAULT_FW_DIR)
@@ -524,6 +879,7 @@ def main() -> None:
 
     check_and_emit_mp_packs([v19, l19, b19, i19])
     build_h16(cp)
+    emit_fused_zv(fw, cp, av, lm, lm_filesz, v19, b19, i19)
 
 
 if __name__ == "__main__":

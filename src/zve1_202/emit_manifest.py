@@ -36,12 +36,17 @@ def main() -> None:
         ("B20", 20, "Put back 200M/300M high-bitrate Long-GOP overlay og_highbitrate_zv_202"),
         ("I19", 19, "Apply orthogonal XAVC S-I 3840x2560 (23.98p/25p/29.97p) delta og_xavcsi_addon_zv_202 (30 av-cam + 2 libmpr, incl. +0x56 dual-core split)"),
         ("I20", 20, "Put back orthogonal XAVC S-I 3840x2560 (23.98p/25p/29.97p) delta og_xavcsi_addon_zv_202"),
+        ("Q19", 19, "Fused Safe Daily single-pass apply (L13 + L5/L6 + L16/S16 + V19 + C19)"),
+        ("Q20", 20, "Fused Safe Daily single-pass put back (C20 + V20 + S17/L17 + L6 + L14)"),
+        ("F19", 19, "Fused Cinema Full single-pass apply (L13 + L5/L6 + L16/S16/H16 + V19/B19/I19 + C19)"),
+        ("F20", 20, "Fused Cinema Full single-pass put back (C20 + I20/B20/V20 + H17/S17/L17 + L6 + L14)"),
     ]
 
     steps = {}
     for code, level, summary in step_specs:
         fn = f"libJit_zv_{code}.so"
         sha, size = file_meta(fn)
+        assert size <= 65520, f"{fn} exceeds 65520B limit ({size})"
         steps[code] = {
             "file": fn,
             "sha256": sha,
@@ -125,6 +130,18 @@ def main() -> None:
                 "apply_steps": ["I19"],
                 "putback_steps": ["I20"],
                 "summary": "Orthogonal delta unlocking XAVC S-I All-Intra 3840x2560 at 23.98p/25p/29.97p",
+            },
+        },
+        "fused_presets": {
+            "safe_daily": {
+                "packs": ["core_open_gate", "mp4_3x2", "screen_3x2"],
+                "apply_step": "Q19",
+                "putback_step": "Q20",
+            },
+            "cinema_full": {
+                "packs": ["core_open_gate", "mp4_3x2", "screen_3x2", "hdmi32", "high_bitrate", "xavc_si"],
+                "apply_step": "F19",
+                "putback_step": "F20",
             },
         },
         "steps": steps,

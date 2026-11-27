@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "body_id": "a7c_203",
+  "camera": "ILCE-7C (a7C)",
+  "firmware": "2.03",
+  "version_txt": "39119_08.2026013101",
+  "toolchain": "ziglang 0.13.0 (clang 18.1.6)",
+  "persistent_writes": false,
+  "device_info": {
+    "file": "DeviceInfo.xml",
+    "sha256": "e44713178fad970870ead845c93abdfcf150c418de11b306da91f2d09d67c1b7",
+    "size": 517
+  },
+  "readonly": {
+    "check": {
+      "file": "libJit_a7c_check.so",
+      "sha256": "48825211fa35c11e31690e070eafb282d491544ca033dd093a0f0b97a09a4a44",
+      "size": 30676,
+      "level": 101,
+      "summary": "Coherent read-only preflight check (a7cread_v1: 51 av + 40 lm sites)"
+    },
+    "dump": {
+      "file": "libJit_a7c_dump.so",
+      "sha256": "25f7f9a9cef57b4a7d13a498b29fa25d769c0058738c8ab7836eaf4a2e6570b1",
+      "size": 35712,
+      "level": 102,
+      "summary": "Coherent read-only diagnostic dump + DDR pages (a7cread_v1)"
+    }
+  },
+  "packs": {
+    "core_open_gate": {
+      "label": "Core 3:2 Open Gate (Sensor Squeezed 3840x2160)",
+      "required": true,
+      "apply_steps": [
+        "L5"
+      ],
+      "putback_steps": [
+        "L6"
+      ],
+      "summary": "Expands 4K24p split-half sensor readout to full 6000x4000 (3:2) vertically squeezed into standard 3840x2160 XAVC S 4K"
+    },
+    "raster_2560": {
+      "label": "True 3840x2560 3:2 Raster (Experimental)",
+      "required": false,
+      "default_enabled": false,
+      "apply_steps": [
+        "L16",
+        "L19"
+      ],
+      "putback_steps": [
+        "L20",
+        "L17"
+      ],
+      "summary": "Experimental native 3840x2560 H.264 output across movie size, encoder descriptors, VCD profiles, and libmpr (leave off for Safe Daily 3:2)"
+    }
+  },
+  "steps": {
+    "L5": {
+      "file": "libJit_a7c_L5.so",
+      "sha256": "aa9cbc84bf3beb86c1753d18588236e8b93829c7910c92c5c43c42f81bcfc1d8",
+      "size": 14964,
+      "level": 205,
+      "summary": "Apply sensor 3:2 full-height readout (ogsq_a7c_v1: 22 sites)"
+    },
+    "L6": {
+      "file": "libJit_a7c_L6.so",
+      "sha256": "726a32821e3c5d306eb86220655c2941916eb415925e7d9c2d6997dff1776beb",
+      "size": 14988,
+      "level": 206,
+      "summary": "Put back sensor 3:2 full-height readout (ogsq_a7c_v1)"
+    },
+    "L16": {
+      "file": "libJit_a7c_L16.so",
+      "sha256": "8748d2a053e22a9f37e04fe3c7b6b438280c9ccc8a5e1a1e108f210fd5eeabeb",
+      "size": 13980,
+      "level": 216,
+      "summary": "Apply movie output height 2160 -> 2560 (outsz2560_a7c_v1: 9 sites)"
+    },
+    "L17": {
+      "file": "libJit_a7c_L17.so",
+      "sha256": "87ab92a761a2e2e1bc9492b24ec219cd18a33bc6370fdfa29e5bb1a73db4c598",
+      "size": 13984,
+      "level": 217,
+      "summary": "Put back movie output height (outsz2560_a7c_v1)"
+    },
+    "L19": {
+      "file": "libJit_a7c_L19.so",
+      "sha256": "702b834fe66de9d82ea85e6cd5fb6eeed68e26f9d000b85ffe0871633dfeee5d",
+      "size": 21368,
+      "level": 219,
+      "summary": "Apply encoder/muxer 3840x2560 tables (ogfile2560_a7c_v1: 20 av + 40 lm sites)"
+    },
+    "L20": {
+      "file": "libJit_a7c_L20.so",
+      "sha256": "72ae948f0576ac06eafd7268b67cef13101bb7dcb3d4c1dcf4adf55617eab004",
+      "size": 21388,
+      "level": 220,
+      "summary": "Put back encoder/muxer 3840x2560 tables (ogfile2560_a7c_v1)"
+    }
+  }
+}

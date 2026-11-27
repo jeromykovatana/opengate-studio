@@ -20,14 +20,65 @@ data class SessionSnapshot(
     val state: String = "unknown"
 )
 
+data class UsbAutoDetect(
+    val bodyId: String?,
+    val productName: String?,
+    val isFx3aBlocked: Boolean,
+    val warning: String?
+)
+
 object QuickReapplyPlanner {
     val safeDailyPacks: List<String> = listOf("mp4_3x2", "screen_3x2")
+    val cinemaFullPacks: List<String> = listOf("mp4_3x2", "screen_3x2", "hdmi32", "high_bitrate", "xavc_si")
+    private const val FX3A_WARNING = "ILME-FX3A is not supported by FX3 7.02 kits"
     private val unverifiedStates = setOf(
         "not_ready",
         "unverified",
         "applied_unverified",
         "stock_unverified"
     )
+
+    fun detectCameraFromUsbDevices(devices: List<Map<String, Any>>): UsbAutoDetect {
+        var firstProductName: String? = null
+        var detectedBodyId: String? = null
+        var detectedProductName: String? = null
+
+        for (dev in devices) {
+            val rawName = (dev["productName"] as? String)?.trim().orEmpty()
+            if (rawName.isEmpty()) continue
+            if (firstProductName == null) firstProductName = rawName
+
+            val upper = rawName.uppercase()
+            // Check ILME-FX3A / FX3A before ILME-FX3 so FX3A is never misclassified as FX3.
+            if (upper.contains("ILME-FX3A") || upper.contains("FX3A")) {
+                return UsbAutoDetect(
+                    bodyId = null,
+                    productName = rawName,
+                    isFx3aBlocked = true,
+                    warning = FX3A_WARNING
+                )
+            }
+            if (detectedBodyId == null) {
+                val matchedBody = when {
+                    upper.contains("ZV-E1") -> "zve1_202"
+                    upper.contains("ILCE-7SM3") -> "a7s3_501"
+                    upper.contains("ILME-FX3") -> "fx3_702"
+                    else -> null
+                }
+                if (matchedBody != null) {
+                    detectedBodyId = matchedBody
+                    detectedProductName = rawName
+                }
+            }
+        }
+
+        return UsbAutoDetect(
+            bodyId = detectedBodyId,
+            productName = detectedProductName ?: firstProductName,
+            isFx3aBlocked = false,
+            warning = null
+        )
+    }
 
     private fun matchesSelectedBody(selectedBodyId: String?, candidateBodyId: String?): Boolean {
         if (selectedBodyId.isNullOrEmpty() || candidateBodyId.isNullOrEmpty()) return true
@@ -64,6 +115,9 @@ object QuickReapplyPlanner {
             if (liveSession.kind == "putback" && liveSession.state != "stock") {
                 return QuickReapplyDecision.RunRecoveryPreflightFirst
             }
+            if ((liveSession.kind == "closing_dump" || liveSession.kind == "express_apply") && liveSession.state != "applied") {
+                return QuickReapplyDecision.RunRecoveryPreflightFirst
+            }
         }
 
         val isMockOrigin = offlineMockCamera || resultSource == "mock" || latestSession?.mode == "mock"
@@ -93,7 +147,13 @@ object QuickReapplyPlanner {
         val hasLiveSource = resultSource in setOf("live_usb", "android_usb", "liveInApp", "liveTerminal")
 
         if (liveSession != null) {
-            if (liveSession.state == "applied" && liveSession.ok && liveSession.ready && liveSession.verified != false) {
+            if (
+                liveSession.state == "applied" &&
+                liveSession.ok &&
+                liveSession.ready &&
+                liveSession.verified != false &&
+                liveSession.kind in setOf("closing_dump", "express_apply", "preflight", "dump")
+            ) {
                 return QuickReapplyDecision.AlreadyApplied
             }
             val isPreflightKind = liveSession.kind == "preflight" || liveSession.kind == "dump"

@@ -306,4 +306,96 @@ struct QuickReapplyTests {
             ) == .alreadyApplied
         )
     }
+
+    @Test("Verified live express_apply session reports alreadyApplied while unverified/contradictory/mock do not")
+    func testExpressApplyQuickReapplyState() {
+        let liveExpressApplied = LatestSessionResult(
+            ok: true,
+            found: true,
+            bodyId: "zve1_202",
+            sessionId: "session_express_1",
+            kind: "express_apply",
+            mode: "live_usb",
+            ready: true,
+            verified: true,
+            state: "applied",
+            verdict: "VERDICT READY (open gate applied)",
+            activePacks: ["core_open_gate", "mp4_3x2", "screen_3x2"]
+        )
+        #expect(
+            QuickReapplyPlanner.plan(
+                pinsVerified: true,
+                selectedBodyId: "zve1_202",
+                offlineMockCamera: false,
+                latestSession: liveExpressApplied,
+                resultSource: .liveInApp
+            ) == .alreadyApplied
+        )
+
+        let unverifiedExpress = LatestSessionResult(
+            ok: true,
+            found: true,
+            bodyId: "zve1_202",
+            sessionId: "session_express_bad",
+            kind: "express_apply",
+            mode: "live_usb",
+            ready: false,
+            verified: false,
+            state: "applied_unverified",
+            verdict: "VERDICT UNVERIFIED"
+        )
+        #expect(
+            QuickReapplyPlanner.plan(
+                pinsVerified: true,
+                selectedBodyId: "zve1_202",
+                offlineMockCamera: false,
+                latestSession: unverifiedExpress,
+                resultSource: .liveInApp
+            ) == .runRecoveryPreflightFirst
+        )
+
+        let contradictoryExpress = LatestSessionResult(
+            ok: true,
+            found: true,
+            bodyId: "zve1_202",
+            sessionId: "session_express_contradictory",
+            kind: "express_apply",
+            mode: "live_usb",
+            ready: true,
+            verified: true,
+            state: "stock",
+            verdict: "VERDICT CONTRADICTORY"
+        )
+        #expect(
+            QuickReapplyPlanner.plan(
+                pinsVerified: true,
+                selectedBodyId: "zve1_202",
+                offlineMockCamera: false,
+                latestSession: contradictoryExpress,
+                resultSource: .liveInApp
+            ) == .runRecoveryPreflightFirst
+        )
+
+        let mockExpress = LatestSessionResult(
+            ok: true,
+            found: true,
+            bodyId: "zve1_202",
+            sessionId: "session_express_mock",
+            kind: "express_apply",
+            mode: "mock",
+            ready: true,
+            verified: true,
+            state: "applied",
+            verdict: "VERDICT READY (open gate applied)"
+        )
+        #expect(
+            QuickReapplyPlanner.plan(
+                pinsVerified: true,
+                selectedBodyId: "zve1_202",
+                offlineMockCamera: false,
+                latestSession: mockExpress,
+                resultSource: .mock
+            ) == .runPreflightThenSafeDailyApply
+        )
+    }
 }

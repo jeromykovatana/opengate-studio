@@ -67,30 +67,43 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def parse_elf64_aarch64_dynsym(data: bytes) -> tuple[list[str], list[str]]:
-    """Return (undefined_symbols, defined_symbols) from an ELF64 AArch64 .so."""
+def parse_elf_dynsym(data: bytes) -> tuple[list[str], list[str]]:
+    """Return (undefined_symbols, defined_symbols) from an ELF64 AArch64 or ELF32 ARM .so."""
     if len(data) < 64 or data[:4] != b"\x7fELF":
         raise ValueError("Not an ELF binary")
-    if data[4] != 2 or data[5] != 1:
-        raise ValueError("Not ELF64 little-endian")
+    ei_class, ei_data = data[4], data[5]
+    if ei_data != 1:
+        raise ValueError(f"Expected little-endian ELF, got ei_data={ei_data}")
     e_type, e_machine = struct.unpack_from("<HH", data, 16)
-    if e_type != 3 or e_machine != 183:
-        raise ValueError(f"Expected ET_DYN(3)/EM_AARCH64(183), got ({e_type}, {e_machine})")
-    e_shoff, _, e_ehsize, e_phentsize, e_phnum, e_shentsize, e_shnum, e_shstrndx = struct.unpack_from("<QIHHHHHH", data, 40)
+    if ei_class == 2:
+        if e_type != 3 or e_machine != 183:
+            raise ValueError(f"Expected ET_DYN(3)/EM_AARCH64(183), got ({e_type}, {e_machine})")
+        e_shoff, _, _e_ehsize, _e_phentsize, _e_phnum, e_shentsize, e_shnum, _e_shstrndx = struct.unpack_from("<QIHHHHHH", data, 40)
+        sh_fmt, sh_idx_off, sh_idx_sz, sh_idx_lk, sh_idx_es = "<IIQQQQIIQQ", 4, 5, 6, 9
+        sym_fmt, default_ent = "<IBBHQQ", 24
+    elif ei_class == 1:
+        if e_type != 3 or e_machine != 40:
+            raise ValueError(f"Expected ET_DYN(3)/EM_ARM(40), got ({e_type}, {e_machine})")
+        e_shoff, _, _e_ehsize, _e_phentsize, _e_phnum, e_shentsize, e_shnum, _e_shstrndx = struct.unpack_from("<IIHHHHHH", data, 32)
+        sh_fmt, sh_idx_off, sh_idx_sz, sh_idx_lk, sh_idx_es = "<10I", 4, 5, 6, 9
+        sym_fmt, default_ent = "<IIIBBH", 16
+    else:
+        raise ValueError(f"Unsupported ELF class: {ei_class}")
+
     if e_shoff == 0 or e_shnum == 0:
         return [], []
 
     sections = []
     for i in range(e_shnum):
         off = e_shoff + i * e_shentsize
-        sh = struct.unpack_from("<IIQQQQIIQQ", data, off)
+        sh = struct.unpack_from(sh_fmt, data, off)
         sections.append({
             "name_off": sh[0],
             "type": sh[1],
-            "offset": sh[4],
-            "size": sh[5],
-            "link": sh[6],
-            "entsize": sh[9],
+            "offset": sh[sh_idx_off],
+            "size": sh[sh_idx_sz],
+            "link": sh[sh_idx_lk],
+            "entsize": sh[sh_idx_es],
         })
 
     undef: list[str] = []
@@ -100,11 +113,14 @@ def parse_elf64_aarch64_dynsym(data: bytes) -> tuple[list[str], list[str]]:
             continue
         str_sec = sections[sec["link"]]
         strtab = data[str_sec["offset"] : str_sec["offset"] + str_sec["size"]]
-        entsize = sec["entsize"] or 24
+        entsize = sec["entsize"] or default_ent
         count = sec["size"] // entsize
         for idx in range(count):
             sym_off = sec["offset"] + idx * entsize
-            st_name, st_info, st_other, st_shndx, st_value, st_size = struct.unpack_from("<IBBHQQ", data, sym_off)
+            if ei_class == 2:
+                st_name, _st_info, _st_other, st_shndx, _st_value, _st_size = struct.unpack_from(sym_fmt, data, sym_off)
+            else:
+                st_name, _st_value, _st_size, _st_info, _st_other, st_shndx = struct.unpack_from(sym_fmt, data, sym_off)
             if idx == 0 and st_name == 0:
                 continue
             end_null = strtab.find(b"\x00", st_name)
@@ -114,6 +130,11 @@ def parse_elf64_aarch64_dynsym(data: bytes) -> tuple[list[str], list[str]]:
             else:
                 defined.append(name)
     return undef, defined
+
+
+def parse_elf64_aarch64_dynsym(data: bytes) -> tuple[list[str], list[str]]:
+    """Backward-compatible alias for ELF64/ELF32 dynsym parsing."""
+    return parse_elf_dynsym(data)
 
 
 def _extract_entry_file_sha(entry: Any) -> tuple[str | None, str | None]:

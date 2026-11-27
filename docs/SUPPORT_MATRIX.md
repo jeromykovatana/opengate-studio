@@ -43,6 +43,10 @@
 | `fx3_702` | `7.02` | `23.98p / 25p / 29.97p` | XAVC S-I 4K | `xavc_si` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Orthogonal XAVC S-I delta + dual-core row split Unicorn-verified; awaiting hardware test. |
 | `fx3_702` | `7.02` | `23.98p / 25p / 29.97p` | Playback | `fx3_playback` | `experimental` | ✅ | ✅ | ⬜ | — | — | — | — | ⬜ | ⬜ | ⬜ | Disabled by default (P29/P30 avdec8k_fx3_v1). Untested on hardware. |
 | `zve1_202 / a7s3_501 / fx3_702` | `2.02 / 5.01 / 7.02` | `50p / 60p / 120p` | Any | `All open-gate packs` | `blocked` | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | Blocked by IMX510 sensor pixel-clock/readout ceiling; switches crash or distort. |
+| `a7c_203` | `2.03` | `23.98p` | XAVC S 4K 100M | `core_open_gate` | `recommended` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | BIONZ X CXD90045 ARM32 L5/L6: 6000x4000 full-height sensor readout squeezed into 3840x2160 container (1.185x post vertical de-squeeze). |
+| `a7c_203` | `2.03` | `23.98p` | XAVC S 4K 100M | `raster_2560` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Experimental L16+L19/L20+L17 square-pixel 3840x2560 raster + av-cam DDR tables; awaiting hardware test. |
+| `zve10_203` | `2.03` | `23.98p` | XAVC S 4K 100M | `core_open_gate` | `recommended` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | BIONZ X CXD90045 ARM32 L5/L6: 6000x4000 full-height sensor readout squeezed into 3840x2160 container (1.185x post vertical de-squeeze). |
+| `zve10_203` | `2.03` | `23.98p` | XAVC S 4K 100M | `raster_2560` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | Experimental L16+L19/L20+L17 square-pixel 3840x2560 raster + av-cam DDR tables; awaiting hardware test. |
 | `a7iv_602` | `6.02` | `23.98p / 25p / 29.97p` | Clip Inspector Only | `Upstream a7iv-open-gate-test` | `external` | — | — | — | 🟡 | — | — | — | — | — | — | Studio inspects a7 IV 3840x2560 and 5760x3840 clips; patching remains in upstream a7iv-open-gate-test. |
 
 ## Public Conformance Corpus (Call for Untouched Camera Originals)

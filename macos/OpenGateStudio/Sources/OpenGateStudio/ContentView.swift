@@ -98,6 +98,8 @@ public struct ContentView: View {
                 Text("ZV-E1 2.02").tag("zve1_202")
                 Text("a7S III 5.01").tag("a7s3_501")
                 Text("FX3 7.02").tag("fx3_702")
+                Text("a7C 2.03").tag("a7c_203")
+                Text("ZV-E10 2.03").tag("zve10_203")
             } else {
                 ForEach(appState.bodies) { body in
                     Text(body.displayName).tag(body.bodyId)
@@ -106,7 +108,7 @@ public struct ContentView: View {
         }
         .pickerStyle(.menu)
         .labelsHidden()
-        .frame(width: 145)
+        .frame(width: 155)
         .disabled(appState.isLiveSessionActive)
         .help("Select Sony Camera Body & Firmware")
     }

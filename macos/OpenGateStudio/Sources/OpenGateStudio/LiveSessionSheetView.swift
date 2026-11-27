@@ -83,13 +83,21 @@ public struct LiveSessionSheetView: View {
                             Text("Session Summary")
                                 .font(.subheadline.weight(.semibold))
                             Spacer()
-                            let stepNoun = session.estimatedStepCount == 1 ? "step" : "steps"
-                            let suffix = session.action == .apply
-                                ? " + closing verify"
-                                : (session.action == .putback ? " + stock verify" : "")
-                            Text("\(session.estimatedStepCount) \(stepNoun)\(suffix)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            if session.isExpressAction {
+                                StudioStatusPill(
+                                    expressBadgeText(for: session),
+                                    systemImage: "bolt.fill",
+                                    color: .green
+                                )
+                            } else {
+                                let stepNoun = session.estimatedStepCount == 1 ? "step" : "steps"
+                                let suffix = session.action == .apply
+                                    ? " + closing verify"
+                                    : (session.action == .putback ? " + stock verify" : "")
+                                Text("\(session.estimatedStepCount) \(stepNoun)\(suffix)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
 
                         HStack(spacing: 22) {
@@ -101,7 +109,7 @@ public struct LiveSessionSheetView: View {
                             )
                         }
 
-                        if session.action == .apply && !session.selectedPacks.isEmpty {
+                        if (session.action == .apply || session.action == .expressApply) && !session.selectedPacks.isEmpty {
                             Divider()
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Enabled Features")
@@ -131,7 +139,9 @@ public struct LiveSessionSheetView: View {
                         safetyCalloutRow(
                             icon: "film",
                             color: .orange,
-                            text: "Shoot 24p (23.98p), 25p (PAL), or 30p (29.97p) only while Open-Gate is active. Do not switch to 50p, 60p, or 120p."
+                            text: (session.bodyId == "a7c_203" || session.bodyId == "zve10_203")
+                                ? "Shoot XAVC S 4K 24p (23.98p) 100M while Open-Gate is active (1.185x vertical de-squeeze in post unless True 3840x2560 Raster is enabled)."
+                                : "Shoot 24p (23.98p), 25p (PAL), or 30p (29.97p) only while Open-Gate is active. Do not switch to 50p, 60p, or 120p."
                         )
                         if session.bodyId == "fx3_702" {
                             safetyCalloutRow(
@@ -160,38 +170,57 @@ public struct LiveSessionSheetView: View {
                 // Mandatory Safety Confirmation Switches
                 StudioSurface(accent: session.canAuthorizeAndStart ? .green : .orange, padding: 15) {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Confirm Before Authorizing")
+                        Text(session.isExpressAction ? "One-Time Express Safety Consent" : "Confirm Before Authorizing")
                             .font(.subheadline.weight(.semibold))
 
-                        Toggle(isOn: Binding(
-                            get: { appState.activeLiveSession?.confirmedFirmwareAndUsb ?? false },
-                            set: { appState.activeLiveSession?.confirmedFirmwareAndUsb = $0 }
-                        )) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("I verified camera firmware \(session.requiredFirmware) and USB Connection = Mass Storage")
-                                    .font(.callout.weight(.medium))
-                                Text("Checked in MENU > Setup > Setup Option > Version and USB Connection Mode.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .toggleStyle(.switch)
-
-                        if session.requiresVolatileRamConfirmation {
-                            Divider()
+                        if session.isExpressAction {
                             Toggle(isOn: Binding(
                                 get: { appState.activeLiveSession?.confirmedVolatileRam ?? false },
-                                set: { appState.activeLiveSession?.confirmedVolatileRam = $0 }
+                                set: { newValue in
+                                    appState.activeLiveSession?.confirmedVolatileRam = newValue
+                                    appState.activeLiveSession?.confirmedFirmwareAndUsb = newValue
+                                }
                             )) {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("I understand this writes volatile RAM only (keep camera ON between steps; battery pull >= 10s restores stock)")
+                                    Text("I understand OpenGate Studio patches volatile RAM only (shoot 24p/25p/30p; battery pull >= 10s restores stock)")
                                         .font(.callout.weight(.medium))
-                                    Text("Nothing is flashed to permanent camera memory or written to your SD card.")
+                                    Text("Saved once for future 1-click runs. Connect camera in Stills mode (USB Mass Storage, FW \(session.requiredFirmware)).")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
                             }
                             .toggleStyle(.switch)
+                        } else {
+                            Toggle(isOn: Binding(
+                                get: { appState.activeLiveSession?.confirmedFirmwareAndUsb ?? false },
+                                set: { appState.activeLiveSession?.confirmedFirmwareAndUsb = $0 }
+                            )) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("I verified camera firmware \(session.requiredFirmware) and USB Connection = Mass Storage")
+                                        .font(.callout.weight(.medium))
+                                    Text("Checked in MENU > Setup > Setup Option > Version and USB Connection Mode.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .toggleStyle(.switch)
+
+                            if session.requiresVolatileRamConfirmation {
+                                Divider()
+                                Toggle(isOn: Binding(
+                                    get: { appState.activeLiveSession?.confirmedVolatileRam ?? false },
+                                    set: { appState.activeLiveSession?.confirmedVolatileRam = $0 }
+                                )) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("I understand this writes volatile RAM only (keep camera ON between steps; battery pull >= 10s restores stock)")
+                                            .font(.callout.weight(.medium))
+                                        Text("Nothing is flashed to permanent camera memory or written to your SD card.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .toggleStyle(.switch)
+                            }
                         }
                     }
                 }
@@ -277,6 +306,13 @@ public struct LiveSessionSheetView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     Spacer()
+                    if session.isExpressAction {
+                        StudioStatusPill(
+                            expressBadgeText(for: session),
+                            systemImage: "bolt.fill",
+                            color: .green
+                        )
+                    }
                     if !session.steps.isEmpty {
                         Text("\(session.completedProgressUnits) / \(session.steps.count + (session.includesClosingDump ? 1 : 0)) steps")
                             .font(.caption.monospacedDigit().weight(.semibold))
@@ -472,11 +508,15 @@ public struct LiveSessionSheetView: View {
                 return isReady
                     ? "Open-Gate Applied — Ready to Shoot (24p / 25p / 30p)"
                     : "Apply Completed — Verification Needs Review"
+            case .expressApply:
+                return isReady
+                    ? "Open-Gate 3:2 Active — Unplug USB-C, Switch to Movie (24p/25p/30p) & Shoot!"
+                    : "Express Apply Completed — Verification Needs Review"
             case .preflight, .dump:
                 return isReady
                     ? "Camera Verified Clean RAM — Ready to Apply"
                     : "Preflight Blocked — Camera Not Ready"
-            case .putback:
+            case .putback, .expressPutback:
                 return isReady
                     ? "Camera Restored & Verified Stock RAM"
                     : "Put Back Completed — Stock Verification Unconfirmed"
@@ -485,7 +525,7 @@ public struct LiveSessionSheetView: View {
 
         let subtitle: String = {
             switch session.action {
-            case .apply:
+            case .apply, .expressApply:
                 return isReady
                     ? "Keep the camera ON while shooting 24p / 25p / 30p open-gate clips. Pull battery >= 10s anytime to return to stock."
                     : (session.completionVerdict ?? "Check the closing verification verdict before recording.")
@@ -493,7 +533,7 @@ public struct LiveSessionSheetView: View {
                 return isReady
                     ? "You can now apply Open-Gate 3:2 in the Camera workspace."
                     : "Pull the battery for >= 10 seconds to clear residual RAM state, then run Read-Only Check again."
-            case .putback:
+            case .putback, .expressPutback:
                 return isReady
                     ? "Volatile RAM patches were reversed and verified back to stock state."
                     : "Closing stock verification did not pass. Pull battery >= 10s to guarantee clean stock RAM."
@@ -514,6 +554,12 @@ public struct LiveSessionSheetView: View {
                             .font(.callout)
                     }
                     Spacer()
+                }
+
+                if isReady && session.action == .expressApply && session.bodyId == "a7s3_501" {
+                    Text("Tip: On a7S III, if Movie live view looks purple on first switch, tap Record start/stop once.")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.purple)
                 }
 
                 if let verdict = session.completionVerdict, !verdict.isEmpty {
@@ -844,19 +890,26 @@ public struct LiveSessionSheetView: View {
         }
     }
 
+    private func expressBadgeText(for session: LiveSessionPresentation) -> String {
+        if session.action == .expressApply && session.isSinglePassFused {
+            return "1-Pass Express Apply (~6s · Zero Cable Replugs)"
+        }
+        return "Single-Session Express (Zero Cable Replugs)"
+    }
+
     private func actionIcon(for action: LiveCommandAction) -> String {
         switch action {
         case .preflight, .dump: return "magnifyingglass.circle.fill"
-        case .apply: return "bolt.shield.fill"
-        case .putback: return "arrow.uturn.backward.circle.fill"
+        case .apply, .expressApply: return "bolt.shield.fill"
+        case .putback, .expressPutback: return "arrow.uturn.backward.circle.fill"
         }
     }
 
     private func actionAccent(for action: LiveCommandAction) -> Color {
         switch action {
         case .preflight, .dump: return .blue
-        case .apply: return .green
-        case .putback: return .orange
+        case .apply, .expressApply: return .green
+        case .putback, .expressPutback: return .orange
         }
     }
 

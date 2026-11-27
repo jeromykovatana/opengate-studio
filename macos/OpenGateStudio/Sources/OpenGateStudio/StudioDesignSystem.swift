@@ -161,6 +161,38 @@ public struct BodySetupProfile {
                 isFX3: true,
                 isPowerSwitchResetBody: false
             )
+        case "a7c_203":
+            let fw = bodyInfo?.firmware ?? "2.03"
+            return BodySetupProfile(
+                bodyId: id,
+                shortModelName: "Sony a7C",
+                displayName: bodyInfo?.displayName ?? "a7C 2.03",
+                requiredFirmware: fw,
+                firmwareBadge: "a7C -> Ver. \(fw)",
+                firmwareCaution: nil,
+                bodySpecificMovieSetting: "File Format = XAVC S 4K · 24p 100M",
+                stillsModeTitle: "Mode Dial -> Stills",
+                stillsShortHint: "top dial on M / S / A / P",
+                stillsModeInstruction: "Turn the top mode dial to a Stills position (M / S / A / P) before connecting USB.",
+                isFX3: false,
+                isPowerSwitchResetBody: true
+            )
+        case "zve10_203":
+            let fw = bodyInfo?.firmware ?? "2.03"
+            return BodySetupProfile(
+                bodyId: id,
+                shortModelName: "Sony ZV-E10",
+                displayName: bodyInfo?.displayName ?? "ZV-E10 2.03",
+                requiredFirmware: fw,
+                firmwareBadge: "ZV-E10 -> Ver. \(fw)",
+                firmwareCaution: nil,
+                bodySpecificMovieSetting: "File Format = XAVC S 4K · 24p 100M",
+                stillsModeTitle: "Still/Movie/S&Q Button -> Still",
+                stillsShortHint: "Still/Movie/S&Q set to Still",
+                stillsModeInstruction: "Press the top Still/Movie/S&Q button until the camera is in Stills mode.",
+                isFX3: false,
+                isPowerSwitchResetBody: true
+            )
         default:
             let fw = bodyInfo?.firmware ?? "2.02"
             return BodySetupProfile(
@@ -215,12 +247,26 @@ public struct ModularPackDescriptor: Identifiable {
     public static func descriptor(for packId: String, bodyId: String) -> ModularPackDescriptor {
         switch packId {
         case "core_open_gate":
+            let coreSubtitle: String
+            if bodyId == "a7c_203" || bodyId == "zve10_203" {
+                coreSubtitle = "Enables full 6000x4000 3:2 sensor readout squeezed into 3840x2160 XAVC S 4K (1.185x post vertical de-squeeze)."
+            } else {
+                coreSubtitle = "Enables 3840x2560 full-sensor 3:2 readout in volatile RAM."
+            }
             return ModularPackDescriptor(
                 id: packId,
                 title: "Open-Gate 3:2 Core",
-                subtitle: "Enables 3840x2560 full-sensor 3:2 readout in volatile RAM.",
+                subtitle: coreSubtitle,
                 icon: "camera.aperture",
                 tier: .recommended
+            )
+        case "raster_2560":
+            return ModularPackDescriptor(
+                id: packId,
+                title: "True 3840x2560 3:2 Raster",
+                subtitle: "Experimental native 3840x2560 H.264 output across movie size, encoder, and MP4 muxer (leave off for Safe Daily 3:2).",
+                icon: "aspectratio",
+                tier: .experimental
             )
         case "mp4_3x2":
             return ModularPackDescriptor(

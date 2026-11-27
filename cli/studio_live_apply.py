@@ -33,12 +33,16 @@ BODY_STILLS_HINT = {
     "zve1_202": "Stills mode (press Still/Movie/S&Q button until Stills)",
     "a7s3_501": "Stills mode (turn physical mode dial to M / A / S / P)",
     "fx3_702": "a still-image mode (press MODE, choose Manual Exposure / Program Auto, press centre)",
+    "a7c_203": "Stills mode (turn physical mode dial to M / A / S / P)",
+    "zve10_203": "Stills mode (press Still/Movie/S&Q button until Stills)",
 }
 
 BODY_MOVIE_HINT = {
     "zve1_202": "MOVIE mode (press Still/Movie/S&Q button; XAVC HS 4K, XAVC S 4K, or XAVC S-I 4K at 24p/23.98p, 25p PAL, or 30p/29.97p)",
     "a7s3_501": "MOVIE mode (turn physical mode dial to Movie; XAVC HS 4K, XAVC S 4K, or XAVC S-I 4K at 24p/23.98p, 25p PAL, or 30p/29.97p)",
     "fx3_702": "Movie mode (press MODE -> Movie; XAVC HS 4K, XAVC S 4K, or XAVC S-I 4K at 24p/23.98p, 25p PAL, or 30p/29.97p)",
+    "a7c_203": "MOVIE mode (turn physical mode dial to Movie; XAVC S 4K 24p/23.98p 100M)",
+    "zve10_203": "MOVIE mode (press Still/Movie/S&Q button until Movie; XAVC S 4K 24p/23.98p 100M)",
 }
 
 
@@ -1297,7 +1301,13 @@ def _run_write_flow_impl(
                 exit_code=1,
             )
 
-        say("Record ONLY in XAVC HS 4K / XAVC S 4K / XAVC S-I 4K at 24p (23.98p), 25p (PAL), or 30p (29.97p) while applied (50p/60p/120p crash or refuse).")
+        if body_id in ("a7c_203", "zve10_203"):
+            if "raster_2560" in active_packs:
+                say("Record in XAVC S 4K 24p (23.98p) 100M while applied (experimental 3840x2560 3:2 raster + squeezed fallback; 30p/S&Q untested).")
+            else:
+                say("Record ONLY in XAVC S 4K 24p (23.98p) 100M while applied (squeezed 6000x4000 3:2 inside 3840x2160 container — de-squeeze 1.185x vertically in post).")
+        else:
+            say("Record ONLY in XAVC HS 4K / XAVC S 4K / XAVC S-I 4K at 24p (23.98p), 25p (PAL), or 30p (29.97p) while applied (50p/60p/120p crash or refuse).")
         if body_id == "fx3_702":
             if "fx3_playback" in active_packs:
                 say("FX3 playback fix (P29) is applied (untested on hardware): test 1 normal 16:9 clip first, then 1 open-gate clip; if it errors, NEVER retry (retrying freezes until battery pull).")
@@ -1424,10 +1434,506 @@ def _run_write_flow_impl(
     return 0
 
 
+def _resolve_express_plan(
+    action: str,
+    body_id: str,
+    man: dict[str, Any],
+    kit_dir: Path,
+    packs_arg: str | None,
+    session_dir: Path,
+) -> tuple[bool, list[str], list[str], list[str], list[dict[str, str]], str]:
+    """Return (is_fused, batch_steps, recorded_steps, active_packs, plan_steps, closing_kind)."""
+    steps_meta = man.get("steps", {})
+    if action == "express-apply":
+        steps_run, active_packs = studio_cli.resolve_pack_plan(man, "apply", packs_arg)
+        fused = studio_cli.resolve_fused_preset(man, kit_dir, "apply", active_packs)
+        if fused is not None:
+            fused_step = fused[1]
+            return (
+                True,
+                [fused_step],
+                [fused_step],
+                active_packs,
+                [{"id": fused_step, "summary": str(steps_meta[fused_step]["summary"])}],
+                "fused_readback",
+            )
+        plan_steps = (
+            [{"id": "check", "summary": "Verify initial stock RAM state"}]
+            + [{"id": k, "summary": str(steps_meta[k]["summary"])} for k in steps_run]
+            + [{"id": "VERIFY", "summary": "Verify open-gate applied state in-place"}]
+        )
+        return False, ["check", *steps_run, "check"], list(steps_run), active_packs, plan_steps, "in_place_check"
+
+    saved_active: list[str] = []
+    if packs_arg is None:
+        latest = studio_cli._latest_session_record(session_dir, body_id, mode_filter="live_usb")
+        if latest:
+            saved_active = list(latest.get("active_packs") or [])
+    putback_steps, _ = studio_cli.resolve_pack_plan(man, "putback", packs_arg, saved_active_packs=saved_active)
+    target_packs = studio_cli._resolve_putback_target_packs(man, packs_arg, saved_active_packs=saved_active)
+    fused = studio_cli.resolve_fused_preset(man, kit_dir, "putback", target_packs)
+    if fused is not None:
+        fused_step = fused[1]
+        return (
+            True,
+            [fused_step],
+            [fused_step],
+            [],
+            [{"id": fused_step, "summary": str(steps_meta[fused_step]["summary"])}],
+            "stock_check",
+        )
+    plan_steps = (
+        [{"id": k, "summary": str(steps_meta[k]["summary"])} for k in putback_steps]
+        + [{"id": "VERIFY", "summary": "Verify stock RAM state in-place"}]
+    )
+    return False, [*putback_steps, "check"], list(putback_steps), [], plan_steps, "stock_check"
+
+
+def _simulate_express_flow(
+    action: str,
+    body_id: str,
+    man: dict[str, Any],
+    plan_steps: list[dict[str, str]],
+    recorded_steps: list[str],
+    active_packs: list[str],
+    closing_kind: str,
+    ctx: RunContext,
+) -> int:
+    fw = str(man["firmware"])
+    applying = action == "express-apply"
+    ctx.emit(
+        "plan",
+        action=action,
+        body_id=body_id,
+        camera=man["camera"],
+        firmware=fw,
+        steps=plan_steps,
+        closing_dump=False,
+        closing_kind=closing_kind,
+    )
+    total = len(plan_steps)
+    first_step_id = plan_steps[0]["id"]
+    cancel_msg = f"Cancelled safely before step 1 ({first_step_id})."
+    ctx.check_cancelled(cancel_msg, step_index=1, step_id=first_step_id)
+    title, detail = _drive_prompt_copy(body_id, first=True)
+    ctx.emit(
+        "wait_drive",
+        first=True,
+        step_index=1,
+        total_steps=total,
+        step_id=first_step_id,
+        title=title,
+        detail=detail,
+    )
+    _sleep_cancelable(0.02, ctx, step_index=1, step_id=first_step_id, message=cancel_msg)
+
+    step_delay = min(0.015, 0.10 / max(total, 1))
+    for idx, pstep in enumerate(plan_steps, 1):
+        sid = pstep["id"]
+        summary = pstep["summary"]
+        cancel_step_msg = f"Cancelled safely before step {idx} ({sid})."
+        ctx.check_cancelled(cancel_step_msg, step_index=idx, step_id=sid)
+        ctx.emit(
+            "step_start",
+            step_index=idx,
+            total_steps=total,
+            step_id=sid,
+            summary=summary,
+        )
+        say(f"[simulated express dry-run] Step {idx} of {total}: {sid} — {summary}")
+        time.sleep(step_delay)
+        outcome = (
+            ("VERDICT READY (open gate applied)" if applying else "VERDICT READY (stock preflight)")
+            if sid in ("check", "VERIFY")
+            else "DONE"
+        )
+        ctx.emit(
+            "step_done",
+            step_index=idx,
+            total_steps=total,
+            step_id=sid,
+            outcome=outcome,
+            ok=True,
+        )
+
+    verdict = "VERDICT READY (open gate applied)" if applying else "VERDICT READY (stock preflight)"
+    state = "applied" if applying else "stock"
+    ctx.emit(
+        "complete",
+        ok=True,
+        action=action,
+        body_id=body_id,
+        session_id=f"simulated_{action.replace('-', '_')}_{body_id}",
+        verdict=verdict,
+        state=state,
+        ready=True,
+        verified=True,
+        closing_kind=closing_kind,
+        steps_run=list(recorded_steps),
+        active_packs=list(active_packs) if applying else [],
+    )
+    say()
+    say("Dry run only: nothing was sent to any device.")
+    return 0
+
+
+def run_express_flow(
+    action: str,
+    body_id: str,
+    man: dict[str, Any],
+    packs_arg: str | None,
+    session_dir: Path,
+    dry_run: bool,
+    *,
+    ctx: RunContext | None = None,
+    sim_driver: Any = None,
+    connect_fn: Any = None,
+    settle_seconds: float = 0.5,
+) -> int:
+    active_ctx = _active_ctx(ctx)
+    try:
+        return _run_express_flow_impl(
+            action,
+            body_id,
+            man,
+            packs_arg,
+            session_dir,
+            dry_run,
+            active_ctx,
+            sim_driver=sim_driver,
+            connect_fn=connect_fn,
+            settle_seconds=settle_seconds,
+        )
+    finally:
+        active_ctx.close()
+
+
+def _run_express_flow_impl(
+    action: str,
+    body_id: str,
+    man: dict[str, Any],
+    packs_arg: str | None,
+    session_dir: Path,
+    dry_run: bool,
+    active_ctx: RunContext,
+    *,
+    sim_driver: Any = None,
+    connect_fn: Any = None,
+    settle_seconds: float = 0.5,
+) -> int:
+    fw = str(man["firmware"])
+    kit_dir = studio_cli.KITS_DIR / body_id
+    manifest_sha = studio_cli.compute_kit_manifest_sha256(kit_dir)
+
+    try:
+        is_fused, batch_steps, recorded_steps, active_packs, plan_steps, closing_kind = _resolve_express_plan(
+            action, body_id, man, kit_dir, packs_arg, session_dir
+        )
+    except ValueError as err:
+        return _fail(active_ctx, f"Invalid --packs: {err}")
+
+    steps_meta = man.get("steps", {})
+    readonly_meta = man.get("readonly", {})
+    for k in batch_steps:
+        entry = readonly_meta.get(k) if k in ("check", "dump") else steps_meta.get(k)
+        if not isinstance(entry, dict):
+            return _fail(active_ctx, f"Step {k} missing from {body_id} manifest. Nothing was sent.")
+        p = kit_dir / entry["file"]
+        if not p.is_file() or studio_cli._sha256_file(p) != entry["sha256"]:
+            return _fail(active_ctx, f"{p.name} missing or SHA-256 mismatch. Nothing was sent.")
+
+    applying = action == "express-apply"
+    say(f"{man['camera']} ({body_id}) firmware {fw}, {action} (single USB session): {len(plan_steps)} step(s)")
+    for idx, ps in enumerate(plan_steps, 1):
+        say(f"  {idx}. {ps['id']}  {ps['summary']}")
+
+    if dry_run:
+        if active_ctx.simulate_events:
+            return _simulate_express_flow(
+                action,
+                body_id,
+                man,
+                plan_steps,
+                recorded_steps,
+                active_packs,
+                closing_kind,
+                active_ctx,
+            )
+        for k in batch_steps:
+            run_step_dry(body_id, k)
+        say()
+        say("Dry run only: nothing was sent to any device.")
+        return 0
+
+    if active_ctx.firmware_confirmed is None:
+        confirm_firmware(fw, ctx=active_ctx)
+        if input("Type YES to write to the camera's volatile RAM: ").strip() != "YES":
+            return _fail(active_ctx, "Not confirmed. Nothing was sent.")
+
+    active_ctx.emit(
+        "plan",
+        action=action,
+        body_id=body_id,
+        camera=man["camera"],
+        firmware=fw,
+        steps=plan_steps,
+        closing_dump=False,
+        closing_kind=closing_kind,
+    )
+    first_step_id = plan_steps[0]["id"]
+    total = len(plan_steps)
+    cancel_msg = f"Cancelled safely before step 1 ({first_step_id})."
+    active_ctx.check_cancelled(cancel_msg, step_index=1, step_id=first_step_id)
+
+    if sim_driver is None:
+        if not wait_for_drive(
+            body_id,
+            first=True,
+            ctx=active_ctx,
+            step_index=1,
+            total_steps=total,
+            step_id=first_step_id,
+        ):
+            return _fail(
+                active_ctx,
+                f"Camera did not appear as USB drive before step 1 ({first_step_id}).",
+                step_index=1,
+                step_id=first_step_id,
+                left_behind_flag=False,
+            )
+    else:
+        title, detail = _drive_prompt_copy(body_id, first=True)
+        active_ctx.emit(
+            "wait_drive",
+            first=True,
+            step_index=1,
+            total_steps=total,
+            step_id=first_step_id,
+            title=title,
+            detail=detail,
+        )
+
+    active_ctx.check_cancelled(cancel_msg, step_index=1, step_id=first_step_id)
+
+    before_run = snapshot_ct6_folders()
+    failure_state: dict[str, Any] = {
+        "message": None,
+        "step_index": None,
+        "step_id": None,
+        "wrote_any": False,
+    }
+
+    def _on_step_start(idx: int, tot: int, _sid: str, _summary: str) -> None:
+        ev = plan_steps[idx - 1]
+        active_ctx.emit(
+            "step_start",
+            step_index=idx,
+            total_steps=tot,
+            step_id=ev["id"],
+            summary=ev["summary"],
+        )
+
+    def _on_step_result(idx: int, tot: int, sid: str, facts: dict[str, Any], _out: dict[str, Any]) -> bool:
+        ev = plan_steps[idx - 1]
+        ev_id = ev["id"]
+        s3 = facts.get("s3") or {}
+        header_ok = facts.get("header_ok") is True
+        complete_ok = facts.get("complete") is True
+        problems_cnt = int(facts.get("problems") or 0)
+
+        if is_fused:
+            ok = header_ok and complete_ok and problems_cnt == 0 and s3.get("ok") is True
+            outcome = str(s3.get("outcome") or ("DONE" if ok else "FAILED"))
+            active_ctx.emit(
+                "step_done",
+                step_index=idx,
+                total_steps=tot,
+                step_id=ev_id,
+                outcome=outcome,
+                ok=ok,
+            )
+            if not ok:
+                probs = list(s3.get("problem_lines") or [])
+                detail = probs[0] if probs else f"outcome {outcome}"
+                failure_state["message"] = f"STOPPED at {ev_id}: {detail}"
+                failure_state["step_index"] = idx
+                failure_state["step_id"] = ev_id
+                return False
+            failure_state["wrote_any"] = True
+            return True
+
+        if applying and idx == 1 and sid == "check":
+            ready_ok = header_ok and complete_ok and problems_cnt == 0 and s3.get("ready") is True
+            verdict = str(s3.get("verdict") or "VERDICT NOT READY")
+            active_ctx.emit(
+                "step_done",
+                step_index=idx,
+                total_steps=tot,
+                step_id=ev_id,
+                outcome=verdict,
+                ok=ready_ok,
+            )
+            if not ready_ok:
+                failure_state["message"] = (
+                    "STOPPED at initial check: camera RAM is not ready "
+                    "(warm power-switch mixed state or non-stock RAM); pull battery >= 10s. Nothing was written."
+                )
+                failure_state["step_index"] = idx
+                failure_state["step_id"] = ev_id
+                return False
+            return True
+
+        if ev_id == "VERIFY" and sid == "check":
+            want_state = "applied" if applying else "stock"
+            want_verdict = "VERDICT READY (open gate applied)" if applying else "VERDICT READY (stock preflight)"
+            got_state = str(s3.get("state") or "not_ready")
+            got_verdict = str(s3.get("verdict") or "VERDICT NOT READY")
+            ver_ok = (
+                header_ok
+                and complete_ok
+                and problems_cnt == 0
+                and s3.get("ready") is True
+                and int(s3.get("identity_differs") or 0) == 0
+                and not s3.get("problem_lines")
+                and got_state == want_state
+                and got_verdict == want_verdict
+            )
+            active_ctx.emit(
+                "step_done",
+                step_index=idx,
+                total_steps=tot,
+                step_id=ev_id,
+                outcome=got_verdict,
+                ok=ver_ok,
+            )
+            if not ver_ok:
+                failure_state["message"] = f"In-place verification failed: expected {want_verdict}, got {got_verdict}"
+                failure_state["step_index"] = idx
+                failure_state["step_id"] = ev_id
+                return False
+            return True
+
+        if not applying and body_id == "zve1_202" and sid == "L14" and s3.get("outcome") == "NOTHING WRITTEN":
+            active_ctx.emit(
+                "step_done",
+                step_index=idx,
+                total_steps=tot,
+                step_id=ev_id,
+                outcome="NOTHING WRITTEN",
+                ok=True,
+            )
+            return True
+
+        step_ok = header_ok and complete_ok and problems_cnt == 0 and s3.get("ok") is True
+        outcome = str(s3.get("outcome") or ("DONE" if step_ok else "FAILED"))
+        active_ctx.emit(
+            "step_done",
+            step_index=idx,
+            total_steps=tot,
+            step_id=ev_id,
+            outcome=outcome,
+            ok=step_ok,
+        )
+        if not step_ok:
+            failure_state["message"] = f"STOPPED at step {idx} ({ev_id}): outcome {outcome}. Pull battery >= 10s to return to clean stock."
+            failure_state["step_index"] = idx
+            failure_state["step_id"] = ev_id
+            return False
+        failure_state["wrote_any"] = True
+        return True
+
+    batch_res = ssr.run_batch_single_session(
+        body_id,
+        batch_steps,
+        fw,
+        writes_memory=True,
+        express=True,
+        on_step_start=_on_step_start,
+        on_step_result=_on_step_result,
+        cancel_check=active_ctx.is_cancelled,
+        sim_driver=sim_driver,
+        connect_fn=connect_fn,
+        settle_seconds=settle_seconds,
+        session_root=private_root(),
+    )
+
+    if batch_res.get("cancelled"):
+        c_idx = batch_res.get("cancelled_step_index")
+        c_sid = batch_res.get("cancelled_step_id")
+        raise CancelledRun(
+            f"Cancelled safely before step {c_idx} ({c_sid}).",
+            step_index=c_idx,
+            step_id=c_sid,
+        )
+
+    lb = bool(batch_res.get("library_on_camera_after")) or left_behind(before_run)
+    if not batch_res.get("ok"):
+        err_msg = failure_state["message"] or batch_res.get("stopped") or f"{action} failed."
+        fail_state = "not_ready" if not failure_state["wrote_any"] else ("unverified" if applying else "stock_unverified")
+        studio_cli._write_session(session_dir, {
+            "kind": "express_apply" if applying else "putback",
+            "body_id": body_id,
+            "mode": "live_usb",
+            "ready": False,
+            "verified": False,
+            "state": fail_state,
+            "verdict": f"VERDICT NOT READY ({err_msg})",
+            "closing_kind": closing_kind,
+            "manifest_sha256": manifest_sha,
+            "active_packs": [],
+            "steps_run": recorded_steps,
+            "pins_ok": True,
+        })
+        return _fail(
+            active_ctx,
+            err_msg,
+            step_index=failure_state["step_index"],
+            step_id=failure_state["step_id"],
+            left_behind_flag=lb,
+            exit_code=1,
+        )
+
+    want_state = "applied" if applying else "stock"
+    want_verdict = "VERDICT READY (open gate applied)" if applying else "VERDICT READY (stock preflight)"
+    sid = studio_cli._write_session(session_dir, {
+        "kind": "express_apply" if applying else "putback",
+        "body_id": body_id,
+        "mode": "live_usb",
+        "ready": True,
+        "verified": True,
+        "state": want_state,
+        "verdict": want_verdict,
+        "closing_kind": closing_kind,
+        "manifest_sha256": manifest_sha,
+        "active_packs": list(active_packs) if applying else [],
+        "steps_run": recorded_steps,
+        "ct6_session": batch_res.get("ct6_session"),
+        "camera_identity": batch_res.get("camera_usb_identity") or {},
+        "pins_ok": True,
+    })
+    say()
+    say(f"Recorded {action} session {sid} in {session_dir}: {want_verdict} (state={want_state}, verified=True)")
+    active_ctx.emit(
+        "complete",
+        ok=True,
+        action=action,
+        body_id=body_id,
+        session_id=sid,
+        verdict=want_verdict,
+        state=want_state,
+        ready=True,
+        verified=True,
+        closing_kind=closing_kind,
+        steps_run=recorded_steps,
+        active_packs=list(active_packs) if applying else [],
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     global _CTX
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("action", choices=("preflight", "dump", "apply", "putback"))
+    ap.add_argument("action", choices=("preflight", "dump", "apply", "putback", "express-apply", "express-putback"))
     ap.add_argument("--body", required=True, choices=tuple(ssr.BODY_CONFIG))
     ap.add_argument("--packs", default=None, help="Comma-separated packs for apply/putback")
     ap.add_argument("--session-dir", type=Path, default=studio_cli.DEFAULT_SESSION_DIR)
@@ -1497,7 +2003,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.firmware_confirmed is not None:
             if args.firmware_confirmed != fw:
                 return _fail(ctx, f"Not {fw}. Nothing was sent.")
-            if args.action in ("apply", "putback") and not args.confirm_volatile_ram:
+            if args.action in ("apply", "putback", "express-apply", "express-putback") and not args.confirm_volatile_ram:
                 return _fail(
                     ctx,
                     f"Refusing {args.action}: --firmware-confirmed requires --confirm-volatile-ram. Nothing was sent.",
@@ -1505,6 +2011,16 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.action in ("preflight", "dump"):
             return run_readonly(args.action, args.body, man, args.session_dir, args.dry_run, ctx=ctx)
+        if args.action in ("express-apply", "express-putback"):
+            return run_express_flow(
+                args.action,
+                args.body,
+                man,
+                args.packs,
+                args.session_dir,
+                args.dry_run,
+                ctx=ctx,
+            )
         return run_write_flow(
             args.action,
             args.body,

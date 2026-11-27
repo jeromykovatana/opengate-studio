@@ -144,8 +144,10 @@ def render_readme_block(data: dict[str, Any]) -> str:
         "zve1_202": "Bytes + Emu ✅ · `23.98p` + SteadyShot HW ✅ · `25p`/`29.97p`/Experimental ⬜",
         "a7s3_501": "Bytes + Emu ✅ · `23.98p` HW ✅ · `25p`/`29.97p`/Experimental ⬜",
         "fx3_702": "Bytes + Emu ✅ · `23.98p` + PAL `25p` + 4:3 panel HW ✅ · `29.97p`/Experimental ⬜",
+        "a7c_203": "Bytes + ARM32 Emu ✅ · `23.98p` squeezed 3:2 + `raster_2560` awaiting HW test ⬜",
+        "zve10_203": "Bytes + ARM32 Emu ✅ · `23.98p` squeezed 3:2 + `raster_2560` awaiting HW test ⬜",
     }
-    for bid in ("zve1_202", "a7s3_501", "fx3_702"):
+    for bid in ("zve1_202", "a7s3_501", "fx3_702", "a7c_203", "zve10_203"):
         b = bodies[bid]
         lines.append(
             f"| **{b['camera']}** | `{b['model_id']}` | **`{b['firmware']}`** | `{bid}` | `{b['version_txt']}` | {b['helper_count']} `.so` | {hw_notes[bid]} |"

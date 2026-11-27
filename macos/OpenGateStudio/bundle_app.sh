@@ -87,7 +87,7 @@ cat > "$RESOURCES_DIR/StudioMetadata.json" << EOF
   "version": "${BUNDLE_SHORT_VERSION}",
   "license": "GPL-3.0-or-later",
   "mode": "volatile-ram-only",
-  "supported_bodies": ["zve1_202", "a7s3_501", "fx3_702"]
+  "supported_bodies": ["zve1_202", "a7s3_501", "fx3_702", "a7c_203", "zve10_203"]
 }
 EOF
 

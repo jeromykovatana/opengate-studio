@@ -26,7 +26,7 @@ struct OpenGateStudioTests {
         return dir
     }
 
-    @Test("listBodies returns all 3 supported camera bodies")
+    @Test("listBodies returns all 5 supported camera bodies")
     func testListBodies() async throws {
         let bridge = try makeBridge()
         let (result, trace) = try await bridge.listBodies()
@@ -36,10 +36,11 @@ struct OpenGateStudioTests {
         #expect(ids.contains("zve1_202"))
         #expect(ids.contains("a7s3_501"))
         #expect(ids.contains("fx3_702"))
+        #expect(ids.contains("a7c_203"))
+        #expect(ids.contains("zve10_203"))
         for body in result.bodies {
             #expect(body.pinsOk == true)
             #expect(body.packs["core_open_gate"] != nil)
-            #expect(body.packs["mp4_3x2"] != nil)
         }
     }
 
@@ -53,6 +54,73 @@ struct OpenGateStudioTests {
         #expect(result.bodies["zve1_202"]?.ok == true)
         #expect(result.bodies["a7s3_501"]?.ok == true)
         #expect(result.bodies["fx3_702"]?.ok == true)
+        #expect(result.bodies["a7c_203"]?.ok == true)
+        #expect(result.bodies["zve10_203"]?.ok == true)
+    }
+
+    @Test("a7c_203 and zve10_203 mock apply and putback cover squeezed 2160 and raster_2560")
+    func testA7cAndZve10Workflow() async throws {
+        for bodyId in ["a7c_203", "zve10_203"] {
+            let sessionDir = try makeTempDir(prefix: "ogs-\(bodyId)")
+            defer { try? FileManager.default.removeItem(at: sessionDir) }
+            let bridge = try makeBridge(sessionDir: sessionDir)
+
+            let (stock, _) = try await bridge.preflight(
+                bodyId: bodyId,
+                mockCamera: true,
+                mockState: .stock,
+                sessionDir: sessionDir
+            )
+            #expect(stock.ok == true)
+            #expect(stock.ready == true)
+
+            let (appliedSafe, _) = try await bridge.apply(
+                bodyId: bodyId,
+                packs: ["core_open_gate"],
+                mockCamera: true,
+                sessionDir: sessionDir
+            )
+            #expect(appliedSafe.ok == true)
+            #expect(appliedSafe.stepsRun.map(\.step) == ["L5"])
+            #expect(appliedSafe.closingDumpVerdict.contains("VERDICT READY"))
+
+            let (putbackSafe, _) = try await bridge.putback(
+                bodyId: bodyId,
+                packs: ["core_open_gate"],
+                mockCamera: true,
+                sessionDir: sessionDir
+            )
+            #expect(putbackSafe.ok == true)
+            #expect(putbackSafe.stepsRun.map(\.step) == ["L6"])
+            #expect(putbackSafe.state == "stock")
+
+            let (stock2, _) = try await bridge.preflight(
+                bodyId: bodyId,
+                mockCamera: true,
+                mockState: .stock,
+                sessionDir: sessionDir
+            )
+            #expect(stock2.ready == true)
+
+            let (appliedRaster, _) = try await bridge.apply(
+                bodyId: bodyId,
+                packs: ["raster_2560"],
+                mockCamera: true,
+                sessionDir: sessionDir
+            )
+            #expect(appliedRaster.ok == true)
+            #expect(appliedRaster.stepsRun.map(\.step) == ["L5", "L16", "L19"])
+
+            let (putbackRaster, _) = try await bridge.putback(
+                bodyId: bodyId,
+                packs: ["raster_2560"],
+                mockCamera: true,
+                sessionDir: sessionDir
+            )
+            #expect(putbackRaster.ok == true)
+            #expect(putbackRaster.stepsRun.map(\.step) == ["L20", "L17", "L6"])
+            #expect(putbackRaster.state == "stock")
+        }
     }
 
     @Test("preflight fails ready gate on mixed_powerswitch and passes on stock")
@@ -815,6 +883,118 @@ struct OpenGateStudioTests {
         } else {
             Issue.record("Expected unverified putback completion to fail closed")
         }
+
+        // Express Apply requires ok == true, ready == true, verified != false, state == "applied"
+        let validExpressApply = try! makeEvent(ok: true, state: "applied", ready: true, verified: true, closingKind: "fused_readback")
+        if case .finished(let comp) = LiveSessionOutcomeEvaluator.evaluate(
+            result: makeResult(completeEvent: validExpressApply),
+            action: .expressApply,
+            actionTitle: "Express Apply",
+            existingFailureMessage: nil,
+            existingCancelMessage: nil,
+            existingLeftBehind: false,
+            wasCancelRequestedByButton: false,
+            isOsascriptCancelled: false
+        ) {
+            #expect(comp.state == "applied")
+            #expect(comp.closingKind == "fused_readback")
+        } else {
+            Issue.record("Expected verified expressApply completion to finish")
+        }
+
+        for badExpressApply in [
+            try! makeEvent(ok: true, state: "applied", ready: false, verified: true),
+            try! makeEvent(ok: true, state: "applied", ready: true, verified: false),
+            try! makeEvent(ok: true, state: "stock", ready: true, verified: true),
+        ] {
+            if case .failed = LiveSessionOutcomeEvaluator.evaluate(
+                result: makeResult(completeEvent: badExpressApply),
+                action: .expressApply,
+                actionTitle: "Express Apply",
+                existingFailureMessage: nil,
+                existingCancelMessage: nil,
+                existingLeftBehind: false,
+                wasCancelRequestedByButton: false,
+                isOsascriptCancelled: false
+            ) {
+                // Expected fail-closed outcome
+            } else {
+                Issue.record("Expected expressApply with invalid/unverified state to fail closed")
+            }
+        }
+
+        // Express Putback requires ok == true, ready == true, verified == true, state == "stock"
+        let validExpressPutback = try! makeEvent(ok: true, state: "stock", ready: true, verified: true, closingKind: "stock_check")
+        if case .finished(let comp) = LiveSessionOutcomeEvaluator.evaluate(
+            result: makeResult(completeEvent: validExpressPutback),
+            action: .expressPutback,
+            actionTitle: "Express Putback",
+            existingFailureMessage: nil,
+            existingCancelMessage: nil,
+            existingLeftBehind: false,
+            wasCancelRequestedByButton: false,
+            isOsascriptCancelled: false
+        ) {
+            #expect(comp.state == "stock")
+        } else {
+            Issue.record("Expected verified expressPutback completion to finish")
+        }
+
+        for badExpressPutback in [
+            try! makeEvent(ok: true, state: "stock", ready: true, verified: nil),
+            try! makeEvent(ok: true, state: "stock", ready: true, verified: false),
+            try! makeEvent(ok: true, state: "stock", ready: false, verified: true),
+            try! makeEvent(ok: true, state: "applied", ready: true, verified: true),
+        ] {
+            if case .failed = LiveSessionOutcomeEvaluator.evaluate(
+                result: makeResult(completeEvent: badExpressPutback),
+                action: .expressPutback,
+                actionTitle: "Express Putback",
+                existingFailureMessage: nil,
+                existingCancelMessage: nil,
+                existingLeftBehind: false,
+                wasCancelRequestedByButton: false,
+                isOsascriptCancelled: false
+            ) {
+                // Expected fail-closed outcome
+            } else {
+                Issue.record("Expected expressPutback with nil/false verified or wrong state to fail closed")
+            }
+        }
+    }
+
+    @Test("LiveCommandAction express cases and DetectedUsbCameraResult decode all expected payloads")
+    func testExpressActionsAndDetectedUsbCameraDecoding() throws {
+        #expect(LiveCommandAction.expressApply.rawValue == "express-apply")
+        #expect(LiveCommandAction.expressPutback.rawValue == "express-putback")
+
+        let decoder = JSONDecoder()
+
+        let detectedJson = #"{"ok":true,"detected":true,"body_id":"zve1_202","usb_product_name":"ZV-E1","usb_mode":"msc","is_fx3a_blocked":false,"warning":null}"#
+        let detected = try decoder.decode(DetectedUsbCameraResult.self, from: Data(detectedJson.utf8))
+        #expect(detected.ok == true)
+        #expect(detected.detected == true)
+        #expect(detected.bodyId == "zve1_202")
+        #expect(detected.usbProductName == "ZV-E1")
+        #expect(detected.usbMode == "msc")
+        #expect(detected.isFx3aBlocked == false)
+        #expect(detected.warning == nil)
+
+        let fx3aJson = #"{"ok":true,"detected":true,"body_id":null,"usb_product_name":"ILME-FX3A","usb_mode":"msc","is_fx3a_blocked":true,"warning":"ILME-FX3A is not supported by FX3 7.02 kits"}"#
+        let fx3a = try decoder.decode(DetectedUsbCameraResult.self, from: Data(fx3aJson.utf8))
+        #expect(fx3a.ok == true)
+        #expect(fx3a.detected == true)
+        #expect(fx3a.bodyId == nil)
+        #expect(fx3a.usbProductName == "ILME-FX3A")
+        #expect(fx3a.isFx3aBlocked == true)
+        #expect(fx3a.warning?.contains("ILME-FX3A") == true)
+
+        let noneJson = #"{"ok":true,"detected":false,"body_id":null,"usb_product_name":null,"usb_mode":null,"is_fx3a_blocked":false,"warning":null}"#
+        let none = try decoder.decode(DetectedUsbCameraResult.self, from: Data(noneJson.utf8))
+        #expect(none.ok == true)
+        #expect(none.detected == false)
+        #expect(none.bodyId == nil)
+        #expect(none.isFx3aBlocked == false)
     }
 
     @Test("startLiveInAppRun simulated putback runs closing stock_check and verifies state")

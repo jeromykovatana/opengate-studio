@@ -349,7 +349,7 @@ def _run_offline_mock(
             msg = f"Not {fw}. Nothing was sent."
             _emit_event(on_event, {"type": "error", "message": msg, "left_behind": False})
             return {"ok": False, "mode": "mock", "action": action, "body_id": body_id, "error": msg}
-        if action in ("apply", "putback") and not confirm_volatile_ram:
+        if action in ("apply", "putback", "express-apply", "express-putback") and not confirm_volatile_ram:
             msg = f"Refusing {action}: firmware_confirmed requires confirm_volatile_ram. Nothing was sent."
             _emit_event(on_event, {"type": "error", "message": msg, "left_behind": False})
             return {"ok": False, "mode": "mock", "action": action, "body_id": body_id, "error": msg}
@@ -365,6 +365,10 @@ def _run_offline_mock(
         rc, res = studio_cli.cmd_apply(body_id, packs_arg=packs, session_dir=sessions_p, live_usb=False)
     elif action == "putback":
         rc, res = studio_cli.cmd_putback(body_id, packs_arg=packs, session_dir=sessions_p, live_usb=False)
+    elif action == "express-apply":
+        rc, res = studio_cli.cmd_express_apply(body_id, packs_arg=packs, mock_state=mock_state, session_dir=sessions_p, live_usb=False)
+    elif action == "express-putback":
+        rc, res = studio_cli.cmd_express_putback(body_id, packs_arg=packs, mock_state=mock_state, session_dir=sessions_p, live_usb=False)
     elif action == "dump":
         captured: list[dict[str, Any]] = []
         ctx_cls = _make_run_context_cls(studio_live_apply.RunContext, on_event, captured)
@@ -411,7 +415,7 @@ def _run_offline_mock(
             "body_id": body_id,
             "session_id": res.get("session_id"),
             "verdict": res.get("verdict") or res.get("closing_dump_verdict") or "",
-            "state": res.get("state", "applied" if action == "apply" else "stock"),
+            "state": res.get("state", "applied" if action in ("apply", "express-apply") else "stock"),
             "ready": bool(res.get("ready", True)),
             "steps_run": list(res.get("steps_run") or []),
             "active_packs": list(res.get("active_packs") or []),
@@ -452,7 +456,7 @@ def execute_companion_run(
     sessions_p = Path(sessions_dir)
     cancel_p = Path(cancel_file) if cancel_file else None
 
-    if action not in ("preflight", "dump", "apply", "putback"):
+    if action not in ("preflight", "dump", "apply", "putback", "express-apply", "express-putback"):
         msg = f"Unsupported companion action: {action!r}"
         _emit_event(on_event, {"type": "error", "message": msg, "left_behind": False})
         return _dumps({"ok": False, "action": action, "body_id": body_id, "error": msg})
@@ -515,7 +519,7 @@ def execute_companion_run(
             _emit_event(on_event, {"type": "error", "message": msg, "left_behind": False})
             return _dumps({"ok": False, "mode": "live_usb", "action": action, "body_id": body_id, "error": msg})
 
-        if action in ("apply", "putback") and not confirm_volatile_ram:
+        if action in ("apply", "putback", "express-apply", "express-putback") and not confirm_volatile_ram:
             msg = f"Refusing {action}: --firmware-confirmed requires --confirm-volatile-ram. Nothing was sent."
             _emit_event(on_event, {"type": "error", "message": msg, "left_behind": False})
             return _dumps({"ok": False, "mode": "live_usb", "action": action, "body_id": body_id, "error": msg})
@@ -648,6 +652,16 @@ def execute_companion_run(
                             action,
                             body_id,
                             man,
+                            sessions_p,
+                            dry_run=False,
+                            ctx=ctx,
+                        )
+                    elif action in ("express-apply", "express-putback"):
+                        rc = studio_live_apply.run_express_flow(
+                            action,
+                            body_id,
+                            man,
+                            packs,
                             sessions_p,
                             dry_run=False,
                             ctx=ctx,

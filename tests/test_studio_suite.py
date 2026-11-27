@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -226,7 +227,7 @@ class StudioCliTests(unittest.TestCase):
         rc, bodies = run_cli("list-bodies", "--json")
         self.assertEqual(rc, 0)
         ids = {b["body_id"] for b in bodies["bodies"]}
-        self.assertEqual(ids, {"zve1_202", "a7s3_501", "fx3_702"})
+        self.assertEqual(ids, {"zve1_202", "a7s3_501", "fx3_702", "a7c_203", "zve10_203"})
         for b in bodies["bodies"]:
             self.assertTrue(b["pins_ok"], f"Pins failed for {b['body_id']}")
 
@@ -1220,8 +1221,8 @@ class CleanRoomTests(unittest.TestCase):
     def test_clean_room_passes(self) -> None:
         res = vcr.verify_clean_room(REPO_ROOT)
         self.assertTrue(res["ok"], f"Clean-room errors: {res['errors']}")
-        self.assertEqual(res["checked_manifests"], 3)
-        self.assertEqual(res["checked_so"], 62)
+        self.assertEqual(res["checked_manifests"], 5)
+        self.assertGreaterEqual(res["checked_so"], 78)
         self.assertGreaterEqual(res["checked_pmca_files"], 15)
 
 
@@ -1875,6 +1876,293 @@ class HardeningRegressionTests(unittest.TestCase):
                 s2.take_over_from_macos(FakeSession(), drv_fail)
             self.assertIn("Removable Volumes", str(cm_fail.exception))
             self.assertIn("Use Terminal Instead", str(cm_fail.exception))
+
+
+class Cxd90045CliTests(unittest.TestCase):
+    def test_a7c_and_zve10_mock_preflight_apply_putback(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            for body_id in ("a7c_203", "zve10_203"):
+                sdir = Path(td) / body_id
+                rc_pre, pre = run_cli(
+                    "preflight", "--body", body_id, "--mock-camera", "--mock-state", "stock",
+                    "--session-dir", str(sdir), "--json",
+                )
+                self.assertEqual(rc_pre, 0, pre)
+                self.assertTrue(pre["ready"], pre)
+
+                rc_app, app = run_cli(
+                    "apply", "--body", body_id, "--mock-camera",
+                    "--session-dir", str(sdir), "--json",
+                )
+                self.assertEqual(rc_app, 0, app)
+                self.assertEqual(app["steps_run"], ["L5"])
+
+                rc_put, put = run_cli(
+                    "putback", "--body", body_id, "--packs", "core_open_gate", "--mock-camera",
+                    "--session-dir", str(sdir), "--json",
+                )
+                self.assertEqual(rc_put, 0, put)
+                self.assertEqual(put["steps_run"], ["L6"])
+
+                rc_pre2, _ = run_cli(
+                    "preflight", "--body", body_id, "--mock-camera", "--mock-state", "stock",
+                    "--session-dir", str(sdir), "--json",
+                )
+                self.assertEqual(rc_pre2, 0)
+                rc_app2, app2 = run_cli(
+                    "apply", "--body", body_id, "--packs", "raster_2560", "--mock-camera",
+                    "--session-dir", str(sdir), "--json",
+                )
+                self.assertEqual(rc_app2, 0, app2)
+                self.assertEqual(app2["steps_run"], ["L5", "L16", "L19"])
+
+                rc_put2, put2 = run_cli(
+                    "putback", "--body", body_id, "--packs", "raster_2560", "--mock-camera",
+                    "--session-dir", str(sdir), "--json",
+                )
+                self.assertEqual(rc_put2, 0, put2)
+                self.assertEqual(put2["steps_run"], ["L20", "L17", "L6"])
+
+
+class Cxd90045UnicornEmuTests(unittest.TestCase):
+    @staticmethod
+    def _fw_targets(sub: str) -> Path:
+        return REPO_ROOT.parent / "firmwares" / sub / "ghidra_targets"
+
+    def _run_arm32_roundtrip(self, body_id: str, fw_sub: str, prefix: str) -> None:
+        from unicorn import UC_ARCH_ARM, UC_HOOK_INTR, UC_MODE_ARM, Uc
+        from unicorn.arm_const import (
+            UC_ARM_REG_C1_C0_2,
+            UC_ARM_REG_FPEXC,
+            UC_ARM_REG_LR,
+            UC_ARM_REG_R0,
+            UC_ARM_REG_R1,
+            UC_ARM_REG_R2,
+            UC_ARM_REG_R4,
+            UC_ARM_REG_R5,
+            UC_ARM_REG_R7,
+            UC_ARM_REG_SP,
+            UC_CPU_ARM_CORTEX_A9,
+        )
+
+        fw_dir = self._fw_targets(fw_sub)
+        if not (fw_dir / "libmpr.so").is_file():
+            self.skipTest(f"Offline firmware directory missing: {fw_dir}")
+
+        kit_dir = REPO_ROOT / "kits" / body_id
+        av_path = next(p for p in fw_dir.iterdir() if p.name.endswith(".bin") and p.name.startswith("av"))
+        stock_avcam = av_path.read_bytes()
+        stock_libmpr = (fw_dir / "libmpr.so").read_bytes()
+        stock_sen = (fw_dir / "libsencore.so").read_bytes()
+        stock_jit = (fw_dir / "libJiritsu.so").read_bytes()
+
+        avcam = bytearray(stock_avcam)
+        libmpr = bytearray(stock_libmpr)
+
+        MPR_BASE = 0x40000000
+        SEN_BASE = 0x41000000
+        JIT_BASE = 0x42000000
+        LOW_DDR_MAP = 0x5F000000
+        DDR_PHYS = 0x035C6000
+        DDR_MAP = 0x60000000
+        AV_LOW_PHYS = 0x03500000
+
+        def run_so(so_name: str) -> str:
+            blob = (kit_dir / so_name).read_bytes()
+            e_phoff, = struct.unpack_from("<I", blob, 28)
+            e_phentsize, e_phnum = struct.unpack_from("<HH", blob, 42)
+            uc = Uc(UC_ARCH_ARM, UC_MODE_ARM)
+            uc.ctl_set_cpu_model(UC_CPU_ARM_CORTEX_A9)
+            uc.reg_write(UC_ARM_REG_C1_C0_2, uc.reg_read(UC_ARM_REG_C1_C0_2) | (0xF << 20))
+            uc.reg_write(UC_ARM_REG_FPEXC, 0x40000000)
+            base = 0x10000000
+            max_end = 0
+            dyn: dict[int, int] = {}
+            segs: list[tuple[int, int, int, int]] = []
+            for i in range(e_phnum):
+                off = e_phoff + i * e_phentsize
+                pt, p_off, p_va, _, p_fs, p_ms, _, _ = struct.unpack_from("<IIIIIIII", blob, off)
+                if pt == 1:
+                    max_end = max(max_end, p_va + p_ms)
+                    segs.append((p_off, p_va, p_fs, p_ms))
+                elif pt == 2:
+                    for j in range(0, p_fs, 8):
+                        tag, val = struct.unpack_from("<ii", blob, p_off + j)
+                        if tag == 0:
+                            break
+                        dyn[tag] = val
+
+            uc.mem_map(base, ((max_end + 0xFFF) & ~0xFFF) + 0x10000)
+            for p_off, p_va, p_fs, _p_ms in segs:
+                uc.mem_write(base + p_va, blob[p_off : p_off + p_fs])
+
+            mpr_sz = (len(libmpr) + 0xFFF) & ~0xFFF
+            uc.mem_map(MPR_BASE, mpr_sz)
+            uc.mem_write(MPR_BASE, bytes(libmpr))
+            uc.mem_map(LOW_DDR_MAP, 0x100000)
+            ddr_sz = (len(avcam) + 0x10000 + 0xFFF) & ~0xFFF
+            uc.mem_map(DDR_MAP, ddr_sz)
+            uc.mem_write(DDR_MAP, bytes(avcam))
+
+            if 17 in dyn:
+                rel_off = base + dyn[17]
+                for j in range(0, dyn[18], 8):
+                    r_off, r_info = struct.unpack("<II", uc.mem_read(rel_off + j, 8))
+                    cur, = struct.unpack("<I", uc.mem_read(base + r_off, 4))
+                    if (r_info & 0xFF) == 23:
+                        uc.mem_write(base + r_off, struct.pack("<I", base + cur))
+
+            init_fn, = struct.unpack("<I", uc.mem_read(base + dyn[25], 4))
+            uc.mem_map(0x20000000, 0x20000)
+            uc.reg_write(UC_ARM_REG_SP, 0x2001F000)
+            uc.reg_write(UC_ARM_REG_LR, 0xDEAD0000)
+
+            out = bytearray()
+            cmdline = b"console=ttyAMA0 mem=976M@0x02E68000\n"
+            maps_txt = (
+                f"{MPR_BASE:08x}-{MPR_BASE + len(stock_libmpr):08x} r-xp 00000000 00:00 0 /usr/lib/libmpr.so\n"
+                f"{SEN_BASE:08x}-{SEN_BASE + len(stock_sen):08x} r-xp 00000000 00:00 0 /usr/lib/libsencore.so\n"
+                f"{JIT_BASE:08x}-{JIT_BASE + len(stock_jit):08x} r-xp 00000000 00:00 0 /usr/lib/libJiritsu.so\n"
+            ).encode()
+            file_blobs = {
+                "/proc/cmdline": cmdline,
+                "/proc/self/maps": maps_txt,
+                "/usr/lib/libmpr.so": stock_libmpr,
+                "/usr/lib/libsencore.so": stock_sen,
+                "/usr/lib/libJiritsu.so": stock_jit,
+                "/proc/version": b"",
+                "/proc/iomem": b"",
+                "/proc/mounts": b"",
+                "/proc/modules": b"",
+                "/proc/meminfo": b"",
+                "/proc/self/status": b"",
+            }
+            fds: dict[int, list] = {}
+            next_fd = [10]
+
+            def read_cstr(addr: int) -> str:
+                b = bytearray()
+                while True:
+                    c = uc.mem_read(addr + len(b), 1)[0]
+                    if c == 0:
+                        break
+                    b.append(c)
+                return b.decode("latin1", "replace")
+
+            def on_intr(emu: Uc, _intno: int, _ud: object) -> None:
+                nr = emu.reg_read(UC_ARM_REG_R7)
+                if nr == 322:  # openat(AT_FDCWD, path, flags, mode)
+                    path = read_cstr(emu.reg_read(UC_ARM_REG_R1))
+                    fd = next_fd[0]
+                    next_fd[0] += 1
+                    if path in file_blobs:
+                        fds[fd] = ["MEM", file_blobs[path], 0]
+                    elif path == "/dev/mem":
+                        fds[fd] = ["DEVMEM"]
+                    elif path == "/proc/self/mem":
+                        fds[fd] = ["PROCMEM"]
+                    elif path == "/tmp_wbshd/readcheck_result.txt":
+                        fds[fd] = ["RESULT"]
+                    elif path.startswith(("/sys/", "/log")):
+                        fds[fd] = ["MEM", b"", 0]
+                    else:
+                        emu.reg_write(UC_ARM_REG_R0, 0xFFFFFFFE)
+                        return
+                    emu.reg_write(UC_ARM_REG_R0, fd)
+                elif nr == 3:  # read
+                    fd = emu.reg_read(UC_ARM_REG_R0)
+                    buf = emu.reg_read(UC_ARM_REG_R1)
+                    cnt = emu.reg_read(UC_ARM_REG_R2)
+                    ent = fds.get(fd)
+                    if ent and ent[0] == "MEM":
+                        data, pos = ent[1], ent[2]
+                        chunk = data[pos : pos + cnt]
+                        emu.mem_write(buf, chunk)
+                        ent[2] = pos + len(chunk)
+                        emu.reg_write(UC_ARM_REG_R0, len(chunk))
+                    else:
+                        emu.reg_write(UC_ARM_REG_R0, 0)
+                elif nr == 4:  # write
+                    fd = emu.reg_read(UC_ARM_REG_R0)
+                    buf = emu.reg_read(UC_ARM_REG_R1)
+                    cnt = emu.reg_read(UC_ARM_REG_R2)
+                    ent = fds.get(fd)
+                    if ent and ent[0] == "RESULT":
+                        out.extend(bytes(emu.mem_read(buf, cnt)))
+                    emu.reg_write(UC_ARM_REG_R0, cnt)
+                elif nr == 6:  # close
+                    emu.reg_write(UC_ARM_REG_R0, 0)
+                elif nr == 180:  # pread64(fd, buf, count, pad, off_lo, off_hi)
+                    buf = emu.reg_read(UC_ARM_REG_R1)
+                    cnt = emu.reg_read(UC_ARM_REG_R2)
+                    phys = emu.reg_read(UC_ARM_REG_R4)
+                    off_av = phys - DDR_PHYS
+                    if 0 <= off_av <= len(avcam) - cnt:
+                        emu.mem_write(buf, bytes(emu.mem_read(DDR_MAP + off_av, cnt)))
+                        emu.reg_write(UC_ARM_REG_R0, cnt)
+                    else:
+                        emu.reg_write(UC_ARM_REG_R0, 0xFFFFFFFF)
+                elif nr == 181:  # pwrite64(fd, buf, count, pad, off_lo, off_hi)
+                    buf = emu.reg_read(UC_ARM_REG_R1)
+                    cnt = emu.reg_read(UC_ARM_REG_R2)
+                    va = emu.reg_read(UC_ARM_REG_R4)
+                    if MPR_BASE <= va < MPR_BASE + len(libmpr):
+                        emu.mem_write(va, bytes(emu.mem_read(buf, cnt)))
+                        emu.reg_write(UC_ARM_REG_R0, cnt)
+                    else:
+                        emu.reg_write(UC_ARM_REG_R0, 0xFFFFFFFF)
+                elif nr == 192:  # mmap2
+                    pgoff = emu.reg_read(UC_ARM_REG_R5)
+                    phys = pgoff << 12
+                    if DDR_PHYS <= phys < DDR_PHYS + len(avcam):
+                        emu.reg_write(UC_ARM_REG_R0, DDR_MAP + (phys - DDR_PHYS))
+                    elif AV_LOW_PHYS <= phys < DDR_PHYS:
+                        emu.reg_write(UC_ARM_REG_R0, LOW_DDR_MAP + (phys - AV_LOW_PHYS))
+                    else:
+                        emu.reg_write(UC_ARM_REG_R0, 0xFFFFFFFF)
+                elif nr in (91, 201, 217):  # munmap, geteuid32, getdents64
+                    emu.reg_write(UC_ARM_REG_R0, 0)
+                else:
+                    emu.reg_write(UC_ARM_REG_R0, 0)
+
+            uc.hook_add(UC_HOOK_INTR, on_intr)
+            uc.emu_start(init_fn, 0xDEAD0000)
+            libmpr[:] = bytes(uc.mem_read(MPR_BASE, len(libmpr)))
+            avcam[:] = bytes(uc.mem_read(DDR_MAP, len(avcam)))
+            return out.decode("latin1", "replace")
+
+        out_check = run_so(f"libJit_{prefix}_check.so")
+        self.assertIn("VERDICT READY (stock preflight)", out_check, out_check[-600:])
+
+        out_dump = run_so(f"libJit_{prefix}_dump.so")
+        self.assertIn("VERDICT READY (stock preflight)", out_dump, out_dump[-600:])
+        self.assertIn("ddrpage sensor_geom ", out_dump)
+
+        out_l5 = run_so(f"libJit_{prefix}_L5.so")
+        self.assertIn("DONE: every site holds the target bytes (apply)", out_l5, out_l5)
+        self.assertIn("VERDICT READY (open gate applied)", run_so(f"libJit_{prefix}_check.so"))
+        out_l6 = run_so(f"libJit_{prefix}_L6.so")
+        self.assertIn("DONE: every site holds the target bytes (put back)", out_l6, out_l6)
+        self.assertEqual(bytes(avcam), stock_avcam)
+        self.assertEqual(bytes(libmpr), stock_libmpr)
+
+        self.assertIn("DONE: every site holds the target bytes (apply)", run_so(f"libJit_{prefix}_L5.so"))
+        self.assertIn("DONE: every site holds the target bytes (apply)", run_so(f"libJit_{prefix}_L16.so"))
+        self.assertIn("DONE: every site holds the target bytes (apply)", run_so(f"libJit_{prefix}_L19.so"))
+        self.assertIn("VERDICT READY (open gate applied)", run_so(f"libJit_{prefix}_check.so"))
+        self.assertIn("DONE: every site holds the target bytes (put back)", run_so(f"libJit_{prefix}_L20.so"))
+        self.assertIn("DONE: every site holds the target bytes (put back)", run_so(f"libJit_{prefix}_L17.so"))
+        self.assertIn("DONE: every site holds the target bytes (put back)", run_so(f"libJit_{prefix}_L6.so"))
+        self.assertEqual(bytes(avcam), stock_avcam)
+        self.assertEqual(bytes(libmpr), stock_libmpr)
+
+    def test_a7c_and_zve10_arm32_helpers_roundtrip(self) -> None:
+        try:
+            import unicorn  # noqa: F401
+        except ImportError:
+            self.skipTest("unicorn not installed in this Python interpreter")
+        self._run_arm32_roundtrip("a7c_203", "a7c", "a7c")
+        self._run_arm32_roundtrip("zve10_203", "zve10", "zve10")
 
 
 if __name__ == "__main__":

@@ -89,6 +89,19 @@ for L in 19 20; do
     "$READCHECK_C" -o "$KIT/libJit_zv_I$L.so"
 done
 
+# Fused single-pass presets (Q19/Q20 Safe Daily, F19/F20 Cinema Full)
+FUSED_C="$STUDIO/src/common/fused_preset.c"
+for L in 19 20; do
+  "${CC[@]}" -DLEVEL=$L '-DFUSED_H="expected_fused_safe_daily_zv.h"' \
+    "$FUSED_C" "$SEN" -o "$KIT/libJit_zv_Q$L.so"
+  "${CC[@]}" -DLEVEL=$L '-DFUSED_H="expected_fused_cinema_full_zv.h"' \
+    "$FUSED_C" "$SEN" -o "$KIT/libJit_zv_F$L.so"
+done
+for code in Q19 Q20 F19 F20; do
+  sz=$(wc -c < "$KIT/libJit_zv_${code}.so" | tr -d ' ')
+  [ "$sz" -le 65520 ] || { echo "SIZE LIMIT EXCEEDED ($sz > 65520) for libJit_zv_${code}.so"; exit 1; }
+done
+
 # zvread_v4 check/dump (linked against libsencore.so)
 "${CC[@]}" -DDUMP=0 "$SRC/zvread.c" "$SEN" -o "$KIT/libJit_zv_check.so"
 "${CC[@]}" -DDUMP=1 "$SRC/zvread.c" "$SEN" -o "$KIT/libJit_zv_dump.so"

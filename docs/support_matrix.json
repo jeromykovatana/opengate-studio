@@ -26,21 +26,35 @@
       "model_id": "ZV-E1",
       "firmware": "2.02",
       "version_txt": "32000_08.2025101101",
-      "helper_count": 22
+      "helper_count": 26
     },
     "a7s3_501": {
       "camera": "Sony a7S III",
       "model_id": "ILCE-7SM3",
       "firmware": "5.01",
       "version_txt": "39183_16.2026041504",
-      "helper_count": 20
+      "helper_count": 24
     },
     "fx3_702": {
       "camera": "Sony FX3",
       "model_id": "ILME-FX3 (not FX3A)",
       "firmware": "7.02",
       "version_txt": "39180_21.2025122503",
-      "helper_count": 20
+      "helper_count": 24
+    },
+    "a7c_203": {
+      "camera": "Sony a7C",
+      "model_id": "ILCE-7C",
+      "firmware": "2.03",
+      "version_txt": "39119_08.2026013101",
+      "helper_count": 8
+    },
+    "zve10_203": {
+      "camera": "Sony ZV-E10",
+      "model_id": "ZV-E10",
+      "firmware": "2.03",
+      "version_txt": "30110_06.2026060501",
+      "helper_count": 8
     }
   },
   "profiles": [
@@ -481,6 +495,90 @@
         "field_ready": "blocked"
       },
       "notes": "Blocked by IMX510 sensor pixel-clock/readout ceiling; switches crash or distort."
+    },
+    {
+      "body_id": "a7c_203",
+      "firmware": "2.03",
+      "fps": "23.98p",
+      "codec": "XAVC S 4K 100M",
+      "pack": "core_open_gate",
+      "tier": "recommended",
+      "evidence": {
+        "byte_verified": "yes",
+        "emulator_verified": "yes",
+        "hardware_recorded": "no",
+        "clip_xml_validated": "no",
+        "gyroflow_verified": "no",
+        "catalyst_verified": "no",
+        "nle_verified": "no",
+        "playback_verified": "no",
+        "long_take_verified": "no",
+        "field_ready": "no"
+      },
+      "notes": "BIONZ X CXD90045 ARM32 L5/L6: 6000x4000 full-height sensor readout squeezed into 3840x2160 container (1.185x post vertical de-squeeze)."
+    },
+    {
+      "body_id": "a7c_203",
+      "firmware": "2.03",
+      "fps": "23.98p",
+      "codec": "XAVC S 4K 100M",
+      "pack": "raster_2560",
+      "tier": "experimental",
+      "evidence": {
+        "byte_verified": "yes",
+        "emulator_verified": "yes",
+        "hardware_recorded": "no",
+        "clip_xml_validated": "no",
+        "gyroflow_verified": "no",
+        "catalyst_verified": "no",
+        "nle_verified": "no",
+        "playback_verified": "no",
+        "long_take_verified": "no",
+        "field_ready": "no"
+      },
+      "notes": "Experimental L16+L19/L20+L17 square-pixel 3840x2560 raster + av-cam DDR tables; awaiting hardware test."
+    },
+    {
+      "body_id": "zve10_203",
+      "firmware": "2.03",
+      "fps": "23.98p",
+      "codec": "XAVC S 4K 100M",
+      "pack": "core_open_gate",
+      "tier": "recommended",
+      "evidence": {
+        "byte_verified": "yes",
+        "emulator_verified": "yes",
+        "hardware_recorded": "no",
+        "clip_xml_validated": "no",
+        "gyroflow_verified": "no",
+        "catalyst_verified": "no",
+        "nle_verified": "no",
+        "playback_verified": "no",
+        "long_take_verified": "no",
+        "field_ready": "no"
+      },
+      "notes": "BIONZ X CXD90045 ARM32 L5/L6: 6000x4000 full-height sensor readout squeezed into 3840x2160 container (1.185x post vertical de-squeeze)."
+    },
+    {
+      "body_id": "zve10_203",
+      "firmware": "2.03",
+      "fps": "23.98p",
+      "codec": "XAVC S 4K 100M",
+      "pack": "raster_2560",
+      "tier": "experimental",
+      "evidence": {
+        "byte_verified": "yes",
+        "emulator_verified": "yes",
+        "hardware_recorded": "no",
+        "clip_xml_validated": "no",
+        "gyroflow_verified": "no",
+        "catalyst_verified": "no",
+        "nle_verified": "no",
+        "playback_verified": "no",
+        "long_take_verified": "no",
+        "field_ready": "no"
+      },
+      "notes": "Experimental L16+L19/L20+L17 square-pixel 3840x2560 raster + av-cam DDR tables; awaiting hardware test."
     },
     {
       "body_id": "a7iv_602",

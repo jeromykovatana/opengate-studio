@@ -241,6 +241,57 @@
       "size": 24648,
       "level": 30,
       "summary": "Put back FX3 8K decode channel avdec8k_fx3_v1"
+    },
+    "Q19": {
+      "file": "libJit_fx3_Q19.so",
+      "sha256": "45dd2662ac0f9ead2bcce9c6be2a130f419896445f438689cdbb492eaabe9b26",
+      "size": 51320,
+      "level": 19,
+      "summary": "Fused Safe Daily single-pass apply (L5/L6 + L16/S16 + V19)"
+    },
+    "Q20": {
+      "file": "libJit_fx3_Q20.so",
+      "sha256": "b8f75fb098d1b540ac821a9540ad61391473be0a19d19dcd8b1f3b6fcd0a2615",
+      "size": 51240,
+      "level": 20,
+      "summary": "Fused Safe Daily single-pass put back (V20 + S17/L17 + L6)"
+    },
+    "F19": {
+      "file": "libJit_fx3_F19.so",
+      "sha256": "36a943cc3dc103db75aa04fcdda7cdb7fceaa05643b3ee894adebe1890c5f1b6",
+      "size": 55720,
+      "level": 19,
+      "summary": "Fused Cinema Full single-pass apply (L5/L6 + L16/S16/H16 + V19/B19/I19)"
+    },
+    "F20": {
+      "file": "libJit_fx3_F20.so",
+      "sha256": "54c65e682b6172e3604686f95064f4fbae6057f11bba3b005c8d05f0e0a0a7f5",
+      "size": 55640,
+      "level": 20,
+      "summary": "Fused Cinema Full single-pass put back (I20/B20/V20 + H17/S17/L17 + L6)"
+    }
+  },
+  "fused_presets": {
+    "safe_daily": {
+      "packs": [
+        "core_open_gate",
+        "mp4_3x2",
+        "screen_3x2"
+      ],
+      "apply_step": "Q19",
+      "putback_step": "Q20"
+    },
+    "cinema_full": {
+      "packs": [
+        "core_open_gate",
+        "mp4_3x2",
+        "screen_3x2",
+        "hdmi32",
+        "high_bitrate",
+        "xavc_si"
+      ],
+      "apply_step": "F19",
+      "putback_step": "F20"
     }
   }
 }

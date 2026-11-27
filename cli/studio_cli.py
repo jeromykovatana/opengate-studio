@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
 import tempfile
 import time
@@ -31,8 +32,8 @@ try:
 except ImportError:
     studio_gyro = None  # type: ignore[assignment]
 
-BODY_ORDER = ("zve1_202", "a7s3_501", "fx3_702")
-OPTIONAL_PACK_ORDER = ("mp4_3x2", "hdmi32", "high_bitrate", "xavc_si", "screen_3x2", "fx3_playback")
+BODY_ORDER = ("zve1_202", "a7s3_501", "fx3_702", "a7c_203", "zve10_203")
+OPTIONAL_PACK_ORDER = ("mp4_3x2", "raster_2560", "hdmi32", "high_bitrate", "xavc_si", "screen_3x2", "fx3_playback")
 DEFAULT_SESSION_DIR = Path(tempfile.gettempdir()) / "opengate_studio_sessions"
 LIVE_PREFLIGHT_TTL_SECONDS = 900
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -261,7 +262,7 @@ def _latest_preflight_session(
             continue
         if rec.get("kind") == "putback":
             return None
-        if rec.get("kind") in ("preflight", "dump", "closing_dump"):
+        if rec.get("kind") in ("preflight", "dump", "closing_dump", "express_apply"):
             return rec
     return None
 
@@ -360,6 +361,38 @@ def validate_live_preflight_for_apply(
     return True, latest_for_body, "ok"
 
 
+def resolve_fused_preset(
+    manifest: dict[str, Any],
+    kit_dir: Path,
+    action: str,
+    target_packs: list[str],
+) -> tuple[str, str] | None:
+    """Return (preset_name, step_id) if target_packs matches a fused preset whose .so is pinned and on disk."""
+    fused = manifest.get("fused_presets")
+    if not isinstance(fused, dict):
+        return None
+    step_key = "apply_step" if action in ("apply", "express-apply") else "putback_step"
+    steps_map = manifest.get("steps", {})
+    want_packs = sorted(set(target_packs))
+    for preset_name, preset in fused.items():
+        if not isinstance(preset, dict):
+            continue
+        preset_packs = preset.get("packs")
+        if not isinstance(preset_packs, list) or sorted(set(preset_packs)) != want_packs:
+            continue
+        step_id = preset.get(step_key)
+        if not isinstance(step_id, str) or step_id not in steps_map:
+            continue
+        entry = steps_map[step_id]
+        fname, want_sha = _extract_entry_file_sha(entry)
+        if not fname or not want_sha:
+            continue
+        so_path = kit_dir / fname
+        if so_path.is_file() and _sha256_file(so_path) == want_sha:
+            return str(preset_name), step_id
+    return None
+
+
 def resolve_pack_plan(
     manifest: dict[str, Any],
     action: str,
@@ -373,13 +406,14 @@ def resolve_pack_plan(
         steps_run: list[str] = list(packs["core_open_gate"]["apply_steps"])
         active_packs = ["core_open_gate"]
 
-        if "mp4_3x2" in selected:
-            steps_run.extend(packs["mp4_3x2"]["apply_steps"])
-            active_packs.append("mp4_3x2")
-        else:
-            steps_run.extend(packs["mp4_3x2"]["fallback_apply_steps"])
+        if "mp4_3x2" in packs:
+            if "mp4_3x2" in selected:
+                steps_run.extend(packs["mp4_3x2"]["apply_steps"])
+                active_packs.append("mp4_3x2")
+            else:
+                steps_run.extend(packs["mp4_3x2"]["fallback_apply_steps"])
 
-        for p in ("hdmi32", "high_bitrate", "xavc_si", "screen_3x2", "fx3_playback"):
+        for p in ("raster_2560", "hdmi32", "high_bitrate", "xavc_si", "screen_3x2", "fx3_playback"):
             if p in selected and p in packs:
                 steps_run.extend(packs[p]["apply_steps"])
                 active_packs.append(p)
@@ -394,14 +428,15 @@ def resolve_pack_plan(
                 p for p in OPTIONAL_PACK_ORDER if p in packs
             ]
         steps_run = []
-        for p in ("fx3_playback", "screen_3x2", "xavc_si", "high_bitrate", "hdmi32"):
+        for p in ("fx3_playback", "screen_3x2", "xavc_si", "high_bitrate", "hdmi32", "raster_2560"):
             if p in selected and p in packs:
                 steps_run.extend(packs[p]["putback_steps"])
 
-        if "mp4_3x2" in selected:
-            steps_run.extend(packs["mp4_3x2"]["putback_steps"])
-        else:
-            steps_run.extend(packs["mp4_3x2"].get("fallback_putback_steps", ["L20"]))
+        if "mp4_3x2" in packs:
+            if "mp4_3x2" in selected:
+                steps_run.extend(packs["mp4_3x2"]["putback_steps"])
+            else:
+                steps_run.extend(packs["mp4_3x2"].get("fallback_putback_steps", ["L20"]))
 
         steps_run.extend(packs["core_open_gate"]["putback_steps"])
         return steps_run, []
@@ -599,6 +634,333 @@ def cmd_putback(body_id: str, packs_arg: str | None, session_dir: Path, live_usb
         "steps_run": steps_run,
         "state": "stock",
     }
+
+
+def _resolve_putback_target_packs(
+    man: dict[str, Any],
+    packs_arg: str | None,
+    saved_active_packs: list[str] | None = None,
+) -> list[str]:
+    packs = man.get("packs", {})
+    if packs_arg is not None:
+        return ["core_open_gate", *_parse_packs(packs_arg, packs)]
+    saved = saved_active_packs or []
+    if saved:
+        return list(saved)
+    return ["core_open_gate", *[p for p in OPTIONAL_PACK_ORDER if p in packs]]
+
+
+def cmd_express_apply(
+    body_id: str,
+    packs_arg: str | None,
+    mock_state: str | None,
+    session_dir: Path,
+    live_usb: bool,
+) -> tuple[int, dict[str, Any]]:
+    usb_err = _require_offline_mode(live_usb)
+    if usb_err:
+        return 1, usb_err
+
+    manifests = _load_manifests()
+    if body_id not in manifests:
+        return 1, {"ok": False, "error": f"Unknown body {body_id!r}"}
+
+    kit_dir, man = manifests[body_id]
+    manifest_sha = compute_kit_manifest_sha256(kit_dir)
+    pin_res = verify_body_pins(kit_dir, man)
+    if not pin_res["ok"]:
+        return 1, {"ok": False, "error": "Pin verification failed", "mismatches": pin_res["mismatches"]}
+
+    eff_state = mock_state if mock_state is not None else _read_mock_state(session_dir, body_id).get("state", "stock")
+    if eff_state not in ("stock", "applied"):
+        if mock_state is not None:
+            _write_mock_state(session_dir, body_id, eff_state, [])
+        bad_verdict = "VERDICT NOT READY (warm power-switch mixed state: pull battery >= 10s)"
+        sid = _write_session(session_dir, {
+            "kind": "express_apply",
+            "mode": "mock",
+            "body_id": body_id,
+            "ready": False,
+            "verified": False,
+            "state": "not_ready",
+            "verdict": bad_verdict,
+            "manifest_sha256": manifest_sha,
+            "pins_ok": True,
+        })
+        return 1, {
+            "ok": False,
+            "body_id": body_id,
+            "session_id": sid,
+            "ready": False,
+            "verified": False,
+            "state": "not_ready",
+            "verdict": bad_verdict,
+            "error": f"Refusing express-apply: {bad_verdict}",
+        }
+
+    try:
+        steps_run, active_packs = resolve_pack_plan(man, "apply", packs_arg)
+    except ValueError as err:
+        return 1, {"ok": False, "error": str(err)}
+
+    fused = resolve_fused_preset(man, kit_dir, "apply", active_packs)
+    if fused is not None:
+        steps_run = [fused[1]]
+        closing_kind = "fused_readback"
+    else:
+        steps_map = man.get("steps", {})
+        missing = [s for s in steps_run if s not in steps_map]
+        if missing:
+            return 1, {"ok": False, "error": f"Steps missing from manifest: {missing}"}
+        closing_kind = "in_place_check"
+
+    _write_mock_state(session_dir, body_id, "applied", active_packs)
+    closing_verdict = "VERDICT READY (open gate applied)"
+    sid = _write_session(session_dir, {
+        "kind": "express_apply",
+        "mode": "mock",
+        "body_id": body_id,
+        "ready": True,
+        "verified": True,
+        "state": "applied",
+        "verdict": closing_verdict,
+        "closing_kind": closing_kind,
+        "active_packs": active_packs,
+        "steps_run": steps_run,
+        "manifest_sha256": manifest_sha,
+        "pins_ok": True,
+    })
+
+    return 0, {
+        "ok": True,
+        "body_id": body_id,
+        "session_id": sid,
+        "steps_run": steps_run,
+        "closing_dump_verdict": closing_verdict,
+        "verdict": closing_verdict,
+        "state": "applied",
+        "ready": True,
+        "verified": True,
+        "closing_kind": closing_kind,
+        "active_packs": active_packs,
+    }
+
+
+def cmd_express_putback(
+    body_id: str,
+    packs_arg: str | None,
+    mock_state: str | None,
+    session_dir: Path,
+    live_usb: bool,
+) -> tuple[int, dict[str, Any]]:
+    usb_err = _require_offline_mode(live_usb)
+    if usb_err:
+        return 1, usb_err
+
+    manifests = _load_manifests()
+    if body_id not in manifests:
+        return 1, {"ok": False, "error": f"Unknown body {body_id!r}"}
+
+    kit_dir, man = manifests[body_id]
+    manifest_sha = compute_kit_manifest_sha256(kit_dir)
+    pin_res = verify_body_pins(kit_dir, man)
+    if not pin_res["ok"]:
+        return 1, {"ok": False, "error": "Pin verification failed", "mismatches": pin_res["mismatches"]}
+
+    if mock_state is not None and mock_state not in ("stock", "applied", "mixed_powerswitch"):
+        return 1, {"ok": False, "error": f"Unsupported mock_state: {mock_state!r}"}
+
+    try:
+        saved = _read_mock_state(session_dir, body_id).get("active_packs", [])
+        steps_run, _ = resolve_pack_plan(man, "putback", packs_arg, saved_active_packs=saved)
+        target_packs = _resolve_putback_target_packs(man, packs_arg, saved_active_packs=saved)
+    except ValueError as err:
+        return 1, {"ok": False, "error": str(err)}
+
+    fused = resolve_fused_preset(man, kit_dir, "putback", target_packs)
+    if fused is not None:
+        steps_run = [fused[1]]
+    else:
+        steps_map = man.get("steps", {})
+        missing = [s for s in steps_run if s not in steps_map]
+        if missing:
+            return 1, {"ok": False, "error": f"Steps missing from manifest: {missing}"}
+
+    _write_mock_state(session_dir, body_id, "stock", [])
+    verdict = "VERDICT READY (stock preflight)"
+    sid = _write_session(session_dir, {
+        "kind": "putback",
+        "mode": "mock",
+        "body_id": body_id,
+        "ready": True,
+        "verified": True,
+        "state": "stock",
+        "verdict": verdict,
+        "closing_kind": "stock_check",
+        "active_packs": [],
+        "steps_run": steps_run,
+        "manifest_sha256": manifest_sha,
+        "pins_ok": True,
+    })
+
+    return 0, {
+        "ok": True,
+        "body_id": body_id,
+        "session_id": sid,
+        "steps_run": steps_run,
+        "state": "stock",
+        "verdict": verdict,
+        "ready": True,
+        "verified": True,
+        "closing_kind": "stock_check",
+        "active_packs": [],
+    }
+
+
+def _map_sony_usb_product(product_name: str | None) -> tuple[str | None, bool, str | None]:
+    if not product_name:
+        return None, False, None
+    p_upper = product_name.strip().upper()
+    if "ILME-FX3A" in p_upper:
+        return None, True, "ILME-FX3A is not supported by FX3 7.02 kits"
+    if "ILME-FX3" in p_upper:
+        return "fx3_702", False, None
+    if "ZV-E10" in p_upper:
+        return "zve10_203", False, None
+    if p_upper == "ZV-E1" or re.search(r"(?<![A-Z0-9])ZV-E1(?![A-Z0-9])", p_upper):
+        return "zve1_202", False, None
+    if "ILCE-7SM3" in p_upper:
+        return "a7s3_501", False, None
+    if p_upper == "ILCE-7C" or re.search(r"(?<![A-Z0-9])ILCE-7C(?![A-Z0-9])", p_upper):
+        return "a7c_203", False, None
+    return None, False, None
+
+
+def parse_ioreg_usb_text(ioreg_text: str) -> dict[str, Any]:
+    """Parse passive `ioreg -p IOUSB -l -w 0` output for connected Sony cameras."""
+    devices: list[dict[str, Any]] = []
+    stack: list[dict[str, Any]] = []
+
+    node_re = re.compile(r"^([| ]*)\+-o\s+(.+)$")
+    vid_re = re.compile(r'"idVendor"\s*=\s*(0x[0-9a-fA-F]+|\d+)')
+    pid_re = re.compile(r'"idProduct"\s*=\s*(0x[0-9a-fA-F]+|\d+)')
+    prod_re = re.compile(r'"(?:USB Product Name|kUSBProductString)"\s*=\s*"([^"]*)"')
+    iface_re = re.compile(r'"bInterfaceClass"\s*=\s*(0x[0-9a-fA-F]+|\d+)')
+
+    for line in ioreg_text.splitlines():
+        m_node = node_re.match(line)
+        if m_node:
+            indent = len(m_node.group(1))
+            rest = m_node.group(2)
+            while stack and stack[-1]["indent"] >= indent:
+                stack.pop()
+            is_usb_device = (
+                "<class IOUSBHostDevice" in rest
+                or "<class AppleUSBHostDevice" in rest
+                or "<class IOUSBDevice" in rest
+                or (
+                    "<class " not in rest
+                    and "Interface" not in rest
+                    and "MassStorage" not in rest
+                    and "IOMedia" not in rest
+                )
+            )
+            if is_usb_device:
+                dev = {
+                    "indent": indent,
+                    "vendor": None,
+                    "product": None,
+                    "product_name": None,
+                    "iface_classes": [],
+                    "has_msc_driver": False,
+                }
+                devices.append(dev)
+                stack.append(dev)
+            elif stack and "IOUSBMassStorage" in rest:
+                stack[-1]["has_msc_driver"] = True
+            continue
+
+        if not stack:
+            continue
+        cur = stack[-1]
+        if m_vid := vid_re.search(line):
+            if cur["vendor"] is None:
+                cur["vendor"] = int(m_vid.group(1), 0)
+        if m_pid := pid_re.search(line):
+            if cur["product"] is None:
+                cur["product"] = int(m_pid.group(1), 0)
+        if m_prod := prod_re.search(line):
+            if cur["product_name"] is None:
+                cur["product_name"] = m_prod.group(1)
+        if m_iface := iface_re.search(line):
+            cur["iface_classes"].append(int(m_iface.group(1), 0))
+        if "IOUSBMassStorage" in line:
+            cur["has_msc_driver"] = True
+
+    sony_devs = [d for d in devices if d.get("vendor") == 0x054C]
+    if not sony_devs:
+        return {
+            "ok": True,
+            "detected": False,
+            "body_id": None,
+            "usb_product_name": None,
+            "usb_mode": None,
+            "is_fx3a_blocked": False,
+            "warning": None,
+        }
+
+    # Prefer a Sony device matching a known camera or in msc/service mode
+    chosen = sony_devs[0]
+    for cand in sony_devs:
+        bid, blocked, _ = _map_sony_usb_product(cand.get("product_name"))
+        if bid is not None or blocked:
+            chosen = cand
+            break
+
+    pid = chosen.get("product")
+    ifaces = chosen.get("iface_classes") or []
+    if pid in (0x0336, 0x02A9) or 255 in ifaces:
+        usb_mode = "service"
+    elif 8 in ifaces or chosen.get("has_msc_driver"):
+        usb_mode = "msc"
+    else:
+        usb_mode = "other"
+
+    prod_name = chosen.get("product_name")
+    body_id, is_fx3a_blocked, warning = _map_sony_usb_product(prod_name)
+    return {
+        "ok": True,
+        "detected": True,
+        "body_id": body_id,
+        "usb_product_name": prod_name,
+        "usb_mode": usb_mode,
+        "is_fx3a_blocked": is_fx3a_blocked,
+        "warning": warning,
+    }
+
+
+def cmd_detect_usb_camera() -> tuple[int, dict[str, Any]]:
+    mock_path = os.environ.get("OPENGATE_MOCK_IOREG_FILE", "").strip()
+    ioreg_text = ""
+    if mock_path:
+        p = Path(mock_path)
+        if p.is_file():
+            ioreg_text = p.read_text(encoding="utf8", errors="replace")
+    elif sys.platform == "darwin":
+        try:
+            proc = subprocess.run(
+                ["ioreg", "-p", "IOUSB", "-l", "-w", "0"],
+                capture_output=True,
+                text=True,
+                encoding="utf8",
+                errors="replace",
+                timeout=5,
+            )
+            if proc.returncode == 0:
+                ioreg_text = proc.stdout
+        except (OSError, subprocess.SubprocessError):
+            ioreg_text = ""
+    return 0, parse_ioreg_usb_text(ioreg_text)
 
 
 def cmd_latest_session(
@@ -859,6 +1221,27 @@ def main(argv: list[str] | None = None) -> int:
     p_put.add_argument("--live-usb", action="store_true")
     p_put.add_argument("--json", action="store_true")
 
+    p_exp_app = sub.add_parser("express-apply", help="Single-session express apply (mock by default)")
+    p_exp_app.add_argument("--body", required=True)
+    p_exp_app.add_argument("--packs", default=None)
+    p_exp_app.add_argument("--mock-camera", action="store_true")
+    p_exp_app.add_argument("--mock-state", choices=("stock", "applied", "mixed_powerswitch"), default=None)
+    p_exp_app.add_argument("--session-dir", type=Path, default=DEFAULT_SESSION_DIR)
+    p_exp_app.add_argument("--live-usb", action="store_true")
+    p_exp_app.add_argument("--json", action="store_true")
+
+    p_exp_put = sub.add_parser("express-putback", help="Single-session express putback (mock by default)")
+    p_exp_put.add_argument("--body", required=True)
+    p_exp_put.add_argument("--packs", default=None)
+    p_exp_put.add_argument("--mock-camera", action="store_true")
+    p_exp_put.add_argument("--mock-state", choices=("stock", "applied", "mixed_powerswitch"), default=None)
+    p_exp_put.add_argument("--session-dir", type=Path, default=DEFAULT_SESSION_DIR)
+    p_exp_put.add_argument("--live-usb", action="store_true")
+    p_exp_put.add_argument("--json", action="store_true")
+
+    p_det = sub.add_parser("detect-usb-camera", help="Passively detect connected Sony USB camera via ioreg")
+    p_det.add_argument("--json", action="store_true")
+
     p_latest = sub.add_parser("latest-session", help="Read newest session state for a body")
     p_latest.add_argument("--body", required=True)
     p_latest.add_argument("--session-dir", type=Path, default=DEFAULT_SESSION_DIR)
@@ -866,7 +1249,7 @@ def main(argv: list[str] | None = None) -> int:
     p_latest.add_argument("--json", action="store_true")
 
     p_prep = sub.add_parser("prepare-live-command", help="Write executable Terminal .command wrapper without touching USB")
-    p_prep.add_argument("--action", required=True, choices=("preflight", "dump", "apply", "putback"))
+    p_prep.add_argument("--action", required=True, choices=("preflight", "dump", "apply", "putback", "express-apply", "express-putback"))
     p_prep.add_argument("--body", required=True)
     p_prep.add_argument("--packs", default=None)
     p_prep.add_argument("--session-dir", type=Path, default=DEFAULT_SESSION_DIR)
@@ -957,6 +1340,12 @@ def main(argv: list[str] | None = None) -> int:
         rc, payload = cmd_apply(args.body, args.packs, args.session_dir, args.live_usb)
     elif args.cmd == "putback":
         rc, payload = cmd_putback(args.body, args.packs, args.session_dir, args.live_usb)
+    elif args.cmd == "express-apply":
+        rc, payload = cmd_express_apply(args.body, args.packs, args.mock_state, args.session_dir, args.live_usb)
+    elif args.cmd == "express-putback":
+        rc, payload = cmd_express_putback(args.body, args.packs, args.mock_state, args.session_dir, args.live_usb)
+    elif args.cmd == "detect-usb-camera":
+        rc, payload = cmd_detect_usb_camera()
     elif args.cmd == "latest-session":
         rc, payload = cmd_latest_session(args.body, args.session_dir, mode_filter=args.mode)
     elif args.cmd == "prepare-live-command":

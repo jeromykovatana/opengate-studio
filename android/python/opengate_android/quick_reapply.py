@@ -76,6 +76,8 @@ def plan_quick_reapply(
             return QuickReapplyPlan(QuickReapplyDecision.RUN_RECOVERY_PREFLIGHT_FIRST)
         if live_session.get("kind") == "putback" and ls_state != "stock":
             return QuickReapplyPlan(QuickReapplyDecision.RUN_RECOVERY_PREFLIGHT_FIRST)
+        if live_session.get("kind") in ("closing_dump", "express_apply") and ls_state != "applied":
+            return QuickReapplyPlan(QuickReapplyDecision.RUN_RECOVERY_PREFLIGHT_FIRST)
 
     is_mock_origin = (
         offline_mock_camera
@@ -110,7 +112,8 @@ def plan_quick_reapply(
         ls_kind = str(live_session.get("kind") or "")
 
         if ls_state == "applied" and ls_ok and ls_ready and ls_verified is not False:
-            return QuickReapplyPlan(QuickReapplyDecision.ALREADY_APPLIED)
+            if ls_kind in ("closing_dump", "express_apply", "preflight", "dump"):
+                return QuickReapplyPlan(QuickReapplyDecision.ALREADY_APPLIED)
 
         if ls_kind in ("preflight", "dump") and ls_ok and ls_ready and ls_verified is not False and ls_state == "stock":
             if preflight_result is not None and _matches_selected_body(selected_body_id, preflight_result.get("body_id")):

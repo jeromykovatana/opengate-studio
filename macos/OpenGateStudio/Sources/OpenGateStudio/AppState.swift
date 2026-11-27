@@ -132,12 +132,26 @@ public struct LiveSessionPresentation: Identifiable, Equatable {
         self.estimatedStepCount = estimatedStepCount
     }
 
+    public var isExpressAction: Bool {
+        action == .expressApply || action == .expressPutback
+    }
+
+    public var isSinglePassFused: Bool {
+        let stepIds = steps.isEmpty ? estimatedStepsPreview : steps.map(\.id)
+        return stepIds.count == 1 && Self.fusedStepIds.contains(stepIds[0])
+    }
+
+    private static let fusedStepIds: Set<String> = ["Q19", "Q20", "F19", "F20"]
+
     public var requiresVolatileRamConfirmation: Bool {
-        action == .apply || action == .putback
+        action == .apply || action == .putback || action == .expressApply || action == .expressPutback
     }
 
     public var canAuthorizeAndStart: Bool {
-        confirmedFirmwareAndUsb && (!requiresVolatileRamConfirmation || confirmedVolatileRam)
+        if isExpressAction {
+            return confirmedVolatileRam
+        }
+        return confirmedFirmwareAndUsb && (!requiresVolatileRamConfirmation || confirmedVolatileRam)
     }
 
     public var actionTitle: String {
@@ -150,6 +164,10 @@ public struct LiveSessionPresentation: Identifiable, Equatable {
             return "Apply Selected Packs"
         case .putback:
             return "Put Back to Stock"
+        case .expressApply:
+            return "Express Apply Open-Gate (3:2)"
+        case .expressPutback:
+            return "Express Restore Stock RAM"
         }
     }
 
@@ -265,6 +283,17 @@ public final class AppState: ObservableObject {
     // Modular packs
     @Published public var selectedPacks: Set<String> = ["mp4_3x2", "screen_3x2"]
 
+    // One-time Express safety consent & passive USB detection
+    public static let expressSafetyTermsDefaultsKey = "og.acceptedExpressSafetyTermsV1"
+    private let userDefaults: UserDefaults
+    @Published public var hasAcceptedExpressSafetyTerms: Bool {
+        didSet {
+            userDefaults.set(hasAcceptedExpressSafetyTerms, forKey: Self.expressSafetyTermsDefaultsKey)
+        }
+    }
+    @Published public var detectedUsbCamera: DetectedUsbCameraResult?
+    @Published public var isDetectingUsbCamera: Bool = false
+
     // 5-Gate Safety Stepper
     @Published public var batteryPulled10s: Bool = false
     @Published public var cameraInStillsMode: Bool = false
@@ -359,6 +388,7 @@ public final class AppState: ObservableObject {
 
     public static let modularPackOrder: [String] = [
         "mp4_3x2",
+        "raster_2560",
         "screen_3x2",
         "hdmi32",
         "high_bitrate",
@@ -366,7 +396,14 @@ public final class AppState: ObservableObject {
         "fx3_playback"
     ]
 
-    public init(bridge: StudioBridge? = nil, sessionDirectory: URL? = nil) {
+    public init(
+        bridge: StudioBridge? = nil,
+        sessionDirectory: URL? = nil,
+        userDefaults: UserDefaults = .standard
+    ) {
+        self.userDefaults = userDefaults
+        self.hasAcceptedExpressSafetyTerms = userDefaults.bool(forKey: Self.expressSafetyTermsDefaultsKey)
+
         if let sessionDirectory {
             self.sessionDir = sessionDirectory
         } else {
@@ -400,6 +437,7 @@ public final class AppState: ObservableObject {
         switch selectedBodyId {
         case "a7s3_501": return "5.01"
         case "fx3_702": return "7.02"
+        case "a7c_203", "zve10_203": return "2.03"
         default: return "2.02"
         }
     }
@@ -477,7 +515,7 @@ public final class AppState: ObservableObject {
         if selectedPacks == safeDaily {
             return .safeDaily
         }
-        let cinemaFull = availablePackSet(from: ["mp4_3x2", "screen_3x2", "hdmi32", "high_bitrate", "xavc_si"])
+        let cinemaFull = availablePackSet(from: ["mp4_3x2", "raster_2560", "screen_3x2", "hdmi32", "high_bitrate", "xavc_si"])
         if selectedPacks == cinemaFull {
             return .cinemaFull
         }
@@ -605,6 +643,7 @@ public final class AppState: ObservableObject {
         guard bodies.isEmpty else { return }
         await loadBodies()
         await verifyPins()
+        await refreshDetectedUsbCamera()
     }
 
     public func retryLocateBridge() async {
@@ -613,9 +652,37 @@ public final class AppState: ObservableObject {
             startupError = nil
             await loadBodies()
             await verifyPins()
+            await refreshDetectedUsbCamera()
         } catch {
             startupError = error.localizedDescription
         }
+    }
+
+    public func refreshDetectedUsbCamera() async {
+        guard let bridge else { return }
+        isDetectingUsbCamera = true
+        defer { isDetectingUsbCamera = false }
+
+        do {
+            let (res, trace) = try await bridge.detectUsbCamera()
+            appendLog(trace)
+            detectedUsbCamera = res
+            if res.detected,
+               !res.isFx3aBlocked,
+               let detectedBodyId = res.bodyId,
+               !detectedBodyId.isEmpty,
+               activeLiveSession == nil,
+               (bodies.isEmpty || bodies.contains(where: { $0.bodyId == detectedBodyId })),
+               selectedBodyId != detectedBodyId {
+                selectedBodyId = detectedBodyId
+            }
+        } catch {
+            // Passive USB probing should not block workspace startup.
+        }
+    }
+
+    public func resetExpressSafetyTerms() {
+        hasAcceptedExpressSafetyTerms = false
     }
 
     public func loadBodies() async {
@@ -744,6 +811,179 @@ public final class AppState: ObservableObject {
         }
     }
 
+    public func runExpressApply() async {
+        guard let bridge, activeLiveSession == nil else { return }
+        stepperError = nil
+
+        if !offlineMockCamera {
+            guard pinResult == nil || pinsVerifiedForAllOrSelected else {
+                stepperError = "Cannot start Live USB Express Apply: SHA-256 kit pin verification failed. Open Diagnostics -> Kit Integrity to inspect."
+                return
+            }
+            if detectedUsbCamera?.isFx3aBlocked == true {
+                stepperError = detectedUsbCamera?.warning ?? "ILME-FX3A is not supported by FX3 7.02 kits."
+                return
+            }
+            presentLiveSession(action: .expressApply)
+            if hasAcceptedExpressSafetyTerms {
+                await authorizeAndStartLiveSession()
+            }
+            return
+        }
+
+        isApplying = true
+        defer { isApplying = false }
+
+        let packsToSend = orderedSelectedPacksToSend
+        putbackResult = nil
+        do {
+            let (res, trace) = try await bridge.expressApply(
+                bodyId: selectedBodyId,
+                packs: packsToSend,
+                mockCamera: true,
+                mockState: mockState,
+                sessionDir: sessionDir
+            )
+            appendLog(trace)
+            applyResult = res
+            preflightResult = nil
+            lastResultSource = .mock
+            saveActiveSnapshot(forMock: true)
+        } catch {
+            applyResult = nil
+            captureError(error, target: .stepper)
+            if mockState == .mixedPowerswitch {
+                let msg = stepperError ?? "Warm power-switch mixed state detected: pull battery >= 10s before retrying."
+                preflightResult = PreflightResult(
+                    ok: true,
+                    ready: false,
+                    state: "not_ready",
+                    verdict: msg,
+                    sessionId: "mock-express-blocked",
+                    bodyId: selectedBodyId,
+                    warning: msg
+                )
+                saveActiveSnapshot(forMock: true)
+            }
+        }
+    }
+
+    public func runExpressPutback() async {
+        guard let bridge, activeLiveSession == nil else { return }
+        stepperError = nil
+
+        if !offlineMockCamera {
+            guard pinResult == nil || pinsVerifiedForAllOrSelected else {
+                stepperError = "Cannot start Live USB Express Restore: SHA-256 kit pin verification failed. Open Diagnostics -> Kit Integrity to inspect."
+                return
+            }
+            presentLiveSession(action: .expressPutback)
+            if hasAcceptedExpressSafetyTerms {
+                await authorizeAndStartLiveSession()
+            }
+            return
+        }
+
+        isPuttingBack = true
+        defer { isPuttingBack = false }
+
+        let packsForPutback: [String]? = {
+            if let active = applyResult?.activePacks, !active.isEmpty {
+                return active
+            }
+            return orderedSelectedPacksToSend
+        }()
+        do {
+            let (res, trace) = try await bridge.expressPutback(
+                bodyId: selectedBodyId,
+                packs: packsForPutback,
+                mockCamera: true,
+                sessionDir: sessionDir
+            )
+            appendLog(trace)
+            putbackResult = res
+            applyResult = nil
+            preflightResult = nil
+            lastResultSource = .mock
+            saveActiveSnapshot(forMock: true)
+        } catch {
+            captureError(error, target: .stepper)
+        }
+    }
+
+    public func handleBatterySwapExpressReapply() async {
+        guard activeLiveSession == nil else { return }
+        stepperError = nil
+
+        if offlineMockCamera {
+            mockSnapshot.applyResult = nil
+            mockSnapshot.preflightResult = nil
+            mockSnapshot.putbackResult = nil
+        } else {
+            liveSnapshot.applyResult = nil
+            liveSnapshot.preflightResult = nil
+            liveSnapshot.putbackResult = nil
+            liveSnapshot.latestSyncedSession = nil
+        }
+        applyResult = nil
+        preflightResult = nil
+        putbackResult = nil
+        latestSyncedSession = nil
+
+        await runExpressApply()
+    }
+
+    public func handleRecoveryExpressCheckAndApply() async {
+        guard activeLiveSession == nil else { return }
+        stepperError = nil
+
+        if offlineMockCamera {
+            mockSnapshot.applyResult = nil
+            mockSnapshot.preflightResult = nil
+            mockSnapshot.putbackResult = nil
+            mockSnapshot.hasInterruptedSession = false
+            mockSnapshot.leftBehindWarning = false
+        } else {
+            liveSnapshot.applyResult = nil
+            liveSnapshot.preflightResult = nil
+            liveSnapshot.putbackResult = nil
+            liveSnapshot.latestSyncedSession = nil
+            liveSnapshot.hasInterruptedSession = false
+            liveSnapshot.leftBehindWarning = false
+        }
+        applyResult = nil
+        preflightResult = nil
+        putbackResult = nil
+        latestSyncedSession = nil
+        hasInterruptedLiveSession = false
+        liveLeftBehindWarning = false
+
+        await runExpressApply()
+    }
+
+    public func runLegacyStepByStepApply() async {
+        guard activeLiveSession == nil else { return }
+        stepperError = nil
+
+        if !offlineMockCamera {
+            guard pinResult == nil || pinsVerifiedForAllOrSelected else {
+                stepperError = "Cannot start Live USB apply: SHA-256 kit pin verification failed."
+                return
+            }
+            presentLiveSession(action: .apply)
+            return
+        }
+
+        batteryPulled10s = true
+        cameraInStillsMode = true
+        if preflightResult?.ready != true {
+            await runPreflight()
+        }
+        if isApplyUnlocked {
+            await applySelectedPacks()
+        }
+    }
+
     // MARK: - Native In-App Live USB Session Lifecycle
 
     public func presentLiveSession(action: LiveCommandAction) {
@@ -752,10 +992,22 @@ public final class AppState: ObservableObject {
 
         let displayName = selectedBody?.displayName ?? defaultDisplayName(for: selectedBodyId)
         let fw = requiredFirmwareForSelectedBody
-        let packs = action == .apply ? orderedSelectedPacksToSend : []
+        let packs: [String]
+        switch action {
+        case .apply, .expressApply:
+            packs = orderedSelectedPacksToSend
+        case .expressPutback:
+            if let active = applyResult?.activePacks, !active.isEmpty {
+                packs = active
+            } else {
+                packs = orderedSelectedPacksToSend
+            }
+        case .preflight, .dump, .putback:
+            packs = []
+        }
         let previewSteps = estimateStepsPreview(for: action, packs: packs)
 
-        activeLiveSession = LiveSessionPresentation(
+        var presentation = LiveSessionPresentation(
             action: action,
             bodyId: selectedBodyId,
             cameraDisplayName: displayName,
@@ -764,6 +1016,11 @@ public final class AppState: ObservableObject {
             estimatedStepsPreview: previewSteps,
             estimatedStepCount: previewSteps.count
         )
+        if presentation.isExpressAction && hasAcceptedExpressSafetyTerms {
+            presentation.confirmedFirmwareAndUsb = true
+            presentation.confirmedVolatileRam = true
+        }
+        activeLiveSession = presentation
     }
 
     public func authorizeAndStartLiveSession() async {
@@ -772,6 +1029,11 @@ public final class AppState: ObservableObject {
               session.phase == .confirming,
               session.canAuthorizeAndStart else {
             return
+        }
+
+        if session.isExpressAction && session.confirmedVolatileRam {
+            hasAcceptedExpressSafetyTerms = true
+            session.confirmedFirmwareAndUsb = true
         }
 
         stepperError = nil
@@ -797,9 +1059,9 @@ public final class AppState: ObservableObject {
         switch session.action {
         case .preflight, .dump:
             isRunningPreflight = true
-        case .apply:
+        case .apply, .expressApply:
             isApplying = true
-        case .putback:
+        case .putback, .expressPutback:
             isPuttingBack = true
         }
         defer {
@@ -810,7 +1072,9 @@ public final class AppState: ObservableObject {
             activeLiveRunTask = nil
         }
 
-        let packsArg: [String]? = session.action == .apply ? session.selectedPacks : nil
+        let packsArg: [String]? = (session.action == .apply || session.action == .expressApply || session.action == .expressPutback) && !session.selectedPacks.isEmpty
+            ? session.selectedPacks
+            : nil
         let (handle, task) = bridge.startLiveInAppRun(
             action: session.action,
             bodyId: session.bodyId,
@@ -900,7 +1164,9 @@ public final class AppState: ObservableObject {
         }
 
         let action = session.action
-        let packsToSend: [String]? = action == .apply ? session.selectedPacks : nil
+        let packsToSend: [String]? = (action == .apply || action == .expressApply || action == .expressPutback) && !session.selectedPacks.isEmpty
+            ? session.selectedPacks
+            : nil
         activeLiveSession = nil
 
         stepperError = nil
@@ -1130,7 +1396,7 @@ public final class AppState: ObservableObject {
             if !adminAuth && (session.completedProgressUnits > 0 || session.leftBehindWarning) {
                 liveSnapshot.hasInterruptedSession = true
                 liveSnapshot.leftBehindWarning = liveSnapshot.leftBehindWarning || session.leftBehindWarning
-                if action == .apply {
+                if action == .apply || action == .expressApply {
                     liveSnapshot.preflightResult = nil
                 }
             }
@@ -1167,10 +1433,10 @@ public final class AppState: ObservableObject {
             if case .active = session.closingDumpStatus {
                 session.closingDumpStatus = .failed(message: message)
             }
-            if action == .apply || action == .putback || leftBehind {
+            if action == .apply || action == .expressApply || action == .putback || action == .expressPutback || leftBehind {
                 liveSnapshot.hasInterruptedSession = true
                 liveSnapshot.leftBehindWarning = liveSnapshot.leftBehindWarning || leftBehind
-                if action == .apply {
+                if action == .apply || action == .expressApply {
                     liveSnapshot.preflightResult = nil
                 }
             }
@@ -1204,6 +1470,7 @@ public final class AppState: ObservableObject {
 
     public func handleAppDidBecomeActive() async {
         guard !offlineMockCamera, activeLiveSession == nil else { return }
+        await refreshDetectedUsbCamera()
         let preferredSource: SessionResultSource = preparedLiveCommandPath != nil ? .liveTerminal : .liveInApp
         await syncLatestCameraSession(silentIfNotFound: true, source: preferredSource)
     }
@@ -1505,7 +1772,7 @@ public final class AppState: ObservableObject {
         case .safeDaily:
             desired = ["mp4_3x2", "screen_3x2"]
         case .cinemaFull, .reliabilityAudit:
-            desired = ["mp4_3x2", "screen_3x2", "hdmi32", "high_bitrate", "xavc_si"]
+            desired = ["mp4_3x2", "raster_2560", "screen_3x2", "hdmi32", "high_bitrate", "xavc_si"]
         }
         var next = Set<String>()
         for packId in desired {
@@ -1549,6 +1816,8 @@ public final class AppState: ObservableObject {
         switch bodyId {
         case "a7s3_501": return "a7S III 5.01"
         case "fx3_702": return "FX3 7.02"
+        case "a7c_203": return "a7C 2.03"
+        case "zve10_203": return "ZV-E10 2.03"
         default: return "ZV-E1 2.02"
         }
     }
@@ -1587,6 +1856,31 @@ public final class AppState: ObservableObject {
                 }
             }
             return ordered.isEmpty ? ["L17", "L6", "L14"] : ordered
+        case .expressApply:
+            let fusedCapable = selectedBodyId == "zve1_202" || selectedBodyId == "a7s3_501" || selectedBodyId == "fx3_702"
+            if fusedCapable {
+                switch activePackPreset {
+                case .safeDaily:
+                    return ["Q19"]
+                case .cinemaFull, .reliabilityAudit:
+                    return ["F19"]
+                case nil:
+                    break
+                }
+            }
+            return ["check"] + estimateStepsPreview(for: .apply, packs: packs) + ["check"]
+        case .expressPutback:
+            let fusedCapable = selectedBodyId == "zve1_202" || selectedBodyId == "a7s3_501" || selectedBodyId == "fx3_702"
+            if fusedCapable {
+                let packSet = Set(packs.filter { $0 != "core_open_gate" })
+                if packSet == availablePackSet(from: ["mp4_3x2", "screen_3x2"]) {
+                    return ["Q20"]
+                }
+                if packSet == availablePackSet(from: ["mp4_3x2", "raster_2560", "screen_3x2", "hdmi32", "high_bitrate", "xavc_si"]) {
+                    return ["F20"]
+                }
+            }
+            return estimateStepsPreview(for: .putback, packs: packs) + ["check"]
         }
     }
 
@@ -1683,7 +1977,7 @@ public final class AppState: ObservableObject {
         let normalizedKind = (res.kind ?? "").lowercased()
 
         switch normalizedKind {
-        case "putback":
+        case "putback", "express_putback":
             let stockOk = res.ok && res.ready && res.verified != false && res.state == "stock"
             liveSnapshot.putbackResult = PutbackResult(
                 ok: stockOk,
@@ -1698,7 +1992,7 @@ public final class AppState: ObservableObject {
             liveSnapshot.lastResultSource = source
             liveSnapshot.liveStatusBanner = "Synced Live Put Back session (\(sessionLabel)): state = \(res.state)"
 
-        case "apply", "closing_dump":
+        case "apply", "closing_dump", "express_apply":
             let applyOk = res.ok && res.ready && res.verified != false && res.state == "applied"
             liveSnapshot.applyResult = applyOk ? ApplyResult(
                 ok: true,
@@ -1762,9 +2056,7 @@ public final class AppState: ObservableObject {
                 }
             }
         }
-        if !next.isEmpty {
-            selectedPacks = next
-        }
+        selectedPacks = next
     }
 
     private func appendLog(_ trace: CommandTrace) {

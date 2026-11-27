@@ -449,12 +449,19 @@ def library():
     return data
 
 
-def rules(lib):
+def readonly_rules():
+    """Packet rules permitting only path selection, file read, and file delete (no SET_FILE2 writes)."""
     return {
         (c.PFUNC_ADJUST, 0x1001, SET_FILE_PATH): ("SET_FILE_PATH", lambda p: p[:1] == b"\x00" and p[1:] in PATHS),
         (c.PFUNC_ADJUST, 0x1001, GET_FILE2): ("GET_FILE2", lambda p: p == b"\x00\xff\x00"),
-        (c.PFUNC_ADJUST, 0x1001, SET_FILE2): ("SET_FILE2", lambda p: p == b"\x00\xff\x00" + lib and c.sha256(p[3:]) == LIB_SHA256),
         (c.PFUNC_ADJUST, 0x1001, FILE_DELETE2): ("FILE_DELETE2", lambda p: p == b"\x00\xff"),
+    }
+
+
+def rules(lib):
+    return {
+        **readonly_rules(),
+        (c.PFUNC_ADJUST, 0x1001, SET_FILE2): ("SET_FILE2", lambda p: p == b"\x00\xff\x00" + lib and c.sha256(p[3:]) == LIB_SHA256),
     }
 
 
@@ -498,6 +505,70 @@ class Guard(c.ServiceGuard):
         return super().send(pFunc, data, oData)
 
 
+class MultiStepGuard(c.ServiceGuard):
+    """ServiceGuard for single-session multi-step express runs, re-armed per step to one pinned (lib, sha256)."""
+
+    def __init__(self, device, session, lib=None, lib_sha256=None):
+        super().__init__(device, session, readonly_rules())
+        self._big = 0
+        self._armed_sha256 = None
+        self._step_writes = 0
+        self.total_writes = 0
+        self.allow_result_delete = False
+        GUARDS.append(self)
+        if lib is not None:
+            self.arm_step(lib, lib_sha256)
+
+    def arm_step(self, lib, lib_sha256=None):
+        """Pin this guard to accept exactly one SET_FILE2 of (lib, sha256) for the current step."""
+        sha = (lib_sha256 or c.sha256(lib)).lower()
+        self._armed_sha256 = sha
+        self._big = len(lib) + 7
+        self._step_writes = 0
+        self.rules = {
+            **readonly_rules(),
+            (c.PFUNC_ADJUST, 0x1001, SET_FILE2): (
+                "SET_FILE2",
+                lambda p, expected_lib=lib, expected_sha=sha: (
+                    p == b"\x00\xff\x00" + expected_lib and c.sha256(p[3:]) == expected_sha
+                ),
+            ),
+        }
+
+    def disarm_step(self):
+        """Disable all SET_FILE2 writes between steps."""
+        self._armed_sha256 = None
+        self._big = 0
+        self._step_writes = 0
+        self.rules = readonly_rules()
+
+    def _send(self, pFunc, data, _oData):
+        if len(data) > 0x1000 and (self._big <= 0 or len(data) != self._big):
+            raise c.GuardRefusal("a %d-byte service packet that is not the pinned library" % len(data))
+        device = self._device
+        header = struct.pack(c.SENSER_HEADER, len(data), pFunc, device._sequence, 0, 0, 0, 0)
+        device.driver.write(header + bytes(data))
+        response, out = c.read_service_answer(device.driver, device._sequence, self.session.log)
+        device._sequence += 1
+        return response, out
+
+    def send(self, pFunc, data, oData=None):
+        name = c.classify_service_packet(pFunc, data, self.rules)
+        if name == "FILE_DELETE2" and self._path_set == RESULT_PATH and self.allow_result_delete:
+            self.allow_result_delete = False
+            return super().send(pFunc, data, oData)
+        if name in ("SET_FILE2", "FILE_DELETE2") and self._path_set != LIB_PATH:
+            raise c.GuardRefusal("%s when the path selected just before is not %s" % (name, LIB_PATH.decode()))
+        if name == "SET_FILE2":
+            if self._armed_sha256 is None:
+                raise c.GuardRefusal("SET_FILE2 while MultiStepGuard is disarmed")
+            if self._step_writes >= 1:
+                raise c.GuardRefusal("a second file write without re-arming MultiStepGuard")
+            self._step_writes += 1
+            self.total_writes += 1
+        return super().send(pFunc, data, oData)
+
+
 def service_session(session, inner, body, lib):
     """As CT1's service_session, with this test's guard. The stop request is always sent."""
     from pmca.usb.sony import SonySenserAuthDevice, SonySenserCamera, SonySenserDevice
@@ -516,10 +587,36 @@ def service_session(session, inner, body, lib):
         session.say("Stop request sent")
 
 
+def service_session_multi(session, inner, body):
+    """Authenticate once, attach MultiStepGuard, run body(camera, guard), and send auth.stop() once."""
+    from pmca.usb.sony import SonySenserAuthDevice, SonySenserCamera, SonySenserDevice
+    driver = c.GuardedDriver(inner, session, "senser")
+    session.results["service_usb_id"] = "%04x:%04x" % driver.getId()
+    auth = SonySenserAuthDevice(driver)
+    session.say("Authenticating")
+    auth.start()
+    try:
+        auth.authenticate()
+        device = SonySenserDevice(driver)
+        guard = MultiStepGuard(device, session)
+        body(SonySenserCamera(device), guard)
+    finally:
+        auth.stop()
+        session.say("Stop request sent")
+
+
 # ------------------------------------------------------------ the steps
 
 def text(status):
-    return "no status" if status is None else "0x%08x (%s)" % (status, STATUS_TEXT.get(status, "not a status this script knows"))
+    if status is None:
+        return "no status"
+    if status == 0x10000004:
+        return "0x10000004 (service partition /tmp/jiritsu did not mount)"
+    if status == 0x10000006:
+        return "0x10000006 (missing)"
+    if status == 0x10000015:
+        return "0x10000015 (file too large for service buffer)"
+    return "0x%08x (%s)" % (status, STATUS_TEXT.get(status, "not a status this script knows"))
 
 
 def command(camera, code, payload):

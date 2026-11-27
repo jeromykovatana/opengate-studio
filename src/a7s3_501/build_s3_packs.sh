@@ -82,11 +82,32 @@ for L in 19 20; do
     "$READCHECK_C" -o "$KIT_DIR/libJit_s3_${N}.so"
 done
 
+# Fused single-pass presets (Q19/Q20 Safe Daily, F19/F20 Cinema Full)
+FUSED_C="$STUDIO_ROOT/src/common/fused_preset.c"
+for L in 19 20; do
+  "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DFUSED_H="expected_fused_safe_daily_s3.h"' \
+    "$FUSED_C" "$SEN" -o "$KIT_DIR/libJit_s3_Q${L}.so"
+  "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DFUSED_H="expected_fused_cinema_full_s3.h"' \
+    "$FUSED_C" "$SEN" -o "$KIT_DIR/libJit_s3_F${L}.so"
+done
+for code in Q19 Q20 F19 F20; do
+  sz=$(wc -c < "$KIT_DIR/libJit_s3_${code}.so" | tr -d ' ')
+  [ "$sz" -le 65520 ] || { echo "SIZE LIMIT EXCEEDED ($sz > 65520) for libJit_s3_${code}.so"; exit 1; }
+done
+
 # Coherent read-only helpers (s3read_v9)
 "${CC[@]}" -I "$SRC_DIR" -DDUMP=0 "$SRC_DIR/s3read.c" "$SEN" -o "$KIT_DIR/libJit_s3_check.so"
 "${CC[@]}" -I "$SRC_DIR" -DDUMP=1 "$SRC_DIR/s3read.c" "$SEN" -o "$KIT_DIR/libJit_s3_dump.so"
 
+if [ "${SKIP_EMIT_MANIFEST:-0}" != "1" ] && [ "$KIT_DIR" = "$STUDIO_ROOT/kits/a7s3_501" ]; then
+  "$ZIG_PY" -B "$SRC_DIR/gen_s3_packs.py" --emit-manifest
+fi
+
+for f in "$KIT_DIR"/*.so; do
+  strings "$f" | grep -q "clang version 18.1.6" || { echo "MISSING clang 18.1.6 in $f"; exit 1; }
+done
+
 echo "Built a7S III 5.01 artifacts in $KIT_DIR:"
-for f in "$KIT_DIR"/libJit_s3_{L5,L6,L16,L17,S16,S17,L19,L20,V19,V20,C19,C20,H16,H17,B19,B20,I19,I20,check,dump}.so; do
+for f in "$KIT_DIR"/libJit_s3_{L5,L6,L16,L17,S16,S17,L19,L20,V19,V20,C19,C20,H16,H17,B19,B20,I19,I20,Q19,Q20,F19,F20,check,dump}.so; do
   printf "  %s  %s  %d bytes\n" "$(shasum -a 256 "$f" | awk '{print $1}')" "$(basename "$f")" "$(wc -c < "$f")"
 done

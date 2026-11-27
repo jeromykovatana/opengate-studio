@@ -67,7 +67,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install --require-hashes -r requirements-build.txt
 
-      - name: Rebuild all 62 helpers and verify SHA-256 pins
+      - name: Rebuild all 90 helpers and verify SHA-256 pins
         run: python3 scripts/verify_reproducible_build.py --json
 
   macos-swift-tests:

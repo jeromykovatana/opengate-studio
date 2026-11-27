@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "body_id": "zve10_203",
+  "camera": "ZV-E10",
+  "firmware": "2.03",
+  "version_txt": "30110_06.2026060501",
+  "toolchain": "ziglang 0.13.0 (clang 18.1.6)",
+  "persistent_writes": false,
+  "device_info": {
+    "file": "DeviceInfo.xml",
+    "sha256": "e44713178fad970870ead845c93abdfcf150c418de11b306da91f2d09d67c1b7",
+    "size": 517
+  },
+  "readonly": {
+    "check": {
+      "file": "libJit_zve10_check.so",
+      "sha256": "60b2485269c2dd7e2a9712564754fce7f93fe86277bb583f0693c0d6666fa001",
+      "size": 30308,
+      "level": 101,
+      "summary": "Coherent read-only preflight check (zve10read_v1: 45 av + 40 lm sites)"
+    },
+    "dump": {
+      "file": "libJit_zve10_dump.so",
+      "sha256": "e2642232bf99ac551617ba3a65ad6a598ee23048388d2d99c8883229cca621ce",
+      "size": 35360,
+      "level": 102,
+      "summary": "Coherent read-only diagnostic dump + DDR pages (zve10read_v1)"
+    }
+  },
+  "packs": {
+    "core_open_gate": {
+      "label": "Core 3:2 Open Gate (Sensor Squeezed 3840x2160)",
+      "required": true,
+      "apply_steps": [
+        "L5"
+      ],
+      "putback_steps": [
+        "L6"
+      ],
+      "summary": "Expands 4K24p unsplit sensor readout to full 6000x4000 (3:2) vertically squeezed into standard 3840x2160 XAVC S 4K"
+    },
+    "raster_2560": {
+      "label": "True 3840x2560 3:2 Raster (Experimental)",
+      "required": false,
+      "default_enabled": false,
+      "apply_steps": [
+        "L16",
+        "L19"
+      ],
+      "putback_steps": [
+        "L20",
+        "L17"
+      ],
+      "summary": "Experimental native 3840x2560 H.264 output across movie size, encoder descriptors, VCD profiles, and libmpr (leave off for Safe Daily 3:2)"
+    }
+  },
+  "steps": {
+    "L5": {
+      "file": "libJit_zve10_L5.so",
+      "sha256": "a649649868719ff9af27e0bc484f4fdbf9c37455d495c872226d2a42e2bf7816",
+      "size": 14544,
+      "level": 205,
+      "summary": "Apply sensor 3:2 full-height readout (ogsq_zve10_v1: 16 sites)"
+    },
+    "L6": {
+      "file": "libJit_zve10_L6.so",
+      "sha256": "c37e3bbd5889b35751623e06062454d1c000db307b8fbe081bef3e2bd6966ffa",
+      "size": 14564,
+      "level": 206,
+      "summary": "Put back sensor 3:2 full-height readout (ogsq_zve10_v1)"
+    },
+    "L16": {
+      "file": "libJit_zve10_L16.so",
+      "sha256": "5e57462a79758a2ac022d698682efc249a7b33e2c001c8e9aaf6e88f81de3ea8",
+      "size": 13980,
+      "level": 216,
+      "summary": "Apply movie output height 2160 -> 2560 (outsz2560_zve10_v1: 9 sites)"
+    },
+    "L17": {
+      "file": "libJit_zve10_L17.so",
+      "sha256": "b31cd2aa356eaacde07b52fad1fcdce97693b70ab1e2974d030042871253a21b",
+      "size": 13984,
+      "level": 217,
+      "summary": "Put back movie output height (outsz2560_zve10_v1)"
+    },
+    "L19": {
+      "file": "libJit_zve10_L19.so",
+      "sha256": "d204ebd3d17dca9098f236642e728b901675762bba1ae76ff3dc9e62ee672733",
+      "size": 21368,
+      "level": 219,
+      "summary": "Apply encoder/muxer 3840x2560 tables (ogfile2560_zve10_v1: 20 av + 40 lm sites)"
+    },
+    "L20": {
+      "file": "libJit_zve10_L20.so",
+      "sha256": "16a6246b232af6a28095ed22afc0888788f1a9723a44948ff447b88ad58e02dc",
+      "size": 21388,
+      "level": 220,
+      "summary": "Put back encoder/muxer 3840x2560 tables (ogfile2560_zve10_v1)"
+    }
+  }
+}

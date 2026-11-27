@@ -634,7 +634,363 @@ def emit_s3_expected(cp: bytes, av: bytes, lm: bytes) -> None:
     write_utf8_lf(HERE / "s3_expected.json", json.dumps(facts, indent=1) + "\n")
 
 
+def _merge_guards_nonoverlap(
+    guards: list[tuple[int, bytes]],
+    sites: list[tuple[int, bytes, bytes]],
+) -> list[tuple[int, bytes]]:
+    site_spans = [(o, o + len(old)) for o, old, _ in sites]
+    for go, gb in guards:
+        ge = go + len(gb)
+        for so, se in site_spans:
+            assert not (go < se and so < ge), f"Fused guard 0x{go:x}..0x{ge:x} collides with site 0x{so:x}..0x{se:x}"
+
+    kept_intervals: list[tuple[int, int, bytes]] = []
+    for go, gb in sorted(set(guards), key=lambda x: (x[0], -len(x[1]))):
+        intervals = [(go, go + len(gb))]
+        for ka, ke, kb in kept_intervals:
+            next_iv = []
+            for a, z in intervals:
+                if ke <= a or z <= ka:
+                    next_iv.append((a, z))
+                else:
+                    ov_a, ov_z = max(a, ka), min(z, ke)
+                    assert gb[ov_a - go : ov_z - go] == kb[ov_a - ka : ov_z - ka], (
+                        f"Conflicting guard bytes at 0x{ov_a:x}..0x{ov_z:x}"
+                    )
+                    if a < ka:
+                        next_iv.append((a, ka))
+                    if ke < z:
+                        next_iv.append((ke, z))
+            intervals = next_iv
+        for a, z in intervals:
+            if z > a:
+                kept_intervals.append((a, z, gb[a - go : z - go]))
+    kept_intervals.sort(key=lambda x: x[0])
+    for k in range(len(kept_intervals) - 1):
+        assert kept_intervals[k][1] <= kept_intervals[k + 1][0], "Guard coalesce overlap"
+    return [(a, b) for a, _, b in kept_intervals]
+
+
+def _merge_words_and_guards(
+    words: list[tuple[int, bytes, bytes]],
+    guards: list[tuple[int, bytes]],
+    cp_sites: list[tuple[int, bytes, bytes]],
+) -> tuple[list[tuple[int, bytes, bytes]], list[tuple[int, bytes]]]:
+    words_sorted = sorted(words, key=lambda x: x[0])
+    for a, b in zip(words_sorted, words_sorted[1:]):
+        assert a[0] + 4 <= b[0], f"Overlapping CP ram_word at 0x{a[0]:x} vs 0x{b[0]:x}"
+    for w, _, _ in words_sorted:
+        for co, col, _ in cp_sites:
+            assert not (w < co + len(col) and co < w + 4), f"ram_word 0x{w:x} overlaps cp_site 0x{co:x}"
+    site_as_mp = [(w, st, ch) for w, st, ch in words_sorted] + list(cp_sites)
+    return words_sorted, _merge_guards_nonoverlap(guards, site_as_mp)
+
+
+def _load_words_json_s3(cp: bytes, design_path: Path, in_file: bool) -> tuple[list[tuple[int, bytes, bytes]], list[tuple[int, bytes]]]:
+    d = json.loads(design_path.read_text(encoding="utf8"))
+    if in_file:
+        assert d["artifact_sha256"] == hashlib.sha256(cp).hexdigest()
+    words: list[tuple[int, bytes, bytes]] = []
+    for s in d["sites"]:
+        ra = int(s["ram_address"], 16)
+        old, new = bytes.fromhex(s["old"]), bytes.fromhex(s["new"])
+        assert ra % 4 == 0 and len(old) == len(new) == 4 and old != new
+        if in_file:
+            assert cp[ra - BASE : ra - BASE + 4] == old
+        words.append((ra, old, new))
+    guards: list[tuple[int, bytes]] = []
+    for g in d["guards"]:
+        ga = int(g["ram_address"], 16)
+        gb = bytes.fromhex(g["bytes"])
+        assert 0 < len(gb) <= 16
+        if in_file:
+            assert cp[ga - BASE : ga - BASE + len(gb)] == gb
+        guards.append((ga, gb))
+    return words, guards
+
+
+def _load_hdmi_words_s3(cp: bytes) -> tuple[list[tuple[int, bytes, bytes]], list[tuple[int, bytes]]]:
+    d = json.loads((DESIGNS_DIR / "hdmi32_s3_501.json").read_text(encoding="utf8"))
+    assert d["artifact_sha256"]["cpapp-b.bin"] == hashlib.sha256(cp).hexdigest()
+    patched = bytearray(cp)
+    touched: set[int] = set()
+    for p in d["patches"]:
+        ram = int(p["ram_address"], 16)
+        old, new = bytes.fromhex(p["old"]), bytes.fromhex(p["new"])
+        assert cp[ram - BASE : ram - BASE + len(old)] == old
+        for idx in range(len(old)):
+            touched.add(ram + idx)
+            patched[ram - BASE + idx] = new[idx]
+    word_addrs = sorted({a & ~3 for a in touched})
+    words = [(w, cp[w - BASE : w - BASE + 4], bytes(patched[w - BASE : w - BASE + 4])) for w in word_addrs]
+    guards = [(int(g["ram_address"], 16), bytes.fromhex(g["bytes"])) for g in d["guards"]]
+    return words, guards
+
+
+def _load_appfw_s3(app: bytes, av: bytes) -> tuple[list[tuple[int, int, bytes, bytes]], list[tuple[int, bytes]]]:
+    d = json.loads((DESIGNS_DIR / "lcdcycle_s3_v3.json").read_text(encoding="utf8"))
+    assert d["artifact_sha256"]["appFw.so"] == hashlib.sha256(app).hexdigest()
+    phoff = struct.unpack_from("<Q", app, 0x20)[0]
+    phentsize, phnum = struct.unpack_from("<HH", app, 0x36)
+    load0 = next(
+        struct.unpack_from("<IIQQQQQQ", app, phoff + k * phentsize)
+        for k in range(phnum)
+        if struct.unpack_from("<I", app, phoff + k * phentsize)[0] == 1
+    )
+    app_seg_end = (load0[5] + 0xFFF) & ~0xFFF
+
+    cave_from = int(d["cave"]["from"], 16)
+    hooks = [p for p in d["patches"] if p["kind"] == "hook"]
+    assert len(hooks) == 1
+    hook_off = int(hooks[0]["file_off"], 16)
+
+    guards = [
+        (0, app[:16]),
+        (cave_from - 0x18, app[cave_from - 0x18 : cave_from - 0x8]),
+        (hook_off - 0x10, app[hook_off - 0x10 : hook_off]),
+        (hook_off + 4, app[hook_off + 4 : hook_off + 20]),
+        (int(d["calls"]["appfw_dlsym"], 16), app[int(d["calls"]["appfw_dlsym"], 16) : int(d["calls"]["appfw_dlsym"], 16) + 16]),
+        (int(d["calls"]["appfw_system_mode"], 16), app[int(d["calls"]["appfw_system_mode"], 16) : int(d["calls"]["appfw_system_mode"], 16) + 16]),
+        (int(d["calls"]["appfw_vdf_layout"], 16), app[int(d["calls"]["appfw_vdf_layout"], 16) : int(d["calls"]["appfw_vdf_layout"], 16) + 16]),
+    ]
+    sites: list[tuple[int, int, bytes, bytes]] = []
+    for p in d["patches"]:
+        assert p["binary"] == "appFw.so"
+        off = int(p["file_off"], 16)
+        old, new = bytes.fromhex(p["old"]), bytes.fromhex(p["new"])
+        assert 0 < len(old) == len(new) <= 16 and old != new and app[off : off + len(old)] == old
+        assert off + len(old) <= app_seg_end
+        sites.append((off, 1, old, new))
+    assert d["patches"][-1]["kind"] == "hook"
+    entries = [(off, 0, gb, b"") for off, gb in guards] + sites
+    for go, gb in guards:
+        assert go + len(gb) <= app_seg_end
+        for so, _, sold, _ in sites:
+            assert not (go < so + len(sold) and so < go + len(gb))
+    av_guards = [
+        (CLIP + 0x50, av[CLIP + 0x50 : CLIP + 0x60]),
+        (UNIT + 0x20, av[UNIT + 0x20 : UNIT + 0x30]),
+    ]
+    return entries, av_guards
+
+
+def _pack_mp_pool(tables: list[list[tuple[int, int, bytes, bytes]]]) -> tuple[bytes, list[list[tuple[int, int, int, int]]]]:
+    pool = bytearray()
+    blob_cache: dict[bytes, int] = {}
+    packed_tables: list[list[tuple[int, int, int, int]]] = []
+    for tab in tables:
+        rows = []
+        for off, kind, old, new in tab:
+            blob = old if kind == 0 else (old + new)
+            assert (kind == 0 and len(new) == 0) or (kind == 1 and len(old) == len(new))
+            assert 0 < len(old) <= 16
+            if blob not in blob_cache:
+                blob_cache[blob] = len(pool)
+                pool.extend(blob)
+            rows.append((off, blob_cache[blob], len(old), kind))
+        packed_tables.append(rows)
+    return bytes(pool), packed_tables
+
+
+def emit_fused_s3(cp: bytes, av: bytes, lm: bytes, v19: dict, b19: dict, i19: dict) -> None:
+    app = (FW_DIR / "appFw.so").read_bytes()
+    d_og = json.loads((DESIGNS_DIR / "ogsq_s3_v6.json").read_text(encoding="utf8"))
+    assert d_og["artifact_sha256"] == hashlib.sha256(cp).hexdigest()
+    cp_sites = sorted((int(p["addr"], 16), bytes.fromhex(p["old"]), bytes.fromhex(p["new"])) for p in d_og["patches"])
+    assert len(cp_sites) == 40
+    modes = sorted(int(m, 16) for m in d_og["stored_records"])
+    offs = [int(x, 16) for x in d_og["stored_records"][hex(modes[0])]["offsets_that_differ"]]
+    stock_m, new_m = [], []
+    for m in modes:
+        sr = d_og["stored_records"][hex(m)]
+        st_v, nw_v = [], []
+        for v in ("ntsc", "pal"):
+            s, n = bytes.fromhex(sr[v]["stock"]), bytes.fromhex(sr[v]["design"])
+            st_v.append(bytes(s[i] for i in offs))
+            nw_v.append(bytes(n[i] for i in offs))
+        stock_m.append(st_v)
+        new_m.append(nw_v)
+
+    id_files = (
+        ("/libmpr.so", hashlib.sha256(lm).digest()),
+        ("/libsencore.so", hashlib.sha256((FW_DIR / "libsencore.so").read_bytes()).digest()),
+        ("/libJiritsu.so", hashlib.sha256((FW_DIR / "libJiritsu.so").read_bytes()).digest()),
+        ("/appFw.so", hashlib.sha256(app).digest()),
+    )
+    id_pages = [(a, hashlib.sha256(cp[a - BASE : a - BASE + 4096]).digest()) for a in ID_PAGES]
+
+    w_out, g_out = _load_words_json_s3(cp, UPSTREAM_DESIGNS_DIR / "outsz2560_s3_v1.json", in_file=False)
+    w_lcd, g_lcd = _load_words_json_s3(cp, UPSTREAM_DESIGNS_DIR / "lcdratio32_s3_v1.json", in_file=True)
+    w_hdmi, g_hdmi = _load_hdmi_words_s3(cp)
+    app_lm_entries, c19_av_guards = _load_appfw_s3(app, av)
+
+    presets = [
+        ("safe_daily", "expected_fused_safe_daily_s3.h", w_out + w_lcd, g_out + g_lcd, [v19]),
+        ("cinema_full", "expected_fused_cinema_full_s3.h", w_out + w_lcd + w_hdmi, g_out + g_lcd + g_hdmi, [v19, b19, i19]),
+    ]
+
+    for preset_name, hdr_name, words_raw, wguards_raw, mp_packs in presets:
+        words, wguards = _merge_words_and_guards(words_raw, wguards_raw, cp_sites)
+
+        av_sites, lm_sites, av_guards, lm_guards = [], [], list(c19_av_guards), []
+        for pk in mp_packs:
+            av_sites.extend(pk["sites"]["av-cam.bin"])
+            lm_sites.extend(pk["sites"]["libmpr.so"])
+            av_guards.extend(pk["guards"]["av-cam.bin"])
+            lm_guards.extend(pk["guards"]["libmpr.so"])
+
+        av_sites_s = sorted(av_sites, key=lambda x: x[0])
+        lm_sites_s = sorted(lm_sites, key=lambda x: x[0])
+        for x, y in zip(av_sites_s, av_sites_s[1:]):
+            assert x[0] + len(x[1]) <= y[0], f"{preset_name} av overlap"
+        for x, y in zip(lm_sites_s, lm_sites_s[1:]):
+            assert x[0] + len(x[1]) <= y[0], f"{preset_name} lm overlap"
+
+        av_guards_c = _merge_guards_nonoverlap(av_guards, av_sites_s)
+        lm_guards_c = _merge_guards_nonoverlap(lm_guards, lm_sites_s)
+
+        av_tab = sorted(
+            [(o, 1, old, new) for o, old, new in av_sites_s] + [(o, 0, b, b"") for o, b in av_guards_c],
+            key=lambda x: (x[0], x[1]),
+        )
+        lm_tab = sorted(
+            [(o, 1, old, new) for o, old, new in lm_sites_s] + [(o, 0, b, b"") for o, b in lm_guards_c],
+            key=lambda x: (x[0], x[1]),
+        )
+        for tab_name, tab in (("mp_av", av_tab), ("mp_lm", lm_tab)):
+            for x, y in zip(tab, tab[1:]):
+                assert x[0] + len(x[2]) <= y[0], f"{preset_name} {tab_name} overlap at 0x{x[0]:x}"
+        check_libmpr_pt_load0(lm, lm_tab)
+
+        av_first = av_tab[0][0] & ~0xFFF
+        av_last = max(o + len(old) for o, _, old, _ in av_tab)
+        av_bytes = ((av_last - av_first) + 0xFFF) & ~0xFFF
+
+        mp_pool, (av_packed, lm_packed, app_packed) = _pack_mp_pool([av_tab, lm_tab, app_lm_entries])
+
+        arr = lambda tbl: "{ " + ", ".join("{ " + ", ".join(f"{{ {hx(v)} }}" for v in row) + " }" for row in tbl) + " }"
+        out = [
+            f"/* Generated by src/a7s3_501/gen_s3_packs.py for fused preset {preset_name} (a7S III 5.01). Do not edit. */",
+            f'#define FUSED_LABEL "{preset_name}_s3"',
+            "#define CP_LO 0x108000UL",
+            "#define CP_HI 0x10000000UL",
+            f"#define AVCAM_PHYS {AVCAM_PHYS:#x}UL",
+            f'#define AVCAM_RESERVE "{AVCAM_RESERVE}"',
+            "#define IMAGER 0x12a41f0UL",
+            "#define CTRL_DRVPARAM 0x698U",
+            "#define REC 0x15cU",
+            "#define MULTI_REC 1",
+            f"#define N_RECS {len(modes)}",
+            "#define REC_VARIANTS 2",
+            f"#define REC_BYTES {len(offs)}",
+            "#define FUSED_HAS_APPFW 1",
+            f"#define MP_AV_FIRST 0x{av_first:x}UL",
+            f"#define MP_AV_BYTES 0x{av_bytes:x}UL",
+            "",
+            "static const struct fused_id_file fused_id_files[] = {",
+            *[f'    {{ "{n}", {{ {hx(d)} }} }},' for n, d in id_files],
+            "};",
+            "static const struct fused_id_page fused_id_pages[] = {",
+            *[f"    {{ 0x{a:x}U, {{ {hx(d)} }} }}," for a, d in id_pages],
+            "};",
+            "",
+            "/* Sensor MULTI_REC stage (ogsq_s3_v6) */",
+            f"static const u32 rec_modes[N_RECS] = {{ {', '.join(f'0x{m:x}' for m in modes)} }};",
+            'static const char *const rec_variant_name[REC_VARIANTS] = { "NTSC (60 Hz)", "PAL (50 Hz)" };',
+            f"static const unsigned short rec_offs[REC_BYTES] = {{ {', '.join(f'0x{k:x}' for k in offs)} }};",
+            f"static const u8 rec_stock[N_RECS][REC_VARIANTS][REC_BYTES] = {arr(stock_m)};",
+            f"static const u8 rec_new[N_RECS][REC_VARIANTS][REC_BYTES] = {arr(new_m)};",
+        ]
+        cp_rows = []
+        for k, (a, old, new) in enumerate(cp_sites):
+            out.append(f"static const u8 cp_s{k}_old[{len(old)}] = {{ {hx(old)} }};")
+            out.append(f"static const u8 cp_s{k}_new[{len(new)}] = {{ {hx(new)} }};")
+            cp_rows.append(f"    {{ 0x{a:x}, {len(old)}, cp_s{k}_old, cp_s{k}_new, 0, 0 }},")
+        out += [
+            "static const struct cp_site cp_sites[] = {",
+            *cp_rows,
+            "};",
+            "",
+            f"/* Merged CP words ({len(words)} words, {len(wguards)} guards) */",
+            "static const struct ram_word ram_words[] = {",
+            *[f"    {{ 0x{w:x}U, {{ {hx(st)} }}, {{ {hx(ch)} }} }}," for w, st, ch in words],
+            "};",
+            "static const struct ram_guard ram_guards[] = {",
+            *[f"    {{ 0x{ga:x}U, {len(gb)}U, {{ {h16(gb)} }} }}," for ga, gb in wguards],
+            "};",
+            "",
+            f"/* Compact deduplicated MP byte pool ({len(mp_pool)} bytes) */",
+            f"static const u8 mp_pool[{len(mp_pool)}] = {{ {hx(mp_pool)} }};",
+            "static const struct mp_ent mp_av[] = {",
+            *[f"    {{ 0x{off:x}U, {boff}U, {ln}U, {knd}U }}," for off, boff, ln, knd in av_packed],
+            "};",
+            "static const struct mp_ent mp_lm[] = {",
+            *[f"    {{ 0x{off:x}U, {boff}U, {ln}U, {knd}U }}," for off, boff, ln, knd in lm_packed],
+            "};",
+            "static const struct mp_ent app_lm[] = {",
+            *[f"    {{ 0x{off:x}U, {boff}U, {ln}U, {knd}U }}," for off, boff, ln, knd in app_packed],
+            "};",
+        ]
+        write_utf8_lf(HERE / hdr_name, "\n".join(out) + "\n")
+        print(
+            f"wrote {hdr_name}: cp={len(cp_sites)}+{len(modes)}, words={len(words)}/{len(wguards)}g, "
+            f"av={len(av_packed)}, lm={len(lm_packed)}, app={len(app_packed)}, pool={len(mp_pool)}B"
+        )
+
+
+def emit_s3_manifest() -> None:
+    kit_dir = STUDIO_ROOT / "kits" / "a7s3_501"
+    man_path = kit_dir / "manifest.json"
+    man = json.loads(man_path.read_text(encoding="utf8"))
+
+    def meta(fn: str) -> tuple[str, int]:
+        data = (kit_dir / fn).read_bytes()
+        return hashlib.sha256(data).hexdigest(), len(data)
+
+    fused_specs = [
+        ("Q19", 19, "Fused Safe Daily single-pass apply (L5/L6 + L16/S16 + V19 + C19)"),
+        ("Q20", 20, "Fused Safe Daily single-pass put back (C20 + V20 + S17/L17 + L6)"),
+        ("F19", 19, "Fused Cinema Full single-pass apply (L5/L6 + L16/S16/H16 + V19/B19/I19 + C19)"),
+        ("F20", 20, "Fused Cinema Full single-pass put back (C20 + I20/B20/V20 + H17/S17/L17 + L6)"),
+    ]
+    for code, level, summary in fused_specs:
+        fn = f"libJit_s3_{code}.so"
+        sha, sz = meta(fn)
+        assert sz <= 65520, f"{fn} exceeds 65520B limit ({sz})"
+        man["steps"][code] = {
+            "file": fn,
+            "sha256": sha,
+            "size": sz,
+            "level": level,
+            "summary": summary,
+        }
+
+    man["fused_presets"] = {
+        "safe_daily": {
+            "packs": ["core_open_gate", "mp4_3x2", "screen_3x2"],
+            "apply_step": "Q19",
+            "putback_step": "Q20",
+        },
+        "cinema_full": {
+            "packs": ["core_open_gate", "mp4_3x2", "screen_3x2", "hdmi32", "high_bitrate", "xavc_si"],
+            "apply_step": "F19",
+            "putback_step": "F20",
+        },
+    }
+    write_utf8_lf(man_path, json.dumps(man, indent=2) + "\n")
+    print(f"updated {man_path}: {len(man['steps'])} steps, 2 fused_presets")
+
+
 def main() -> None:
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Generate a7S III 5.01 studio patch headers")
+    ap.add_argument("--emit-manifest", action="store_true", help="Update kits/a7s3_501/manifest.json with Q19/Q20/F19/F20")
+    args = ap.parse_args()
+    if args.emit_manifest:
+        emit_s3_manifest()
+        return
+
     cp = (FW_DIR / "cpapp-b.bin").read_bytes()
     av = (FW_DIR / "av-cam.bin").read_bytes()
     lm = (FW_DIR / "libmpr.so").read_bytes()
@@ -658,6 +1014,8 @@ def main() -> None:
 
     emit_s3_expected(cp, av, lm)
     print("wrote s3_expected.h and s3_expected.json (s3read_v9: 25 cp_sites, 12 lm_sites, 101 av_sites)")
+
+    emit_fused_s3(cp, av, lm, v19, b19, i19)
 
 
 if __name__ == "__main__":

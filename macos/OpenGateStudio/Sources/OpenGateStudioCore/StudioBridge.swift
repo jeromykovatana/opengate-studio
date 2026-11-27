@@ -386,6 +386,10 @@ public final class StudioBridge: @unchecked Sendable {
         try await runAndDecode(ListBodiesResult.self, context: "list-bodies", args: ["list-bodies", "--json"])
     }
 
+    public func detectUsbCamera() async throws -> (result: DetectedUsbCameraResult, trace: CommandTrace) {
+        try await runAndDecode(DetectedUsbCameraResult.self, context: "detect-usb-camera", args: ["detect-usb-camera", "--json"])
+    }
+
     public func verifyPins(bodyId: String? = nil) async throws -> (result: VerifyPinsResult, trace: CommandTrace) {
         var args = ["verify-pins"]
         if let bodyId, !bodyId.isEmpty {
@@ -453,6 +457,48 @@ public final class StudioBridge: @unchecked Sendable {
         }
         args.append(contentsOf: ["--session-dir", effectiveSessionDir.path, "--json"])
         return try await runAndDecode(PutbackResult.self, context: "putback", args: args)
+    }
+
+    public func expressApply(
+        bodyId: String,
+        packs: [String],
+        mockCamera: Bool = true,
+        mockState: MockCameraState = .stock,
+        sessionDir: URL? = nil
+    ) async throws -> (result: ApplyResult, trace: CommandTrace) {
+        let effectiveSessionDir = sessionDir ?? sessionDirectory
+        try FileManager.default.createDirectory(at: effectiveSessionDir, withIntermediateDirectories: true)
+
+        var args = ["express-apply", "--body", bodyId, "--packs", packs.joined(separator: ",")]
+        if mockCamera {
+            args.append(contentsOf: ["--mock-camera", "--mock-state", mockState.rawValue])
+        } else {
+            args.append("--live-usb")
+        }
+        args.append(contentsOf: ["--session-dir", effectiveSessionDir.path, "--json"])
+        return try await runAndDecode(ApplyResult.self, context: "express-apply", args: args)
+    }
+
+    public func expressPutback(
+        bodyId: String,
+        packs: [String]? = nil,
+        mockCamera: Bool = true,
+        sessionDir: URL? = nil
+    ) async throws -> (result: PutbackResult, trace: CommandTrace) {
+        let effectiveSessionDir = sessionDir ?? sessionDirectory
+        try FileManager.default.createDirectory(at: effectiveSessionDir, withIntermediateDirectories: true)
+
+        var args = ["express-putback", "--body", bodyId]
+        if let packs, !packs.isEmpty {
+            args.append(contentsOf: ["--packs", packs.joined(separator: ",")])
+        }
+        if mockCamera {
+            args.append("--mock-camera")
+        } else {
+            args.append("--live-usb")
+        }
+        args.append(contentsOf: ["--session-dir", effectiveSessionDir.path, "--json"])
+        return try await runAndDecode(PutbackResult.self, context: "express-putback", args: args)
     }
 
     public func checkClip(

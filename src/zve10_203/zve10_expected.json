@@ -1,0 +1,96 @@
+{
+  "model": "ZV-E10",
+  "firmware": "2.03",
+  "build": "zve10_203",
+  "label": "zve10read_v1",
+  "avcam_phys": "0x35c6000",
+  "avcam_reserve": "@0x02E68000",
+  "id_files": {
+    "/libmpr.so": "e68436d1c7b5387c96cec4c126e482f52a4da8626b211dc4e9317a988a89674a",
+    "/libsencore.so": "c076ce3a410991dc8fd02f672cc722ae07a055cd0c3e5af72e0fed53b032fbb7",
+    "/libJiritsu.so": "f83670ac04d8b8b0836f2cd1c7df349d54ed1d1d8c3a0d1757b29fe634b89115"
+  },
+  "id_pages": {},
+  "cp_sites": [],
+  "av_sites": 45,
+  "lm_sites": 40,
+  "av_guards": [
+    "lm_hdr",
+    "lm_comb0",
+    "av_hdr",
+    "av_outsz0",
+    "av_sensor0",
+    "av_desc0"
+  ],
+  "dump_ranges": [
+    [
+      "boottime",
+      "0x3585000",
+      4
+    ],
+    [
+      "klog",
+      "0x35a5000",
+      4
+    ],
+    [
+      "alog",
+      "0x3525000",
+      4
+    ],
+    [
+      "mode_ids",
+      "0x3ee1000",
+      1
+    ],
+    [
+      "sensor_geom",
+      "0x3e6c000",
+      2
+    ],
+    [
+      "outsz",
+      "0x3e43000",
+      2
+    ],
+    [
+      "clip_prof",
+      "0x3e63000",
+      2
+    ],
+    [
+      "desc",
+      "0x3e8e000",
+      2
+    ]
+  ],
+  "designs": {
+    "ogsq": {
+      "design": "ogsq_zve10_v1",
+      "av_first": "0x8a6000",
+      "av_bytes": "0x1000",
+      "av_sites": 16,
+      "av_guards": 4,
+      "lm_sites": 0,
+      "lm_guards": 1
+    },
+    "outsz2560": {
+      "design": "outsz2560_zve10_v1",
+      "av_first": "0x87d000",
+      "av_bytes": "0x79d000",
+      "av_sites": 9,
+      "av_guards": 9,
+      "lm_sites": 0,
+      "lm_guards": 1
+    },
+    "ogfile2560": {
+      "design": "ogfile2560_zve10_v1",
+      "av_first": "0x89d000",
+      "av_bytes": "0x2d000",
+      "av_sites": 20,
+      "av_guards": 21,
+      "lm_sites": 40,
+      "lm_guards": 41
+    }
+  }
+}

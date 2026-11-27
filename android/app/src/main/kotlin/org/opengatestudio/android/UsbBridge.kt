@@ -67,10 +67,12 @@ class UsbBridge(private val context: Context) {
                 val serial = runCatching {
                     if (usbManager.hasPermission(dev)) dev.serialNumber ?: "" else ""
                 }.getOrDefault("")
+                val productName = runCatching { dev.productName ?: "" }.getOrDefault("")
                 mapOf(
                     "deviceId" to dev.deviceId,
                     "idVendor" to dev.vendorId,
                     "idProduct" to dev.productId,
+                    "productName" to productName,
                     "serialNumber" to serial,
                     "interfaces" to ifaces
                 )

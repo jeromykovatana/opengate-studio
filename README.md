@@ -73,9 +73,11 @@ All 62 `.so` helper binaries across `kits/` are compiled reproducibly with `zigl
 
 | Camera Body | Model ID | Pinned Firmware | `body_id` | Build ID (`version.txt`) | Pinned Helpers | Evidence Summary |
 |---|---|---|---|---|---:|---|
-| **Sony ZV-E1** | `ZV-E1` | **`2.02`** | `zve1_202` | `32000_08.2025101101` | 22 `.so` | Bytes + Emu ✅ · `23.98p` + SteadyShot HW ✅ · `25p`/`29.97p`/Experimental ⬜ |
-| **Sony a7S III** | `ILCE-7SM3` | **`5.01`** | `a7s3_501` | `39183_16.2026041504` | 20 `.so` | Bytes + Emu ✅ · `23.98p` HW ✅ · `25p`/`29.97p`/Experimental ⬜ |
-| **Sony FX3** | `ILME-FX3 (not FX3A)` | **`7.02`** | `fx3_702` | `39180_21.2025122503` | 20 `.so` | Bytes + Emu ✅ · `23.98p` + PAL `25p` + 4:3 panel HW ✅ · `29.97p`/Experimental ⬜ |
+| **Sony ZV-E1** | `ZV-E1` | **`2.02`** | `zve1_202` | `32000_08.2025101101` | 26 `.so` | Bytes + Emu ✅ · `23.98p` + SteadyShot HW ✅ · `25p`/`29.97p`/Experimental ⬜ |
+| **Sony a7S III** | `ILCE-7SM3` | **`5.01`** | `a7s3_501` | `39183_16.2026041504` | 24 `.so` | Bytes + Emu ✅ · `23.98p` HW ✅ · `25p`/`29.97p`/Experimental ⬜ |
+| **Sony FX3** | `ILME-FX3 (not FX3A)` | **`7.02`** | `fx3_702` | `39180_21.2025122503` | 24 `.so` | Bytes + Emu ✅ · `23.98p` + PAL `25p` + 4:3 panel HW ✅ · `29.97p`/Experimental ⬜ |
+| **Sony a7C** | `ILCE-7C` | **`2.03`** | `a7c_203` | `39119_08.2026013101` | 8 `.so` | Bytes + ARM32 Emu ✅ · `23.98p` squeezed 3:2 + `raster_2560` awaiting HW test ⬜ |
+| **Sony ZV-E10** | `ZV-E10` | **`2.03`** | `zve10_203` | `30110_06.2026060501` | 8 `.so` | Bytes + ARM32 Emu ✅ · `23.98p` squeezed 3:2 + `raster_2560` awaiting HW test ⬜ |
 
 ### Granular Evidence Summary (Generated from [`docs/support_matrix.json`](docs/support_matrix.json))
 
@@ -100,6 +102,10 @@ All 62 `.so` helper binaries across `kits/` are compiled reproducibly with `zigl
 | `fx3_702` | `23.98p / 25p` | `high_bitrate` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | `fx3_702` | `23.98p / 25p / 29.97p` | `xavc_si` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | `fx3_702` | `23.98p / 25p / 29.97p` | `fx3_playback` | `experimental` | ✅ | ✅ | ⬜ | — | — | — | — | ⬜ | ⬜ | ⬜ |
+| `a7c_203` | `23.98p` | `core_open_gate` | `recommended` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `a7c_203` | `23.98p` | `raster_2560` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `zve10_203` | `23.98p` | `core_open_gate` | `recommended` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `zve10_203` | `23.98p` | `raster_2560` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 
 _Legend: ✅ Verified · 🟡 Partial (upstream/architectural evidence; full Studio conformance clip pending) · ⬜ Pending untouched camera original · ⛔ Hardware-blocked · — N/A. See the full matrix including blocked `50p/60p/120p` and `a7iv_602` rows in [docs/SUPPORT_MATRIX.md](docs/SUPPORT_MATRIX.md)._
 <!-- END GENERATED SUPPORT MATRIX -->

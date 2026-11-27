@@ -39,6 +39,8 @@ KITS = (
     ("zve1_202", "zve1", "src/zve1_202/build_zv_studio.sh", ("gen_zv_studio.py", "gen_zv_v4.py")),
     ("a7s3_501", "a7siii", "src/a7s3_501/build_s3_packs.sh", ("gen_s3_packs.py",)),
     ("fx3_702", "fx3", "src/fx3_702/build_fx3_packs.sh", ("gen_fx3_packs.py",)),
+    ("a7c_203", "a7c", "src/a7c_203/build_a7c_packs.sh", ("gen_a7c_packs.py",)),
+    ("zve10_203", "zve10", "src/zve10_203/build_zve10_packs.sh", ("gen_zve10_packs.py",)),
 )
 
 STUB_C = """
@@ -189,11 +191,15 @@ def main(argv: list[str] | None = None) -> int:
 
             if args.fw_root is not None:
                 fw_dir = args.fw_root.resolve() / fw_sub / "ghidra_targets"
-                if not (fw_dir / "libsencore.so").is_file():
-                    raise FileNotFoundError(f"Missing offline libsencore.so at {fw_dir / 'libsencore.so'}")
+                sen_path = fw_dir / "libsencore.so"
                 env["SKIP_GEN"] = "0"
                 env["SONY_FW_DIR"] = str(fw_dir)
-                env["SEN_SO_PATH"] = str(fw_dir / "libsencore.so")
+                if sen_path.is_file():
+                    env["SEN_SO_PATH"] = str(sen_path)
+                elif kit_id in ("zve1_202", "a7s3_501", "fx3_702"):
+                    raise FileNotFoundError(f"Missing offline libsencore.so at {sen_path}")
+                else:
+                    env["SEN_SO_PATH"] = str(stub_sen)
             else:
                 env["SKIP_GEN"] = "1"
                 env["SEN_SO_PATH"] = str(stub_sen)

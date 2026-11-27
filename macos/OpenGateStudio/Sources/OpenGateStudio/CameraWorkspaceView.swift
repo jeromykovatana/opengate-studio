@@ -146,24 +146,64 @@ public struct CameraWorkspaceView: View {
             Spacer(minLength: 8)
 
             VStack(alignment: .trailing, spacing: 6) {
-                StudioStatusPill(
-                    profile.isFX3 ? "\(profile.displayName) · ILME-FX3 only" : profile.displayName,
-                    systemImage: profile.isFX3 ? "exclamationmark.triangle.fill" : "camera.fill",
-                    color: profile.isFX3 ? .orange : .secondary
-                )
+                HStack(spacing: 6) {
+                    if let usb = appState.detectedUsbCamera, usb.detected, !usb.isFx3aBlocked {
+                        StudioStatusPill(
+                            usb.usbMode == "service" ? "USB Service" : "USB Ready",
+                            systemImage: "cable.connector",
+                            color: .green
+                        )
+                    }
 
-                Button("Setup Guide…") {
-                    appState.showSetupGuideSheet = true
+                    StudioStatusPill(
+                        profile.isFX3 ? "\(profile.displayName) · ILME-FX3 only" : profile.displayName,
+                        systemImage: profile.isFX3 ? "exclamationmark.triangle.fill" : "camera.fill",
+                        color: profile.isFX3 ? .orange : .secondary
+                    )
                 }
-                .buttonStyle(.borderless)
-                .font(.caption)
-                .foregroundStyle(Color.accentColor)
+
+                HStack(spacing: 10) {
+                    Button {
+                        Task { await appState.refreshDetectedUsbCamera() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if appState.isDetectingUsbCamera {
+                                ProgressView()
+                                    .controlSize(.mini)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            Text("Detect USB")
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .disabled(appState.isDetectingUsbCamera || appState.isLiveSessionActive)
+                    .help("Scan USB bus for a connected Sony camera")
+
+                    Button("Setup Guide…") {
+                        appState.showSetupGuideSheet = true
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .foregroundStyle(Color.accentColor)
+                }
             }
         }
     }
 
     @ViewBuilder
     private func activeAlertCallouts(stage: CameraWorkflowStage) -> some View {
+        if let usb = appState.detectedUsbCamera, usb.isFx3aBlocked {
+            StudioCallout(
+                icon: "exclamationmark.octagon.fill",
+                color: .red,
+                title: "Unsupported Camera Detected (ILME-FX3A)",
+                detail: usb.warning ?? "ILME-FX3A is not supported by FX3 7.02 kits. Live USB apply is blocked to protect this body."
+            )
+        }
+
         if let err = appState.stepperError {
             StudioCallout(
                 icon: "xmark.octagon.fill",
@@ -201,44 +241,41 @@ public struct CameraWorkspaceView: View {
 
     @ViewBuilder
     private func gate1Section(stage: CameraWorkflowStage) -> some View {
-        if stage == .readyToApply && !showGate1EditorWhenReady {
+        if !appState.hasAcceptedExpressSafetyTerms {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("One-Time Volatile RAM Consent")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text("First Run")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                Toggle(
+                    "I understand OpenGate Studio patches volatile RAM only (shoot 24p/25p/30p; battery pull >= 10s restores stock)",
+                    isOn: $appState.hasAcceptedExpressSafetyTerms
+                )
+                .font(.callout)
+            }
+        } else {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
-                Text("Cold boot (>= 10s battery pull) & Stills mode confirmed")
-                    .font(.callout.weight(.medium))
+                    .font(.caption)
+                Text("Cold boot >=10s · Stills mode · Mass Storage · 24p/25p/30p only")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
                 Spacer()
-                Button("Change") {
-                    withAnimation(.easeInOut(duration: 0.16)) {
-                        showGate1EditorWhenReady = true
-                    }
-                }
-                .buttonStyle(.borderless)
-                .font(.caption)
             }
-        } else {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Before Connecting")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    Text(appState.isChecklistComplete ? "Ready to check" : "Required")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(appState.isChecklistComplete ? .green : .secondary)
-                }
-
-                Toggle(
-                    "Pulled camera battery for >= 10 seconds (clean RAM baseline)",
-                    isOn: $appState.batteryPulled10s
-                )
-                .font(.callout)
-
-                Toggle(
-                    "Camera is in Stills mode (\(profile.stillsShortHint)) before USB plug-in",
-                    isOn: $appState.cameraInStillsMode
-                )
-                .font(.callout)
-            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.green.opacity(0.08))
+            .overlay(
+                Capsule()
+                    .strokeBorder(Color.green.opacity(0.24), lineWidth: 1)
+            )
+            .clipShape(Capsule())
         }
     }
 
@@ -276,10 +313,17 @@ public struct CameraWorkspaceView: View {
     }
 
     private var presetSummaryText: String {
+        let isBionzX = appState.selectedBodyId == "a7c_203" || appState.selectedBodyId == "zve10_203"
         switch appState.activePackPreset {
         case .safeDaily:
+            if isBionzX {
+                return "Recommended — 6000x4000 3:2 sensor readout squeezed into standard 3840x2160 XAVC S 4K 24p."
+            }
             return "Recommended — 3840x2560 3:2 MP4, Gyro metadata, and 3:2 LCD framing."
         case .cinemaFull, .reliabilityAudit:
+            if isBionzX {
+                return "Experimental — Enables native 3840x2560 3:2 H.264 raster & MP4 dimensions."
+            }
             return "Experimental — Adds HDMI 3:2 output, 200M/300M bitrates, and XAVC S-I."
         case nil:
             return "Custom selection of \(appState.selectedPacks.count) optional feature pack(s)."
@@ -294,7 +338,7 @@ public struct CameraWorkspaceView: View {
 
             if stage == .applied {
                 Button {
-                    Task { await appState.putBackToStock() }
+                    Task { await appState.runExpressPutback() }
                 } label: {
                     if appState.isPuttingBack {
                         ProgressView().controlSize(.small)
@@ -305,10 +349,6 @@ public struct CameraWorkspaceView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.large)
                 .disabled(appState.isPuttingBack || appState.isLiveSessionActive)
-            } else if !appState.isChecklistComplete && (stage == .needsPreflight || stage == .restoredStock || stage == .recoveryRequired) {
-                Text("Confirm both checks above to continue")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -319,6 +359,8 @@ public struct CameraWorkspaceView: View {
 
     @ViewBuilder
     private func primaryActionButton(stage: CameraWorkflowStage) -> some View {
+        let fx3aBlocked = !appState.offlineMockCamera && (appState.detectedUsbCamera?.isFx3aBlocked == true)
+
         switch stage {
         case .pinsBlocked:
             Button {
@@ -337,22 +379,22 @@ public struct CameraWorkspaceView: View {
 
         case .recoveryRequired:
             Button {
-                Task { await appState.runPreflight() }
+                Task { await appState.handleRecoveryExpressCheckAndApply() }
             } label: {
                 actionButtonLabel(
-                    title: "Run Read-Only Recovery Check",
+                    title: "Pulled Battery >=10s — Check & Apply (1-Click)",
                     systemImage: "arrow.clockwise.circle.fill",
-                    isBusy: appState.isRunningPreflight
+                    isBusy: appState.isApplying || appState.isRunningPreflight
                 )
             }
             .buttonStyle(.borderedProminent)
             .tint(.orange)
             .controlSize(.large)
-            .disabled(!appState.isChecklistComplete || appState.isRunningPreflight || appState.isLiveSessionActive)
+            .disabled(fx3aBlocked || appState.isApplying || appState.isRunningPreflight || appState.isLiveSessionActive)
 
-        case .readyToApply:
+        case .needsPreflight, .restoredStock, .readyToApply:
             Button {
-                Task { await appState.applySelectedPacks() }
+                Task { await appState.runExpressApply() }
             } label: {
                 actionButtonLabel(
                     title: "Apply Open-Gate (3:2)",
@@ -363,35 +405,22 @@ public struct CameraWorkspaceView: View {
             .buttonStyle(.borderedProminent)
             .tint(.green)
             .controlSize(.large)
-            .disabled(!appState.isApplyUnlocked || appState.isApplying || appState.isLiveSessionActive)
+            .disabled(fx3aBlocked || appState.isApplying || appState.isLiveSessionActive)
 
         case .applied:
             Button {
-                Task { await appState.handleBatterySwapReCheck() }
+                Task { await appState.handleBatterySwapExpressReapply() }
             } label: {
                 actionButtonLabel(
-                    title: "Swapped Battery? Re-Check Camera",
+                    title: "Swapped Battery? Re-Apply (1-Click)",
                     systemImage: "arrow.triangle.2.circlepath",
-                    isBusy: appState.isRunningPreflight
+                    isBusy: appState.isApplying
                 )
             }
             .buttonStyle(.borderedProminent)
+            .tint(.green)
             .controlSize(.large)
-            .disabled(appState.isRunningPreflight || appState.isLiveSessionActive)
-
-        case .needsPreflight, .restoredStock:
-            Button {
-                Task { await appState.runPreflight() }
-            } label: {
-                actionButtonLabel(
-                    title: "Check Camera (Read-Only)",
-                    systemImage: "magnifyingglass.circle.fill",
-                    isBusy: appState.isRunningPreflight
-                )
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(!appState.isChecklistComplete || appState.isRunningPreflight || appState.isLiveSessionActive)
+            .disabled(fx3aBlocked || appState.isApplying || appState.isLiveSessionActive)
         }
     }
 
@@ -413,20 +442,29 @@ public struct CameraWorkspaceView: View {
                 appState.showSetupGuideSheet = true
             }
 
-            if stage == .readyToApply || stage == .applied {
-                Button("Re-Check Camera (Read-Only)") {
-                    Task { await appState.runPreflight() }
-                }
-                .disabled(!appState.isChecklistComplete || appState.isRunningPreflight || appState.isLiveSessionActive)
+            Button("Check Camera Only (Read-Only)") {
+                Task { await appState.runPreflight() }
             }
+            .disabled(appState.isRunningPreflight || appState.isLiveSessionActive)
+
+            Button("Step-by-Step Apply + Movie Dump") {
+                Task { await appState.runLegacyStepByStepApply() }
+            }
+            .disabled(appState.isApplying || appState.isLiveSessionActive)
 
             Button("Restore Stock RAM") {
-                Task { await appState.putBackToStock() }
+                Task { await appState.runExpressPutback() }
             }
             .disabled(appState.isPuttingBack || appState.isLiveSessionActive)
 
+            Divider()
+
+            Button("Reset One-Time Safety Prompt") {
+                appState.resetExpressSafetyTerms()
+            }
+            .disabled(!appState.hasAcceptedExpressSafetyTerms || appState.isLiveSessionActive)
+
             if !appState.offlineMockCamera {
-                Divider()
                 Button("Sync Latest Camera Session") {
                     Task { await appState.syncLatestCameraSession() }
                 }
@@ -720,16 +758,14 @@ public struct CameraWorkspaceView: View {
     private func heroAccentBorder(for stage: CameraWorkflowStage) -> Color? {
         switch stage {
         case .pinsBlocked, .recoveryRequired: return .orange
-        case .readyToApply, .applied: return .green
-        case .restoredStock, .needsPreflight: return nil
+        case .readyToApply, .applied, .needsPreflight, .restoredStock: return .green
         }
     }
 
     private func heroColor(for stage: CameraWorkflowStage) -> Color {
         switch stage {
         case .pinsBlocked, .recoveryRequired: return .orange
-        case .readyToApply, .applied: return .green
-        case .restoredStock, .needsPreflight: return .blue
+        case .readyToApply, .applied, .needsPreflight, .restoredStock: return .green
         }
     }
 
@@ -739,8 +775,7 @@ public struct CameraWorkspaceView: View {
         case .recoveryRequired: return "exclamationmark.triangle.fill"
         case .applied: return "checkmark.seal.fill"
         case .restoredStock: return "arrow.uturn.backward.circle.fill"
-        case .readyToApply: return "bolt.shield.fill"
-        case .needsPreflight: return "camera.aperture"
+        case .readyToApply, .needsPreflight: return "bolt.shield.fill"
         }
     }
 
@@ -754,10 +789,8 @@ public struct CameraWorkspaceView: View {
             return "Open-Gate 3:2 Active — Ready to Shoot"
         case .restoredStock:
             return "Camera Restored to Stock RAM"
-        case .readyToApply:
-            return "Verified Clean RAM — Ready to Apply"
-        case .needsPreflight:
-            return "Ready to Check \(profile.shortModelName)"
+        case .readyToApply, .needsPreflight:
+            return "Ready for 1-Click Open-Gate on \(profile.shortModelName)"
         }
     }
 
@@ -766,15 +799,13 @@ public struct CameraWorkspaceView: View {
         case .pinsBlocked:
             return "Signed kit SHA-256 verification must pass before talking to a camera over Live USB."
         case .recoveryRequired:
-            return "Pull the battery for >= 10 seconds, then run a read-only check before applying Open-Gate."
+            return "Pull the battery for >= 10 seconds to clear residual RAM, then click Check & Apply."
         case .applied:
-            return "Keep your camera ON and shoot in 24p, 25p, or 30p. Do not switch to 50p, 60p, or 120p."
+            return "Unplug USB-C, switch to Movie (24p, 25p, or 30p) and shoot. Do not switch to 50p, 60p, or 120p."
         case .restoredStock:
-            return "Stock camera RAM was verified. Run a fresh read-only check before applying Open-Gate again."
-        case .readyToApply:
-            return "Keep your camera ON in Stills mode and click Apply Open-Gate (3:2) to patch volatile RAM."
-        case .needsPreflight:
-            return "Connect your camera over USB-C in Stills mode (Mass Storage) to verify clean stock RAM first."
+            return "Stock camera RAM was verified. Click Apply Open-Gate (3:2) anytime to patch volatile RAM again."
+        case .readyToApply, .needsPreflight:
+            return "Connect your camera over USB-C in Stills mode (Mass Storage) and click Apply Open-Gate (3:2)."
         }
     }
 }

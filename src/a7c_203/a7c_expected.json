@@ -1,0 +1,96 @@
+{
+  "model": "ILCE-7C",
+  "firmware": "2.03",
+  "build": "a7c_203",
+  "label": "a7cread_v1",
+  "avcam_phys": "0x35c6000",
+  "avcam_reserve": "@0x02E68000",
+  "id_files": {
+    "/libmpr.so": "1ea528de5f459ea96a29b76bdb0fb5e3154d92fcad9f703b8d64510e6205b3b2",
+    "/libsencore.so": "728f315a1527691455901519e9485a0d30a72ba05cdaf0ae244e4fc455dd309e",
+    "/libJiritsu.so": "471e424ad31bbcdbe4f4c6803c861711def7ba8e25b5b099bfbdb0453136b5cb"
+  },
+  "id_pages": {},
+  "cp_sites": [],
+  "av_sites": 51,
+  "lm_sites": 40,
+  "av_guards": [
+    "lm_hdr",
+    "lm_comb0",
+    "av_hdr",
+    "av_outsz0",
+    "av_sensor0",
+    "av_desc0"
+  ],
+  "dump_ranges": [
+    [
+      "boottime",
+      "0x3585000",
+      4
+    ],
+    [
+      "klog",
+      "0x35a5000",
+      4
+    ],
+    [
+      "alog",
+      "0x3525000",
+      4
+    ],
+    [
+      "mode_ids",
+      "0x3ef9000",
+      1
+    ],
+    [
+      "sensor_geom",
+      "0x3e84000",
+      2
+    ],
+    [
+      "outsz",
+      "0x3e58000",
+      1
+    ],
+    [
+      "clip_prof",
+      "0x3e78000",
+      2
+    ],
+    [
+      "desc",
+      "0x3eaa000",
+      2
+    ]
+  ],
+  "designs": {
+    "ogsq": {
+      "design": "ogsq_a7c_v1",
+      "av_first": "0x8be000",
+      "av_bytes": "0x2000",
+      "av_sites": 22,
+      "av_guards": 9,
+      "lm_sites": 0,
+      "lm_guards": 1
+    },
+    "outsz2560": {
+      "design": "outsz2560_a7c_v1",
+      "av_first": "0x892000",
+      "av_bytes": "0x7b3000",
+      "av_sites": 9,
+      "av_guards": 9,
+      "lm_sites": 0,
+      "lm_guards": 1
+    },
+    "ogfile2560": {
+      "design": "ogfile2560_a7c_v1",
+      "av_first": "0x8b2000",
+      "av_bytes": "0x34000",
+      "av_sites": 20,
+      "av_guards": 21,
+      "lm_sites": 40,
+      "lm_guards": 41
+    }
+  }
+}

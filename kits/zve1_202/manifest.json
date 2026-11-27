@@ -107,6 +107,29 @@
       "summary": "Orthogonal delta unlocking XAVC S-I All-Intra 3840x2560 at 23.98p/25p/29.97p"
     }
   },
+  "fused_presets": {
+    "safe_daily": {
+      "packs": [
+        "core_open_gate",
+        "mp4_3x2",
+        "screen_3x2"
+      ],
+      "apply_step": "Q19",
+      "putback_step": "Q20"
+    },
+    "cinema_full": {
+      "packs": [
+        "core_open_gate",
+        "mp4_3x2",
+        "screen_3x2",
+        "hdmi32",
+        "high_bitrate",
+        "xavc_si"
+      ],
+      "apply_step": "F19",
+      "putback_step": "F20"
+    }
+  },
   "steps": {
     "L13": {
       "file": "libJit_zv_L13.so",
@@ -247,6 +270,34 @@
       "size": 22544,
       "level": 20,
       "summary": "Put back orthogonal XAVC S-I 3840x2560 (23.98p/25p/29.97p) delta og_xavcsi_addon_zv_202"
+    },
+    "Q19": {
+      "file": "libJit_zv_Q19.so",
+      "sha256": "d682525538674745423e3f7f33dd09b2d8eb2c6a149ea857dbc27a1b1cb5e8e3",
+      "size": 61264,
+      "level": 19,
+      "summary": "Fused Safe Daily single-pass apply (L13 + L5/L6 + L16/S16 + V19 + C19)"
+    },
+    "Q20": {
+      "file": "libJit_zv_Q20.so",
+      "sha256": "684ac3a1bc1cf0ef95d9f1c8e57a5bb8e40c6b5cfa9b508977e90c62df9ec382",
+      "size": 61104,
+      "level": 20,
+      "summary": "Fused Safe Daily single-pass put back (C20 + V20 + S17/L17 + L6 + L14)"
+    },
+    "F19": {
+      "file": "libJit_zv_F19.so",
+      "sha256": "07e12a02510bfc071339b18d7f371a54220699ae6673728f4fd91be9b6751d11",
+      "size": 64208,
+      "level": 19,
+      "summary": "Fused Cinema Full single-pass apply (L13 + L5/L6 + L16/S16/H16 + V19/B19/I19 + C19)"
+    },
+    "F20": {
+      "file": "libJit_zv_F20.so",
+      "sha256": "5db1bd135b9102d5e292dac64e17b51b45cd331d4a31df43d2bdea2114bc85a8",
+      "size": 64080,
+      "level": 20,
+      "summary": "Fused Cinema Full single-pass put back (C20 + I20/B20/V20 + H17/S17/L17 + L6 + L14)"
     }
   }
 }

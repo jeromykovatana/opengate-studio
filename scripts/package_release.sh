@@ -9,13 +9,15 @@ cd "$REPO_ROOT"
 
 usage() {
     cat <<'EOF'
-Usage: scripts/package_release.sh --version <tag> [--dry-run] [--output-dir <dir>]
+Usage: scripts/package_release.sh --version <tag> [--dry-run] [--output-dir <dir>] [--apk <path>]
 
 Options:
   --version <tag>     Release version tag (e.g. v0.1.3-alpha). Required.
   --dry-run           Run verification gates and stage/verify clean runtime in a
                       temporary directory without building the .app or writing dist/.
-  --output-dir <dir>  Output directory for zip and SHA256SUMS.txt (default: ./dist).
+  --output-dir <dir>  Output directory for zip, optional apk, and SHA256SUMS.txt (default: ./dist).
+  --apk <path>        Optional Android debug/release APK to copy into <output-dir> as
+                      OpenGate-Field-Companion-<version>-debug.apk and include in SHA256SUMS.txt.
   -h, --help          Show this help message.
 EOF
 }
@@ -23,6 +25,7 @@ EOF
 VERSION=""
 DRY_RUN=0
 OUTPUT_DIR="$REPO_ROOT/dist"
+APK_SRC=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -56,6 +59,24 @@ while [[ $# -gt 0 ]]; do
             OUTPUT_DIR="${1#*=}"
             shift
             ;;
+        --apk)
+            if [[ $# -lt 2 || -z "${2:-}" ]]; then
+                echo "ERROR: --apk requires a value." >&2
+                usage >&2
+                exit 2
+            fi
+            APK_SRC="$2"
+            shift 2
+            ;;
+        --apk=*)
+            APK_SRC="${1#*=}"
+            if [[ -z "$APK_SRC" ]]; then
+                echo "ERROR: --apk requires a non-empty path." >&2
+                usage >&2
+                exit 2
+            fi
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -79,6 +100,11 @@ if [[ ! "$VERSION" =~ ^[A-Za-z0-9._-]+$ ]]; then
     exit 2
 fi
 
+if [[ -n "$APK_SRC" && ! -f "$APK_SRC" ]]; then
+    echo "ERROR: --apk file not found: $APK_SRC" >&2
+    exit 1
+fi
+
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
     echo "ERROR: Python interpreter not found: $PYTHON_BIN" >&2
@@ -87,6 +113,7 @@ fi
 
 RELEASE_STEM="Sony-OpenGate-Studio-${VERSION}-macos-arm64"
 ZIP_NAME="${RELEASE_STEM}.zip"
+APK_NAME="OpenGate-Field-Companion-${VERSION}-debug.apk"
 
 TMP_WORK="$(mktemp -d "${TMPDIR:-/tmp}/opengate_release.XXXXXX")"
 cleanup() {
@@ -210,12 +237,12 @@ fi
 
 MANIFEST_COUNT="$(find "$STAGE_DIR/kits" -mindepth 2 -maxdepth 2 -name 'manifest.json' | wc -l | tr -d ' ')"
 SO_COUNT="$(find "$STAGE_DIR/kits" -mindepth 2 -maxdepth 2 -name '*.so' | wc -l | tr -d ' ')"
-if [[ "$MANIFEST_COUNT" -ne 3 ]]; then
-    echo "ERROR: Expected 3 kits/*/manifest.json files in staging, found $MANIFEST_COUNT" >&2
+if [[ "$MANIFEST_COUNT" -ne 5 ]]; then
+    echo "ERROR: Expected 5 kits/*/manifest.json files in staging, found $MANIFEST_COUNT" >&2
     exit 1
 fi
-if [[ "$SO_COUNT" -ne 62 ]]; then
-    echo "ERROR: Expected 62 kits/*/*.so helpers in staging, found $SO_COUNT" >&2
+if [[ "$SO_COUNT" -ne 90 ]]; then
+    echo "ERROR: Expected 90 kits/*/*.so helpers in staging, found $SO_COUNT" >&2
     exit 1
 fi
 
@@ -239,21 +266,34 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
     (
         cd "$STAGE_DIR"
         printf '<pending-zip-build>  %s\n' "$ZIP_NAME"
+        if [[ -n "$APK_SRC" ]]; then
+            printf '<pending-apk-copy>  %s\n' "$APK_NAME"
+        fi
         find kits -mindepth 2 -maxdepth 2 -name 'manifest.json' | sort | xargs shasum -a 256
         find kits -mindepth 2 -maxdepth 2 -name '*.so' | sort | xargs shasum -a 256
     ) > "$SUMS_PREVIEW"
     SUM_LINES="$(wc -l < "$SUMS_PREVIEW" | tr -d ' ')"
     echo "[5/5] Dry-run complete (no dist/ files written)."
     echo "  Planned archive: $OUTPUT_DIR/$ZIP_NAME"
-    echo "  Planned sums:    $OUTPUT_DIR/SHA256SUMS.txt ($SUM_LINES entries: 1 zip + $MANIFEST_COUNT manifests + $SO_COUNT .so helpers)"
+    if [[ -n "$APK_SRC" ]]; then
+        echo "  Planned APK:     $OUTPUT_DIR/$APK_NAME"
+        echo "  Planned sums:    $OUTPUT_DIR/SHA256SUMS.txt ($SUM_LINES entries: 1 zip + 1 apk + $MANIFEST_COUNT manifests + $SO_COUNT .so helpers)"
+    else
+        echo "  Planned sums:    $OUTPUT_DIR/SHA256SUMS.txt ($SUM_LINES entries: 1 zip + $MANIFEST_COUNT manifests + $SO_COUNT .so helpers)"
+    fi
     exit 0
 fi
 
 echo "[5/5] Creating $OUTPUT_DIR/$ZIP_NAME and $OUTPUT_DIR/SHA256SUMS.txt..."
 mkdir -p "$OUTPUT_DIR"
 ZIP_PATH="$OUTPUT_DIR/$ZIP_NAME"
+APK_PATH="$OUTPUT_DIR/$APK_NAME"
 SUMS_PATH="$OUTPUT_DIR/SHA256SUMS.txt"
 rm -f "$ZIP_PATH" "$SUMS_PATH"
+if [[ -n "$APK_SRC" ]]; then
+    rm -f "$APK_PATH"
+    cp -p "$APK_SRC" "$APK_PATH"
+fi
 
 COPYFILE_DISABLE=1 ditto -c -k --keepParent "$STAGE_DIR" "$ZIP_PATH"
 
@@ -261,6 +301,9 @@ COPYFILE_DISABLE=1 ditto -c -k --keepParent "$STAGE_DIR" "$ZIP_PATH"
     (
         cd "$OUTPUT_DIR"
         shasum -a 256 "$ZIP_NAME"
+        if [[ -n "$APK_SRC" ]]; then
+            shasum -a 256 "$APK_NAME"
+        fi
     )
     (
         cd "$STAGE_DIR"
@@ -272,4 +315,7 @@ COPYFILE_DISABLE=1 ditto -c -k --keepParent "$STAGE_DIR" "$ZIP_PATH"
 SUM_LINES="$(wc -l < "$SUMS_PATH" | tr -d ' ')"
 echo "Release artifacts ready:"
 echo "  Archive:   $ZIP_PATH"
+if [[ -n "$APK_SRC" ]]; then
+    echo "  APK:       $APK_PATH"
+fi
 echo "  Checksums: $SUMS_PATH ($SUM_LINES entries)"

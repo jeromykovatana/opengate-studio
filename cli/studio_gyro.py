@@ -40,6 +40,12 @@ _BODY_ALIASES: dict[str, str] = {
     "a7iv": "a7iv_602",
     "a7iv_602": "a7iv_602",
     "ilce-7m4": "a7iv_602",
+    "a7c": "a7c_203",
+    "a7c_203": "a7c_203",
+    "ilce-7c": "a7c_203",
+    "zve10": "zve10_203",
+    "zve10_203": "zve10_203",
+    "zv-e10": "zve10_203",
 }
 
 _STANDARD_GYRO_FPS = {"23.976p", "24.000p", "25.000p", "29.970p", "50.000p", "59.940p"}
@@ -345,7 +351,7 @@ def diagnose_clip_gyro(
     else:
         body_id = "auto"
 
-    known_bodies = {"zve1_202", "a7s3_501", "fx3_702", "a7iv_602"}
+    known_bodies = {"zve1_202", "a7s3_501", "fx3_702", "a7iv_602", "a7c_203", "zve10_203"}
     unknown_explicit_body = explicit_body is not None and explicit_body not in known_bodies
 
     # Evaluate condition groups

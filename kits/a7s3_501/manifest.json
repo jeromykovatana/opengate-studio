@@ -231,6 +231,57 @@
       "size": 24776,
       "level": 20,
       "summary": "Put back orthogonal XAVC S-I 3840x2560 (23.98p/25p/29.97p) delta og_xavcsi_addon_s3_501"
+    },
+    "Q19": {
+      "file": "libJit_s3_Q19.so",
+      "sha256": "b247072218de50e431687f0cc783f04fb757623ade0126287edd0ba0d040a25d",
+      "size": 56288,
+      "level": 19,
+      "summary": "Fused Safe Daily single-pass apply (L5/L6 + L16/S16 + V19 + C19)"
+    },
+    "Q20": {
+      "file": "libJit_s3_Q20.so",
+      "sha256": "837e280abdbbfeb197f0929cea1d00c1c7d8dc34de17fe0d7762188ead60f729",
+      "size": 56160,
+      "level": 20,
+      "summary": "Fused Safe Daily single-pass put back (C20 + V20 + S17/L17 + L6)"
+    },
+    "F19": {
+      "file": "libJit_s3_F19.so",
+      "sha256": "862b669adbf29deabc97b3c776b2b5e02469fa01c958b344f0d715b217976bc4",
+      "size": 61008,
+      "level": 19,
+      "summary": "Fused Cinema Full single-pass apply (L5/L6 + L16/S16/H16 + V19/B19/I19 + C19)"
+    },
+    "F20": {
+      "file": "libJit_s3_F20.so",
+      "sha256": "561570dbe98d134d3c021415ff5118e8401d16bcac50f224f4efcd65039308a3",
+      "size": 60880,
+      "level": 20,
+      "summary": "Fused Cinema Full single-pass put back (C20 + I20/B20/V20 + H17/S17/L17 + L6)"
+    }
+  },
+  "fused_presets": {
+    "safe_daily": {
+      "packs": [
+        "core_open_gate",
+        "mp4_3x2",
+        "screen_3x2"
+      ],
+      "apply_step": "Q19",
+      "putback_step": "Q20"
+    },
+    "cinema_full": {
+      "packs": [
+        "core_open_gate",
+        "mp4_3x2",
+        "screen_3x2",
+        "hdmi32",
+        "high_bitrate",
+        "xavc_si"
+      ],
+      "apply_step": "F19",
+      "putback_step": "F20"
     }
   }
 }
