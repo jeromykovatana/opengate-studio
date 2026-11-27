@@ -6,7 +6,7 @@
 
 <h1>OpenGate Studio</h1>
 
-<p><strong>Unlock 3:2 Open Gate (3840×2560), native 3:2 MP4 + Gyroflow telemetry, clean 3:2 HDMI, and XAVC S-I All-Intra for Sony FX3, a7S III, and ZV-E1 — 100% in volatile RAM.</strong></p>
+<p><strong>Unlock 3:2 Open Gate (3840×2560) in volatile camera RAM for Sony FX3, a7S III, and ZV-E1 — with fail-closed preflight binding, native 3:2 MP4 container patches, and Sony <code>rtmd</code> gyro track preservation.</strong></p>
 
 <p>
   <a href="https://github.com/jeromykovatana/opengate-studio/releases"><img src="https://img.shields.io/github/v/release/jeromykovatana/opengate-studio?include_prereleases&label=release&color=0ea5e9" alt="Latest Release"></a>
@@ -43,7 +43,7 @@
 
 ## Why OpenGate Studio?
 
-Sony's 12.1MP full-frame sensor (`IMX510` + `CXD90057` BIONZ XR) physically reads out 3:2 rows, yet stock firmware crops the frame vertically to 16:9 (`3840×2160`) before encoding. **OpenGate Studio** unlocks the full **3:2 (`3840×2560`)** sensor height—plus native 3:2 MP4 metadata, Gyroflow/Catalyst telemetry preservation, clean 3:2 HDMI, and All-Intra/high-bitrate packs—inside a guided macOS SwiftUI utility and clean-room Python CLI.
+Sony's 12.1MP full-frame sensor (`IMX510` + `CXD90057` BIONZ XR) physically reads out 3:2 rows, yet stock firmware crops the frame vertically to 16:9 (`3840×2160`) before encoding. **OpenGate Studio** (`v0.2.0-alpha` hardening release) unlocks the full **3:2 (`3840×2560`)** sensor height—alongside native 3:2 MP4 headers designed to keep Sony's `rtmd` gyro track intact, plus experimental HDMI/high-bitrate/All-Intra packs—inside a guided macOS SwiftUI utility and clean-room Python CLI.
 
 <div align="center">
   <img src="assets/open-gate-framing.png" alt="3:2 Open Gate 3840x2560 vs Stock 16:9 3840x2160 Sensor Geometry" width="100%">
@@ -51,49 +51,79 @@ Sony's 12.1MP full-frame sensor (`IMX510` + `CXD90057` BIONZ XR) physically read
 
 ### How It Compares
 
-| Capability | Stock Sony Firmware | Basic Open-Gate Script | **OpenGate Studio** |
+| Capability | Stock Sony Firmware | Basic Open-Gate Script | **OpenGate Studio (`v0.2.0-alpha`)** |
 |---|---|---|---|
-| **3:2 Full Sensor (`3840×2560` @ `23.98p / 25p / 29.97p`)** | ❌ Cropped to `3840×2160` (`16:9`) | ✅ Sensor + base Long-GOP | ✅ Modular dual NTSC/PAL `core_open_gate` across 3 bodies |
-| **Native 3:2 MP4 Headers (`tkhd`/`stsd`/`VPRF`)** | ❌ `16:9` only | ⚠️ Often needs `ffmpeg` re-mux | ✅ Native `3:2` directly out of camera (`mp4_3x2`) |
-| **Sony `rtmd` Gyro Telemetry (Gyroflow / Catalyst)** | ✅ `16:9` clips only | ❌ Stripped if `ffmpeg` re-muxed | ✅ **Preserved in original camera MP4** |
-| **Clean 3:2 & Anamorphic HDMI Output** | ❌ `16:9` cropped HDMI | ❌ Not included | ✅ `hdmi32` (`H16`/`H17`) external monitor pack |
-| **High-Bitrate `200M/300M` & `XAVC S-I` All-Intra** | ❌ `16:9` only | ❌ Stock `100M` Long-GOP only | ✅ Optional `high_bitrate` & `xavc_si` packs |
-| **Safety & Preflight Enforcement** | — | Manual script order | ✅ **5-Gate Preflight + 16B Guards + Putback** |
-| **Clip, XML & Gyroflow Inspector** | ❌ None | ❌ None | ✅ Built-in SwiftUI & CLI `bionz_clip_check.py` |
+| **3:2 Full Sensor (`3840×2560`)** | ❌ Cropped to `3840×2160` (`16:9`) | ✅ `23.98p` (+ FX3 `25p`) | ✅ `23.98p` HW core across 3 bodies (+ FX3 `25p`); `25p`/`29.97p` experimental (`Emu ✅`) |
+| **Native 3:2 MP4 Headers (`tkhd`/`stsd`/`VPRF`)** | ❌ `16:9` only | ⚠️ Often needs `ffmpeg` re-mux | 🟡 Native `3:2` in-camera (`mp4_3x2`: Ghidra + emu ✅, conformance bundle pending) |
+| **Sony `rtmd` Gyro Track Preservation** | ✅ `16:9` clips only | ❌ Stripped if `ffmpeg` re-muxed | 🟡 `rtmd` mux path preserved (`mp4_3x2`); end-to-end Gyroflow/Catalyst clip proof pending |
+| **Clean 3:2 & Anamorphic HDMI (`hdmi32`)** | ❌ `16:9` cropped HDMI | ❌ Not included | 🧪 Experimental (`H16`/`H17`, byte + emulator ✅, HW pending) |
+| **High-Bitrate `200M/300M` & `XAVC S-I` All-Intra** | ❌ `16:9` only | ❌ Stock `100M` Long-GOP only | 🧪 Experimental (`high_bitrate` & `xavc_si`, byte + emulator ✅, HW pending) |
+| **Safety & Fail-Closed Preflight** | — | Manual script order | ✅ **Boot/Camera-Bound Live Preflight + 16B Guards + Fail-Closed Verify & Putback** |
+| **Clip, XML & Gyro Inspector** | ❌ None | ❌ None | ✅ Built-in SwiftUI & CLI `bionz_clip_check.py` (10/10 synthetic fixtures) |
 | **macOS Setup Experience** | — | Manual Python + scripts | ✅ One-click `OpenGate Studio.app` (no Zadig/Homebrew `libusb`) |
 
 ---
 
-## Supported Cameras & Firmware Pins
+## Supported Cameras, Firmware Pins & Evidence Matrix
 
-All 62 `.so` helper binaries across `kits/` are compiled reproducibly with `ziglang 0.13.0` (`clang 18.1.6`), pinned by SHA-256, and verified in Unicorn AArch64 emulation (`0` clean-room violations).
+All 62 `.so` helper binaries across `kits/` are compiled reproducibly with `ziglang 0.13.0` (`clang 18.1.6`), pinned by SHA-256, and verified in Unicorn AArch64 emulation (`0` clean-room violations). **Recommended profile for field use: `Safe Daily 3:2` (`core_open_gate` + `mp4_3x2` + `screen_3x2`).**
 
-| Camera Body | Model ID | Pinned Firmware | `body_id` | Build ID (`version.txt`) | Verification & Field Status |
-|---|---|---|---|---|---|
-| **Sony ZV-E1** | `ZV-E1` | **`2.02`** | `zve1_202` | `32000_08.2025101101` | 22 SHA-256 helpers · `23.98p` + SteadyShot hardware-confirmed; `25p`/`29.97p` + `I19` Unicorn verified |
-| **Sony a7S III** | `ILCE-7SM3` | **`5.01`** | `a7s3_501` | `39183_16.2026041504` | 20 SHA-256 helpers · `23.98p` hardware-confirmed; `25p`/`29.97p` + `I19` Unicorn verified |
-| **Sony FX3** | `ILME-FX3` *(not `FX3A`)* | **`7.02`** | `fx3_702` | `39180_21.2025122503` | 20 SHA-256 helpers · `23.98p` + PAL `25p` + 4:3 panel hardware-confirmed; `29.97p` + `I19` Unicorn verified |
+<!-- BEGIN GENERATED SUPPORT MATRIX -->
+### Supported Bodies & Pinned Firmware (`v0.2.0-alpha (Hardening Release)`)
+
+| Camera Body | Model ID | Pinned Firmware | `body_id` | Build ID (`version.txt`) | Pinned Helpers | Evidence Summary |
+|---|---|---|---|---|---:|---|
+| **Sony ZV-E1** | `ZV-E1` | **`2.02`** | `zve1_202` | `32000_08.2025101101` | 22 `.so` | Bytes + Emu ✅ · `23.98p` + SteadyShot HW ✅ · `25p`/`29.97p`/Experimental ⬜ |
+| **Sony a7S III** | `ILCE-7SM3` | **`5.01`** | `a7s3_501` | `39183_16.2026041504` | 20 `.so` | Bytes + Emu ✅ · `23.98p` HW ✅ · `25p`/`29.97p`/Experimental ⬜ |
+| **Sony FX3** | `ILME-FX3 (not FX3A)` | **`7.02`** | `fx3_702` | `39180_21.2025122503` | 20 `.so` | Bytes + Emu ✅ · `23.98p` + PAL `25p` + 4:3 panel HW ✅ · `29.97p`/Experimental ⬜ |
+
+### Granular Evidence Summary (Generated from [`docs/support_matrix.json`](docs/support_matrix.json))
+
+| Body | FPS | Pack | Tier | Bytes | Emu | HW Rec | MP4/XML | Gyroflow | Catalyst | NLE | Playback | Soak | Field Ready |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `zve1_202` | `23.98p` | `core_open_gate + screen_3x2` | `recommended` | ✅ | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `zve1_202` | `23.98p` | `mp4_3x2` | `recommended` | ✅ | ✅ | 🟡 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `zve1_202` | `25p / 29.97p` | `core_open_gate + mp4_3x2` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `zve1_202` | `23.98p / 25p / 29.97p` | `hdmi32` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | — | — | — | — | ⬜ | ⬜ |
+| `zve1_202` | `23.98p / 25p` | `high_bitrate` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `zve1_202` | `23.98p / 25p / 29.97p` | `xavc_si` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `a7s3_501` | `23.98p` | `core_open_gate + screen_3x2` | `recommended` | ✅ | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `a7s3_501` | `23.98p` | `mp4_3x2` | `recommended` | ✅ | ✅ | 🟡 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `a7s3_501` | `25p / 29.97p` | `core_open_gate + mp4_3x2` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `a7s3_501` | `23.98p / 25p / 29.97p` | `hdmi32` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | — | — | — | — | ⬜ | ⬜ |
+| `a7s3_501` | `23.98p / 25p` | `high_bitrate` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `a7s3_501` | `23.98p / 25p / 29.97p` | `xavc_si` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `fx3_702` | `23.98p / 25p (PAL)` | `core_open_gate + screen_3x2` | `recommended` | ✅ | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `fx3_702` | `23.98p / 25p (PAL)` | `mp4_3x2` | `recommended` | ✅ | ✅ | 🟡 | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `fx3_702` | `29.97p` | `core_open_gate + mp4_3x2` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `fx3_702` | `23.98p / 25p / 29.97p` | `hdmi32` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | — | — | — | — | ⬜ | ⬜ |
+| `fx3_702` | `23.98p / 25p` | `high_bitrate` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `fx3_702` | `23.98p / 25p / 29.97p` | `xavc_si` | `experimental` | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| `fx3_702` | `23.98p / 25p / 29.97p` | `fx3_playback` | `experimental` | ✅ | ✅ | ⬜ | — | — | — | — | ⬜ | ⬜ | ⬜ |
+
+_Legend: ✅ Verified · 🟡 Partial (upstream/architectural evidence; full Studio conformance clip pending) · ⬜ Pending untouched camera original · ⛔ Hardware-blocked · — N/A. See the full matrix including blocked `50p/60p/120p` and `a7iv_602` rows in [docs/SUPPORT_MATRIX.md](docs/SUPPORT_MATRIX.md)._
+<!-- END GENERATED SUPPORT MATRIX -->
 
 > [!NOTE]
 > - **Exact firmware required:** Only `ZV-E1 2.02`, `a7S III 5.01`, and `FX3 7.02` (`ILME-FX3`, **not** `ILME-FX3A`) are supported. Preflight rejects any mismatched `DeviceInfo.xml` or memory identity page before touching RAM.
 > - **Sony a7 IV Clip Support:** The built-in Clip Inspector (`cli/bionz_clip_check.py`) also validates `3840×2560` and `5760×3840` clips from `a7iv-open-gate-test`.
-> - **Help validate on hardware:** This project is in active **v0.1.x-alpha** testing. If you run it on hardware, please submit a [Field Test Report](https://github.com/jeromykovatana/opengate-studio/issues/new?template=field-test-report.yml).
+> - **Help validate on hardware:** This project is in active **v0.2.0-alpha** hardening. If you run it on hardware, please submit a [Field Test Report](https://github.com/jeromykovatana/opengate-studio/issues/new?template=field-test-report.yml) with untouched camera originals.
 
 ---
 
 ## Modular Feature Packs
 
-Pick only the capabilities you want to stack in camera RAM. Each pack is checked for zero cross-pack guard collisions:
+Pick **Safe Daily 3:2 (Recommended)** for the smallest volatile RAM footprint, or toggle optional **Experimental** packs below. Each pack is checked for zero cross-pack guard collisions:
 
-| Pack | What It Unlocks | Steps | Availability |
-|---|---|---|---|
-| `core_open_gate` *(required)* | Full-height `3840×2560` 3:2 dual NTSC (`0x8c0`) + PAL (`0x820`) `MULTI_REC` readout & output size (`23.98p / 25p / 29.97p`, plus `dmmwb` raw buffer resize on ZV-E1) | `L13` *(ZV)* · `L5` · `L16` | ZV-E1, a7S III, FX3 |
-| `mp4_3x2` | Native `3840×2560` MP4 `tkhd`/`stsd`/`VPRF` height, codec level preservation, NRT XML `16:9` suppression, and in-camera playback across `23.98p / 25p / 29.97p` (`149 av-cam + 12 libmpr`; falls back to `L19`/`L20` if deselected) | `V19` / `V20` | ZV-E1, a7S III, FX3 |
-| `screen_3x2` | Full-frame 3:2 LCD/EVF framing & live preview aspect cycle (`3:2 → 2:1 → 2.25:1 → 2.4:1` on C2/C3 for ZV-E1/a7S III; native De-Squeeze calibrated on FX3) | `S16` + `C19` *(ZV/S3)* | ZV-E1, a7S III, FX3 |
-| `hdmi32` | Clean 3:2 pillarboxed & uncropped anamorphic HDMI output for external monitors and recorders | `H16` / `H17` | ZV-E1, a7S III, FX3 |
-| `high_bitrate` | `200M` / `300M` Long-GOP bitrate overlay for `XAVC HS 4K` & `XAVC S 4K` | `B19` / `B20` | ZV-E1, a7S III, FX3 |
-| `xavc_si` | `XAVC S-I 4K` All-Intra `3840×2560` Open Gate (`23.98p / 25p / 29.97p`) + dual-core row split + VPRF/playback | `I19` / `I20` | ZV-E1, a7S III, FX3 |
-| `fx3_playback` *(experimental)* | Optional FX3 in-camera 3:2 playback path fix (`avdec8k_fx3_v1`, disabled by default — **untested on hardware**) | `P29` / `P30` | FX3 `7.02` only |
+| Pack | Tier | What It Unlocks | Steps | Availability |
+|---|---|---|---|---|
+| `core_open_gate` | **Required** | Full-height `3840×2560` 3:2 dual NTSC (`0x8c0`) + PAL (`0x820`) `MULTI_REC` readout & output size (`23.98p` HW core; `25p`/`29.97p`, plus `dmmwb` raw buffer resize on ZV-E1) | `L13` *(ZV)* · `L5` · `L16` | ZV-E1, a7S III, FX3 |
+| `mp4_3x2` | **Recommended** | Native `3840×2560` MP4 `tkhd`/`stsd`/`VPRF` height, codec level preservation, NRT XML `16:9` suppression, and playback table (`149 av-cam + 12 libmpr`; falls back to `L19`/`L20`) | `V19` / `V20` | ZV-E1, a7S III, FX3 |
+| `screen_3x2` | **Recommended** | Full-frame 3:2 LCD/EVF framing & live preview aspect cycle (`3:2 → 2:1 → 2.25:1 → 2.4:1` on C2/C3 for ZV-E1/a7S III; native De-Squeeze calibrated on FX3) | `S16` + `C19` *(ZV/S3)* | ZV-E1, a7S III, FX3 |
+| `hdmi32` | **Experimental** | Clean 3:2 pillarboxed & uncropped anamorphic HDMI output for external monitors (`Byte + Emu ✅`, HW pending) | `H16` / `H17` | ZV-E1, a7S III, FX3 |
+| `high_bitrate` | **Experimental** | `200M` / `300M` Long-GOP bitrate overlay for `XAVC HS 4K` & `XAVC S 4K` (`Byte + Emu ✅`, soak pending) | `B19` / `B20` | ZV-E1, a7S III, FX3 |
+| `xavc_si` | **Experimental** | `XAVC S-I 4K` All-Intra `3840×2560` Open Gate (`23.98p / 25p / 29.97p`) + dual-core row split + VPRF/playback (`Byte + Emu ✅`, HW pending) | `I19` / `I20` | ZV-E1, a7S III, FX3 |
+| `fx3_playback` | **Experimental (Off)** | Optional FX3 in-camera 3:2 playback path fix (`avdec8k_fx3_v1`, disabled by default — **untested on hardware**) | `P29` / `P30` | FX3 `7.02` only |
 
 ---
 
@@ -200,7 +230,7 @@ Every patch targets **volatile camera RAM only** (`persistent_writes: false`) vi
 <details>
 <summary><strong>Does Gyroflow and Sony Catalyst Browse still work on 3:2 Open Gate clips?</strong></summary>
 
-Yes—that is what the `mp4_3x2` pack is built for. Stock open-gate tools often produce `3840×2560` video inside a `16:9` MP4 header, requiring an `ffmpeg` re-mux that strips Sony's `rtmd` timed-metadata gyro track. `mp4_3x2` updates `tkhd`/`stsd`/`VPRF` dimensions and suppresses the fixed `"16:9"` XML flag **in-camera**, keeping `rtmd` gyro telemetry intact inside the original `.MP4` so DaVinci Resolve, Premiere Pro, Gyroflow, and Catalyst Browse can read it directly. Use Tab 3 (**Clip Inspector**) or `bionz_clip_check.py` to confirm `rtmd_gyro_present: true` on your clips.
+Architecturally yes, though **end-to-end stabilization on untouched camera originals still requires published conformance clips**. Stock open-gate tools often produce `3840×2560` video inside a `16:9` MP4 header, requiring an `ffmpeg` re-mux that strips Sony's `rtmd` timed-metadata gyro track. Decompilation of `libmpr.so` (`MakeMovieInternal` and `xavcsMovieMeta::WriteMetaInfo`) confirms `mp4_3x2` updates `tkhd`/`stsd`/`VPRF` dimensions and suppresses the fixed `"16:9"` XML flag in-camera while leaving `rtmd` telemetry untouched, and synthetic clip fixtures pass `bionz_clip_check.py`. Full Gyroflow, Catalyst Browse, and NLE stabilization validation against untouched card originals is tracked in [docs/SUPPORT_MATRIX.md](docs/SUPPORT_MATRIX.md).
 
 </details>
 
@@ -253,6 +283,7 @@ No. Leave a normal formatted SD or CFexpress card in **Slot 1** only so the came
 
 ## Documentation & Community
 
+- [Public Evidence & Support Matrix](docs/SUPPORT_MATRIX.md) ([JSON](docs/support_matrix.json)) — granular body × firmware × fps × codec × pack proof status
 - [Office Camera Test Guide (`ZV-E1 2.02` · `a7S III 5.01` · `FX3 7.02`)](docs/OFFICE_CAMERA_TEST_GUIDE.md) · [Pressure-Test & Report Guide](docs/PRESSURE_TEST_AND_REPORT_GUIDE.md) · [Safety & Clean-Room](docs/SAFETY_AND_CLEANROOM.md)
 - [Safety, Volatile RAM & Clean-Room Policy](docs/SAFETY_AND_CLEANROOM.md) — 5-gate architecture & clean-room verification rules
 - [BIONZ XR 12.1MP Offset Audit & MP4 3:2 Muxer](docs/OFFSET_AUDIT.md) — cross-body memory architecture & Ghidra muxer analysis

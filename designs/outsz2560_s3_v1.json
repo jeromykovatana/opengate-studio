@@ -1,0 +1,35 @@
+{
+ "design": "outsz2560_s3_v1",
+ "build": "a7s3_501",
+ "camera": "ILCE-7SM3 (A7S III), firmware 5.01",
+ "kind": "ram_words",
+ "title": "Output size of the stock 4K movie request: 3840 x 2160 -> 3840 x 2560 (size class 3, second entry)",
+ "status": "addresses from emulating the size-table function; never read or written on a camera",
+ "generated_by": "build/build_outsz_s3.py",
+ "ported_from": "outsz2560_v1 (A7 IV 6.02, RAM 0x143c7bc)",
+ "sites": [
+  {
+   "ram_address": "0x13ec2e4",
+   "old": "000f7008",
+   "new": "000f000a",
+   "what": "size class 3, second entry: width, height"
+  }
+ ],
+ "guards": [
+  {
+   "ram_address": "0x13ec2dc",
+   "bytes": "000f70083e040000",
+   "what": "size class 3, first entry and the raw write buffer id"
+  },
+  {
+   "ram_address": "0x13ec2e8",
+   "bytes": "d9020000",
+   "what": "the output buffer's memory id"
+  }
+ ],
+ "precondition": "a movie mode has run its size set-up (the table is zero before); the camera is on stills when the word is written",
+ "restore": "the old word, or a cold boot",
+ "not_shown": [
+  "the output records' format code on this camera (2 on the A7 IV: 3840 x 2560 x 1.25 = 12,288,000 bytes fits the 13,271,040-byte units of id 0x2d9)"
+ ]
+}

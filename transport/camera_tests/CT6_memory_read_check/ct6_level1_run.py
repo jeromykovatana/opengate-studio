@@ -1053,7 +1053,27 @@ def body_run(session, camera, lib):
                          "If it is an earlier build of ours, pass --remove-library %s."
                          % (len(data), sha, sha))
     there, old = read(camera, RESULT_PATH)
-    if there and CLEAR_SHA and c.sha256(old) == CLEAR_SHA:          # --clear-result: it is a result already saved here; delete it and go on
+    if REQUIRE_RESULT_SHA:
+        if not there:
+            raise c.StopTest(
+                "preflight boot-binding check failed: /tmp_wbshd/readcheck_result.txt is absent "
+                "(camera was power-cycled, cold-booted, or swapped since preflight). "
+                "Run fresh read-only preflight before apply. Nothing was written."
+            )
+        found_sha = c.sha256(old)
+        if found_sha != REQUIRE_RESULT_SHA:
+            raise c.StopTest(
+                "preflight boot-binding check failed: result on camera RAM disk (%s) does not match "
+                "authorized preflight (%s). Run fresh read-only preflight before apply. Nothing was written."
+                % (found_sha[:16], REQUIRE_RESULT_SHA[:16])
+            )
+        session.say("Boot-binding check passed: camera RAM disk holds authorized result (%d bytes); clearing it." % len(old))
+        GUARDS[-1].allow_result_delete = True
+        select(camera, RESULT_PATH)
+        out["clear_status"], _ = command(camera, FILE_DELETE2, b"\x00\xff")
+        there = read(camera, RESULT_PATH)[0]
+        session.say("Delete request: status %s; result file now %s" % (text(out["clear_status"]), "STILL THERE" if there else "gone"))
+    elif there and CLEAR_SHA and c.sha256(old) == CLEAR_SHA:          # --clear-result: it is a result already saved here; delete it and go on
         session.say("An earlier result is on the RAM disk and is the one already saved here (%d bytes). Deleting it." % len(old))
         GUARDS[-1].allow_result_delete = True
         select(camera, RESULT_PATH)
@@ -1302,6 +1322,7 @@ def body_run(session, camera, lib):
 
 
 CLEAR_SHA = None                                   # --clear-result: the SHA-256 the result file on the camera must have to be deleted
+REQUIRE_RESULT_SHA = None                          # --require-result: mandatory same-boot RAM-disk result SHA-256 before writing
 
 
 def body_clear_result(session, camera, lib):

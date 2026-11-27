@@ -39,7 +39,7 @@ if [ ! -x "$REPO_ROOT/.venv/bin/python" ]; then
   "$PYTHON_BIN" -m venv "$REPO_ROOT/.venv" || close_prompt 1
 fi
 "$REPO_ROOT/.venv/bin/python" -m pip install --upgrade pip || close_prompt 1
-"$REPO_ROOT/.venv/bin/python" -m pip install -r "$REPO_ROOT/requirements.txt" || close_prompt 1
+"$REPO_ROOT/.venv/bin/python" -m pip install --require-hashes -r "$REPO_ROOT/requirements.txt" || close_prompt 1
 
 echo "[2/4] Verifying SHA-256 pins across kits/..."
 "$REPO_ROOT/.venv/bin/python" -B "$REPO_ROOT/cli/studio_cli.py" verify-pins --json

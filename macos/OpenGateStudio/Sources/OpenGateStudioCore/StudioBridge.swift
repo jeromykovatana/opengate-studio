@@ -522,17 +522,21 @@ public final class StudioBridge: @unchecked Sendable {
 
     public func latestSession(
         bodyId: String,
-        sessionDir: URL? = nil
+        sessionDir: URL? = nil,
+        mode: String? = nil
     ) async throws -> (result: LatestSessionResult, trace: CommandTrace) {
         let effectiveSessionDir = sessionDir ?? sessionDirectory
         try FileManager.default.createDirectory(at: effectiveSessionDir, withIntermediateDirectories: true)
 
-        let args = [
+        var args = [
             "latest-session",
             "--body", bodyId,
-            "--session-dir", effectiveSessionDir.path,
-            "--json"
+            "--session-dir", effectiveSessionDir.path
         ]
+        if let mode, !mode.isEmpty {
+            args.append(contentsOf: ["--mode", mode])
+        }
+        args.append("--json")
         return try await runAndDecode(LatestSessionResult.self, context: "latest-session", args: args)
     }
 

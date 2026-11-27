@@ -78,6 +78,7 @@ public struct LiveSessionPresentation: Identifiable, Equatable {
 
     public var steps: [LiveStepItem] = []
     public var includesClosingDump: Bool = false
+    public var closingKind: String? = nil
     public var closingDumpStatus: LiveStepStatus? = nil
     public var activeBanner: LiveActionBanner? = nil
     public var isCancelling: Bool = false
@@ -360,7 +361,9 @@ public final class AppState: ObservableObject {
     }
 
     public var isApplyUnlocked: Bool {
-        isChecklistComplete && (preflightResult?.ready == true)
+        isChecklistComplete
+            && (preflightResult?.ready == true)
+            && (offlineMockCamera || preflightResult?.state == "stock")
     }
 
     public var isMixedPowerSwitchWarning: Bool {
@@ -552,8 +555,9 @@ public final class AppState: ObservableObject {
         session.phase = .running
         session.activeBanner = .awaitingAdminAuth
         session.steps = []
-        session.includesClosingDump = (session.action == .apply)
-        session.closingDumpStatus = (session.action == .apply) ? .pending : nil
+        session.includesClosingDump = (session.action == .apply || session.action == .putback)
+        session.closingKind = session.action == .putback ? "stock_check" : (session.action == .apply ? "movie_dump" : nil)
+        session.closingDumpStatus = session.includesClosingDump ? .pending : nil
         session.isCancelling = false
         session.logText = ""
         session.completionVerdict = nil
@@ -716,6 +720,9 @@ public final class AppState: ObservableObject {
                 session.includesClosingDump = closing
                 session.closingDumpStatus = closing ? .pending : nil
             }
+            if let cKind = event.closingKind {
+                session.closingKind = cKind
+            }
 
         case "wait_drive":
             let isFirst = event.first ?? true
@@ -732,9 +739,14 @@ public final class AppState: ObservableObject {
                     stepId: event.stepId
                 )
             }
-            updateStepStatus(&session, stepId: event.stepId, stepIndex: event.stepIndex, summary: event.title) { current in
-                if case .done = current { return current }
-                return .waitingDrive(first: isFirst)
+            if session.includesClosingDump && event.stepId == "check" && session.action == .putback {
+                session.closingKind = "stock_check"
+                session.closingDumpStatus = .waitingDrive(first: false)
+            } else {
+                updateStepStatus(&session, stepId: event.stepId, stepIndex: event.stepIndex, summary: event.title) { current in
+                    if case .done = current { return current }
+                    return .waitingDrive(first: isFirst)
+                }
             }
 
         case "step_start":
@@ -757,21 +769,28 @@ public final class AppState: ObservableObject {
                 hint: event.hint
             )
             session.includesClosingDump = true
+            session.closingKind = "movie_dump"
             session.closingDumpStatus = .waitingDrive(first: false)
 
         case "closing_dump_start":
             session.activeBanner = nil
             session.includesClosingDump = true
+            if let cKind = event.closingKind {
+                session.closingKind = cKind
+            }
             session.closingDumpStatus = .active
 
         case "closing_dump_done":
             session.activeBanner = nil
             session.includesClosingDump = true
+            if let cKind = event.closingKind {
+                session.closingKind = cKind
+            }
             let verdict = event.verdict ?? "VERIFIED"
-            if event.ready == false {
-                session.closingDumpStatus = .failed(message: verdict)
-            } else {
+            if event.ready == true && event.verified != false {
                 session.closingDumpStatus = .done(outcome: verdict)
+            } else {
+                session.closingDumpStatus = .failed(message: verdict)
             }
 
         case "complete":
@@ -787,7 +806,11 @@ public final class AppState: ObservableObject {
                 }
             }
             if case .active = session.closingDumpStatus {
-                session.closingDumpStatus = .done(outcome: event.verdict ?? "DONE")
+                if event.ok == true && event.ready == true && event.verified != false {
+                    session.closingDumpStatus = .done(outcome: event.verdict ?? "DONE")
+                } else {
+                    session.closingDumpStatus = .failed(message: event.verdict ?? "UNVERIFIED")
+                }
             }
 
         case "cancelled":
@@ -865,23 +888,26 @@ public final class AppState: ObservableObject {
             stderr: result.stderrOutput
         )
 
-        if result.wasUserCancelled || osascriptCancelled {
+        let outcome = LiveSessionOutcomeEvaluator.evaluate(
+            result: result,
+            action: action,
+            actionTitle: session.actionTitle,
+            existingFailureMessage: session.failureMessage,
+            existingCancelMessage: session.cancelMessage,
+            existingLeftBehind: session.leftBehindWarning,
+            wasCancelRequestedByButton: wasCancelRequestedByButton,
+            isOsascriptCancelled: osascriptCancelled
+        )
+
+        switch outcome {
+        case let .cancelled(adminAuth, message):
             session.phase = .cancelled
-            if osascriptCancelled || (!wasCancelRequestedByButton && result.events.isEmpty && result.cancelledEvent == nil) {
-                session.wasAdminAuthCancelled = true
-                session.cancelMessage = "Administrator authorization cancelled — nothing was sent to the camera."
-            } else {
-                session.wasAdminAuthCancelled = false
-                session.cancelMessage = result.cancelledEvent?.message
-                    ?? session.cancelMessage
-                    ?? "Cancelled safely before the next step."
-            }
+            session.wasAdminAuthCancelled = adminAuth
+            session.cancelMessage = message
             activeLiveSession = session
             await syncLatestCameraSession(silentIfNotFound: true, source: .liveInApp)
-            return
-        }
 
-        if let complete = result.completeEvent, result.exitCode == 0, complete.ok != false {
+        case let .finished(complete):
             session.phase = .finished
             session.completionVerdict = complete.verdict ?? session.completionVerdict
             session.completionState = complete.state ?? session.completionState
@@ -896,28 +922,18 @@ public final class AppState: ObservableObject {
                 }
             }
             activeLiveSession = session
-
             await syncLatestCameraSession(silentIfNotFound: true, source: .liveInApp)
-            return
-        }
 
-        session.phase = .failed
-        if let errEv = result.errorEvent, let msg = errEv.message, !msg.isEmpty {
-            session.failureMessage = msg
-            session.leftBehindWarning = errEv.leftBehind ?? session.leftBehindWarning
-        } else if let existing = session.failureMessage, !existing.isEmpty {
-            session.failureMessage = existing
-        } else {
-            let trimmedStderr = result.stderrOutput.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedStderr.isEmpty {
-                session.failureMessage = trimmedStderr
-            } else {
-                session.failureMessage = "\(session.actionTitle) exited with status \(result.exitCode). Expand Live Output Log for details."
+        case let .failed(message, leftBehind):
+            session.phase = .failed
+            session.failureMessage = message
+            session.leftBehindWarning = leftBehind
+            if case .active = session.closingDumpStatus {
+                session.closingDumpStatus = .failed(message: message)
             }
+            activeLiveSession = session
+            await syncLatestCameraSession(silentIfNotFound: true, source: .liveInApp)
         }
-        activeLiveSession = session
-
-        await syncLatestCameraSession(silentIfNotFound: true, source: .liveInApp)
     }
 
     public func syncLatestCameraSession(
@@ -930,7 +946,7 @@ public final class AppState: ObservableObject {
         defer { isSyncingSession = false }
 
         do {
-            let (res, trace) = try await bridge.latestSession(bodyId: selectedBodyId, sessionDir: sessionDir)
+            let (res, trace) = try await bridge.latestSession(bodyId: selectedBodyId, sessionDir: sessionDir, mode: "live_usb")
             let isNewSession = res.found && res.sessionId != liveSnapshot.latestSyncedSession?.sessionId
             if !silentIfNotFound || isNewSession {
                 appendLog(trace)
@@ -1205,30 +1221,38 @@ public final class AppState: ObservableObject {
             return
         }
 
+        if let mode = res.mode, mode != "live_usb" {
+            return
+        }
+
         let sessionLabel = res.sessionId ?? "latest"
         let normalizedKind = (res.kind ?? "").lowercased()
 
         switch normalizedKind {
         case "putback":
+            let stockOk = res.ok && res.ready && res.verified != false && res.state == "stock"
             liveSnapshot.putbackResult = PutbackResult(
-                ok: res.ok,
+                ok: stockOk,
                 stepsRun: res.stepsRun,
                 state: res.state,
                 bodyId: res.bodyId
             )
-            liveSnapshot.applyResult = nil
-            liveSnapshot.preflightResult = nil
+            if stockOk {
+                liveSnapshot.applyResult = nil
+                liveSnapshot.preflightResult = nil
+            }
             liveSnapshot.lastResultSource = source
             liveSnapshot.liveStatusBanner = "Synced Live Put Back session (\(sessionLabel)): state = \(res.state)"
 
         case "apply", "closing_dump":
-            liveSnapshot.applyResult = ApplyResult(
-                ok: res.ok && res.ready,
+            let applyOk = res.ok && res.ready && res.verified != false && res.state == "applied"
+            liveSnapshot.applyResult = applyOk ? ApplyResult(
+                ok: true,
                 stepsRun: res.stepsRun,
                 closingDumpVerdict: res.verdict,
                 activePacks: res.activePacks,
                 bodyId: res.bodyId
-            )
+            ) : nil
             liveSnapshot.putbackResult = nil
             liveSnapshot.lastResultSource = source
             liveSnapshot.liveStatusBanner = "Synced Live Apply session (\(sessionLabel)): \(res.verdict)"

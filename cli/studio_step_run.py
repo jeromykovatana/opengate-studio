@@ -604,9 +604,55 @@ def selftest(lib: bytes) -> list[str]:
     check(stopped and len(R.sent(s)) == 2, "wrong DeviceInfo.xml: stops after known-answer read")
     s, sim, stopped = R.simulate(lib, R.body_run, fault="load")
     check(stopped and R.sent(s).count(d_cmd) == 1 and R.LIB_PATH.decode() not in sim.fs, "load failure: library still deleted")
+
+    saved_req, saved_clr = R.REQUIRE_RESULT_SHA, R.CLEAR_SHA
+    try:
+        req_bytes = b"authorized preflight result"
+        req_sha = hashlib.sha256(req_bytes).hexdigest()
+        R.REQUIRE_RESULT_SHA = req_sha
+        R.CLEAR_SHA = req_sha
+
+        s, sim, stopped = R.simulate(lib, R.body_run)
+        check(bool(stopped) and w_cmd not in R.sent(s), "--require-result: missing result on RAM disk stops before writing")
+
+        s, sim, stopped = R.simulate(lib, R.body_run, files={"/tmp_wbshd/readcheck_result.txt": b"wrong boot result"})
+        check(bool(stopped) and w_cmd not in R.sent(s), "--require-result: mismatched result on RAM disk stops before writing")
+
+        s, sim, stopped = R.simulate(lib, R.body_run, files={"/tmp_wbshd/readcheck_result.txt": req_bytes})
+        check(
+            not stopped and R.sent(s).count(d_cmd) == 2 and R.sent(s).count(w_cmd) == 1,
+            "--require-result: matching RAM-disk result clears and completes",
+        )
+    finally:
+        R.REQUIRE_RESULT_SHA = saved_req
+        R.CLEAR_SHA = saved_clr
+
     refused = R.refusals(lib)
     check(len(refused) == 15, "guard refuses all 15 forbidden packet classes")
     return done
+
+
+def verify_connected_camera_identity(
+    session_results: dict[str, Any],
+    *,
+    expect_serial_sha256: str | None = None,
+    expect_msc_usb_id: str | None = None,
+) -> None:
+    cam_id = session_results.get("camera_usb_identity") or {}
+    if expect_serial_sha256:
+        got_serial = cam_id.get("serial_sha256")
+        if got_serial and got_serial != expect_serial_sha256:
+            raise c.StopTest(
+                f"Connected camera USB serial ({got_serial[:12]}...) does not match preflight camera "
+                f"({expect_serial_sha256[:12]}...). Run fresh preflight. Nothing was sent."
+            )
+    if expect_msc_usb_id:
+        got_msc = cam_id.get("msc_usb_id")
+        if got_msc and got_msc != expect_msc_usb_id:
+            raise c.StopTest(
+                f"Connected camera USB ID ({got_msc}) does not match preflight camera "
+                f"({expect_msc_usb_id}). Run fresh preflight. Nothing was sent."
+            )
 
 
 def report(session: Any, facts: dict[str, Any], which: str) -> None:
@@ -663,6 +709,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--go", action="store_true")
     ap.add_argument("--remove-only", action="store_true")
     ap.add_argument("--clear-result", metavar="SHA256")
+    ap.add_argument(
+        "--require-result",
+        metavar="SHA256",
+        help="Require /tmp_wbshd/readcheck_result.txt on the camera to match this SHA-256 (same boot binding) before clearing",
+    )
+    ap.add_argument("--expect-serial-sha256", metavar="SHA256", help="Optional USB serial SHA-256 binding from preflight")
+    ap.add_argument("--expect-msc-usb-id", metavar="VID:PID", help="Optional USB Mass Storage VID:PID binding from preflight")
     ap.add_argument("--firmware-shown")
     ap.add_argument("--writes-memory", action="store_true")
     ap.add_argument(
@@ -673,6 +726,22 @@ def main(argv: list[str] | None = None) -> int:
         help="Also remove an existing /tmp/jiritsu/libJit.so matching this SHA-256 (64 hex chars)",
     )
     args = ap.parse_args(argv)
+
+    if args.require_result:
+        req_hx = args.require_result.strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", req_hx):
+            raise SystemExit(f"Invalid --require-result SHA-256: {args.require_result!r}. Nothing was sent.")
+        args.require_result = req_hx
+    if args.expect_serial_sha256:
+        ser_hx = args.expect_serial_sha256.strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", ser_hx):
+            raise SystemExit(f"Invalid --expect-serial-sha256: {args.expect_serial_sha256!r}. Nothing was sent.")
+        args.expect_serial_sha256 = ser_hx
+    if args.expect_msc_usb_id:
+        msc_id = args.expect_msc_usb_id.strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{4}:[0-9a-f]{4}", msc_id):
+            raise SystemExit(f"Invalid --expect-msc-usb-id: {args.expect_msc_usb_id!r}. Nothing was sent.")
+        args.expect_msc_usb_id = msc_id
 
     for extra in args.remove_library:
         hx = extra.strip().lower()
@@ -709,7 +778,12 @@ def main(argv: list[str] | None = None) -> int:
 
     import ct1_stage2_service as service
 
-    R.CLEAR_SHA = args.clear_result or last_saved_sha()
+    if args.require_result:
+        R.REQUIRE_RESULT_SHA = args.require_result
+        R.CLEAR_SHA = args.require_result
+    else:
+        R.REQUIRE_RESULT_SHA = None
+        R.CLEAR_SHA = args.clear_result or last_saved_sha()
     body_fn = R.body_remove_only if args.remove_only else R.body_run
     stage_name = "remove_only" if args.remove_only else f"{cfg['prefix']}_{args.which}"
     with c.Session(stage_name, test="CT6", root=private_root()) as session:
@@ -723,6 +797,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         inner = service.connect(session)
         try:
+            verify_connected_camera_identity(
+                session.results,
+                expect_serial_sha256=args.expect_serial_sha256,
+                expect_msc_usb_id=args.expect_msc_usb_id,
+            )
             R.service_session(session, inner, lambda cam: body_fn(session, cam, lib), lib)
             facts = session.results.get("ct6", {}).get("result")
             if facts and not args.remove_only:

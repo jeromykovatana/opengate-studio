@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shlex
 import sys
 import tempfile
@@ -26,6 +27,24 @@ import studio_report  # noqa: E402
 BODY_ORDER = ("zve1_202", "a7s3_501", "fx3_702")
 OPTIONAL_PACK_ORDER = ("mp4_3x2", "hdmi32", "high_bitrate", "xavc_si", "screen_3x2", "fx3_playback")
 DEFAULT_SESSION_DIR = Path(tempfile.gettempdir()) / "opengate_studio_sessions"
+LIVE_PREFLIGHT_TTL_SECONDS = 900
+_HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def preflight_ttl_seconds() -> int:
+    raw = os.environ.get("OPENGATE_PREFLIGHT_TTL_SECONDS", "").strip()
+    if raw:
+        try:
+            val = int(raw)
+            if val > 0:
+                return val
+        except ValueError:
+            pass
+    return LIVE_PREFLIGHT_TTL_SECONDS
+
+
+def compute_kit_manifest_sha256(kit_dir: Path) -> str:
+    return _sha256_file(kit_dir / "manifest.json")
 
 
 def _sha256_file(path: Path) -> str:
@@ -182,41 +201,153 @@ def _write_session(session_dir: Path, payload: dict[str, Any]) -> str:
     return sid
 
 
-def _latest_session_record(session_dir: Path, body_id: str) -> dict[str, Any] | None:
+def _session_mode(rec: dict[str, Any]) -> str:
+    mode = rec.get("mode")
+    if isinstance(mode, str) and mode:
+        return mode
+    return "mock"
+
+
+def _load_sorted_sessions(session_dir: Path) -> list[tuple[float, str, dict[str, Any]]]:
     if not session_dir.is_dir():
-        return None
+        return []
     matches: list[tuple[float, str, dict[str, Any]]] = []
     for p in session_dir.glob("session_*.json"):
         try:
             rec = json.loads(p.read_text(encoding="utf8"))
         except (OSError, ValueError):
             continue
-        if rec.get("body_id") == body_id:
+        if isinstance(rec, dict):
             matches.append((float(rec.get("timestamp") or 0.0), p.name, rec))
-    if not matches:
-        return None
     matches.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    return matches[0][2]
+    return matches
 
 
-def _latest_preflight_session(session_dir: Path, body_id: str) -> dict[str, Any] | None:
-    if not session_dir.is_dir():
-        return None
-    matches: list[tuple[float, str, dict[str, Any]]] = []
-    for p in session_dir.glob("session_*.json"):
-        try:
-            rec = json.loads(p.read_text(encoding="utf8"))
-        except (OSError, ValueError):
+def _latest_session_record(
+    session_dir: Path,
+    body_id: str,
+    *,
+    mode_filter: str | None = None,
+) -> dict[str, Any] | None:
+    for _, _, rec in _load_sorted_sessions(session_dir):
+        if rec.get("body_id") != body_id:
             continue
-        if rec.get("body_id") == body_id:
-            matches.append((float(rec.get("timestamp") or 0.0), p.name, rec))
-    matches.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    for _, _, rec in matches:
+        if mode_filter in ("live_usb", "mock") and _session_mode(rec) != mode_filter:
+            continue
+        return rec
+    return None
+
+
+def _latest_preflight_session(
+    session_dir: Path,
+    body_id: str,
+    *,
+    mode_filter: str | None = "mock",
+) -> dict[str, Any] | None:
+    for _, _, rec in _load_sorted_sessions(session_dir):
+        if rec.get("body_id") != body_id:
+            continue
+        if mode_filter in ("live_usb", "mock") and _session_mode(rec) != mode_filter:
+            continue
         if rec.get("kind") == "putback":
             return None
         if rec.get("kind") in ("preflight", "dump", "closing_dump"):
             return rec
     return None
+
+
+def validate_live_preflight_for_apply(
+    session_dir: Path,
+    body_id: str,
+    kit_dir: Path,
+    manifest: dict[str, Any],
+    *,
+    now: float | None = None,
+) -> tuple[bool, dict[str, Any] | None, str]:
+    """Fail-closed authorization gate for live USB apply."""
+    records = _load_sorted_sessions(session_dir)
+    target_idx: int | None = None
+    latest_for_body: dict[str, Any] | None = None
+    for idx, (_, _, rec) in enumerate(records):
+        if rec.get("body_id") == body_id:
+            target_idx = idx
+            latest_for_body = rec
+            break
+
+    if latest_for_body is None or target_idx is None:
+        return False, None, "no live preflight session found"
+
+    # Global invalidation: any newer mock run or newer live session for another body invalidates authorization.
+    for _, _, newer in records[:target_idx]:
+        newer_mode = _session_mode(newer)
+        if newer_mode == "mock":
+            return (
+                False,
+                None,
+                "live preflight authorization invalidated by a newer mock run; run fresh read-only preflight",
+            )
+        if newer_mode == "live_usb" and newer.get("body_id") != body_id:
+            return (
+                False,
+                None,
+                f"live preflight authorization invalidated by a newer live session for {newer.get('body_id')}; run fresh read-only preflight",
+            )
+
+    sid = latest_for_body.get("session_id") or "<unknown>"
+    if _session_mode(latest_for_body) != "live_usb":
+        return False, None, f"latest session ({sid}) is not a live_usb session (mode={_session_mode(latest_for_body)!r})"
+
+    kind = latest_for_body.get("kind")
+    if kind not in ("preflight", "dump"):
+        return False, None, f"latest live session ({sid}) has kind={kind!r}; fresh stock preflight required"
+
+    if latest_for_body.get("ready") is not True or latest_for_body.get("verified") is False:
+        return False, None, f"latest preflight ({sid}) is not ready: {latest_for_body.get('verdict')}"
+
+    if latest_for_body.get("state") != "stock":
+        return False, None, f"latest preflight ({sid}) state is {latest_for_body.get('state')!r}, expected 'stock'"
+
+    if latest_for_body.get("pins_ok") is not True:
+        return False, None, f"latest preflight ({sid}) did not pass kit pin verification"
+
+    want_manifest_sha = compute_kit_manifest_sha256(kit_dir)
+    got_manifest_sha = latest_for_body.get("manifest_sha256")
+    if not isinstance(got_manifest_sha, str) or got_manifest_sha != want_manifest_sha:
+        return False, None, f"latest preflight ({sid}) kit manifest hash mismatch or missing; re-run preflight"
+
+    boot_nonce = latest_for_body.get("boot_nonce")
+    if not isinstance(boot_nonce, str) or not boot_nonce.strip():
+        return False, None, f"latest preflight ({sid}) is missing boot_nonce"
+
+    pre_sha = latest_for_body.get("preflight_result_sha256")
+    if not isinstance(pre_sha, str) or not _HEX64_RE.fullmatch(pre_sha):
+        return False, None, f"latest preflight ({sid}) is missing valid preflight_result_sha256"
+
+    cam_id = latest_for_body.get("camera_identity")
+    if not isinstance(cam_id, dict):
+        return False, None, f"latest preflight ({sid}) is missing camera_identity"
+
+    dev_info = manifest.get("device_info")
+    want_dev_sha = dev_info.get("sha256") if isinstance(dev_info, dict) else None
+    if not want_dev_sha or cam_id.get("device_info_sha256") != want_dev_sha:
+        return False, None, f"latest preflight ({sid}) camera DeviceInfo.xml identity mismatch"
+
+    has_usb_id = bool(cam_id.get("msc_usb_id") or cam_id.get("service_usb_id"))
+    if not has_usb_id:
+        return False, None, f"latest preflight ({sid}) is missing live USB camera identity"
+
+    expires_at = latest_for_body.get("expires_at")
+    if not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool):
+        return False, None, f"latest preflight ({sid}) is missing expires_at timestamp"
+
+    ts = float(latest_for_body.get("timestamp") or 0.0)
+    cur_now = time.time() if now is None else float(now)
+    if cur_now > float(expires_at):
+        return False, None, f"latest preflight ({sid}) has expired; run fresh read-only preflight"
+    if cur_now < ts - 5.0:
+        return False, None, f"latest preflight ({sid}) timestamp is in the future (clock skew); run fresh read-only preflight"
+
+    return True, latest_for_body, "ok"
 
 
 def resolve_pack_plan(
@@ -287,14 +418,18 @@ def cmd_preflight(body_id: str, mock_state: str | None, session_dir: Path, live_
         return 1, {"ok": False, "ready": False, "state": "not_ready", "verdict": f"VERDICT NOT READY (unknown body {body_id})"}
 
     kit_dir, man = manifests[body_id]
+    manifest_sha = compute_kit_manifest_sha256(kit_dir)
     pin_res = verify_body_pins(kit_dir, man)
     if not pin_res["ok"]:
         sid = _write_session(session_dir, {
             "kind": "preflight",
+            "mode": "mock",
             "body_id": body_id,
             "ready": False,
+            "verified": False,
             "state": "not_ready",
             "verdict": "VERDICT NOT READY (pin verification failed)",
+            "manifest_sha256": manifest_sha,
             "pins_ok": False,
         })
         return 1, {
@@ -320,10 +455,13 @@ def cmd_preflight(body_id: str, mock_state: str | None, session_dir: Path, live_
 
     sid = _write_session(session_dir, {
         "kind": "preflight",
+        "mode": "mock",
         "body_id": body_id,
         "ready": ready,
+        "verified": bool(ready),
         "state": out_state,
         "verdict": verdict,
+        "manifest_sha256": manifest_sha,
         "pins_ok": True,
     })
     return 0, {
@@ -364,7 +502,7 @@ def cmd_apply(body_id: str, packs_arg: str | None, session_dir: Path, live_usb: 
     if not pin_res["ok"]:
         return 1, {"ok": False, "error": "Pin verification failed", "mismatches": pin_res["mismatches"]}
 
-    last = _latest_preflight_session(session_dir, body_id)
+    last = _latest_preflight_session(session_dir, body_id, mode_filter="mock")
     if last is None or last.get("ready") is not True:
         reason = "no preflight session found" if last is None else f"last preflight session ({last.get('session_id')}) is not ready: {last.get('verdict')}"
         return 1, {"ok": False, "error": f"Refusing apply: {reason}"}
@@ -384,12 +522,15 @@ def cmd_apply(body_id: str, packs_arg: str | None, session_dir: Path, live_usb: 
     closing_verdict = "VERDICT READY (open gate applied)"
     _write_session(session_dir, {
         "kind": "closing_dump",
+        "mode": "mock",
         "body_id": body_id,
         "ready": True,
+        "verified": True,
         "state": "applied",
         "verdict": closing_verdict,
         "active_packs": active_packs,
         "steps_run": steps_run,
+        "manifest_sha256": compute_kit_manifest_sha256(kit_dir),
         "pins_ok": True,
     })
 
@@ -430,12 +571,15 @@ def cmd_putback(body_id: str, packs_arg: str | None, session_dir: Path, live_usb
     _write_mock_state(session_dir, body_id, "stock", [])
     _write_session(session_dir, {
         "kind": "putback",
+        "mode": "mock",
         "body_id": body_id,
         "ready": True,
+        "verified": True,
         "state": "stock",
         "verdict": "VERDICT READY (stock preflight)",
         "active_packs": [],
         "steps_run": steps_run,
+        "manifest_sha256": compute_kit_manifest_sha256(kit_dir),
         "pins_ok": True,
     })
 
@@ -447,12 +591,17 @@ def cmd_putback(body_id: str, packs_arg: str | None, session_dir: Path, live_usb
     }
 
 
-def cmd_latest_session(body_id: str, session_dir: Path) -> tuple[int, dict[str, Any]]:
+def cmd_latest_session(
+    body_id: str,
+    session_dir: Path,
+    mode_filter: str | None = None,
+) -> tuple[int, dict[str, Any]]:
     manifests = _load_manifests()
     if body_id not in manifests:
         return 1, {"ok": False, "error": f"Unknown body {body_id!r}"}
 
-    rec = _latest_session_record(session_dir, body_id)
+    eff_filter = None if mode_filter in (None, "all") else mode_filter
+    rec = _latest_session_record(session_dir, body_id, mode_filter=eff_filter)
     if rec is None:
         return 0, {
             "ok": True,
@@ -460,9 +609,12 @@ def cmd_latest_session(body_id: str, session_dir: Path) -> tuple[int, dict[str, 
             "body_id": body_id,
             "session_id": None,
             "kind": None,
+            "mode": None,
             "ready": False,
+            "verified": False,
             "state": "unknown",
             "verdict": "",
+            "manifest_sha256": None,
             "active_packs": [],
             "steps_run": [],
         }
@@ -473,9 +625,12 @@ def cmd_latest_session(body_id: str, session_dir: Path) -> tuple[int, dict[str, 
         "body_id": body_id,
         "session_id": rec.get("session_id"),
         "kind": rec.get("kind"),
+        "mode": _session_mode(rec),
         "ready": bool(rec.get("ready", False)),
+        "verified": bool(rec.get("verified", rec.get("ready", False))),
         "state": str(rec.get("state") or "unknown"),
         "verdict": str(rec.get("verdict") or ""),
+        "manifest_sha256": rec.get("manifest_sha256"),
         "active_packs": list(rec.get("active_packs") or []),
         "steps_run": list(rec.get("steps_run") or []),
     }
@@ -600,6 +755,7 @@ def main(argv: list[str] | None = None) -> int:
     p_latest = sub.add_parser("latest-session", help="Read newest session state for a body")
     p_latest.add_argument("--body", required=True)
     p_latest.add_argument("--session-dir", type=Path, default=DEFAULT_SESSION_DIR)
+    p_latest.add_argument("--mode", choices=("all", "live_usb", "mock"), default="all")
     p_latest.add_argument("--json", action="store_true")
 
     p_prep = sub.add_parser("prepare-live-command", help="Write executable Terminal .command wrapper without touching USB")
@@ -645,7 +801,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "putback":
         rc, payload = cmd_putback(args.body, args.packs, args.session_dir, args.live_usb)
     elif args.cmd == "latest-session":
-        rc, payload = cmd_latest_session(args.body, args.session_dir)
+        rc, payload = cmd_latest_session(args.body, args.session_dir, mode_filter=args.mode)
     elif args.cmd == "prepare-live-command":
         rc, payload = cmd_prepare_live_command(args.action, args.body, args.packs, args.session_dir)
     elif args.cmd == "check-clip":

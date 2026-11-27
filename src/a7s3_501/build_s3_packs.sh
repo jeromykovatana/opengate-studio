@@ -6,14 +6,16 @@ set -euo pipefail
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 STUDIO_ROOT="$(cd "$SRC_DIR/../.." && pwd)"
 WORKSPACE_ROOT="$(cd "$STUDIO_ROOT/.." && pwd)"
-KIT_DIR="$STUDIO_ROOT/kits/a7s3_501"
+KIT_DIR="${KIT_OUT_DIR:-$STUDIO_ROOT/kits/a7s3_501}"
 FW_DIR="${SONY_FW_DIR:-$WORKSPACE_ROOT/firmwares/a7siii/ghidra_targets}"
-SEN="$FW_DIR/libsencore.so"
+SEN="${SEN_SO_PATH:-$FW_DIR/libsencore.so}"
 READCHECK_C="$STUDIO_ROOT/src/common/readcheck.c"
 ZIG_PY="${ZIG_PY:-python3}"
 
 mkdir -p "$KIT_DIR"
-python3 -B "$SRC_DIR/gen_s3_packs.py"
+if [ "${SKIP_GEN:-0}" != "1" ]; then
+  "$ZIG_PY" -B "$SRC_DIR/gen_s3_packs.py"
+fi
 
 CC=(
   "$ZIG_PY" -m ziglang cc
@@ -31,6 +33,14 @@ for L in 5 6; do
     "$READCHECK_C" "$SEN" -o "$KIT_DIR/libJit_s3_${N}.so"
 done
 
+# L16/L17 & S16/S17: outsz2560_s3_v1 & lcdratio32_s3_v1
+for L in 16 17; do
+  "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DWORDS_H="expected_words_outsz2560_s3_v1.h"' \
+    "$READCHECK_C" "$SEN" -o "$KIT_DIR/libJit_s3_L${L}.so"
+  "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DWORDS_H="expected_words_lcdratio32_s3_v1.h"' \
+    "$READCHECK_C" "$SEN" -o "$KIT_DIR/libJit_s3_S${L}.so"
+done
+
 # L19/L20: Data-only 23.98p/25p/29.97p Long-GOP fallback (4 libmpr + 149 av-cam = 153 sites)
 for L in 19 20; do
   N="L$L"
@@ -43,6 +53,12 @@ for L in 19 20; do
   N="V$L"
   "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DMP_H="expected_mp_ogfile2560_hs_s_s3_v3.h"' -DAVCAM_PHYS=0x401000000UL \
     "$READCHECK_C" -o "$KIT_DIR/libJit_s3_${N}.so"
+done
+
+# C19/C20: lcdcycle_s3_v3 (appFw.so C3 preview cycle)
+for L in 19 20; do
+  "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DMP_H="expected_mp_lcdcycle_s3_v3.h"' -DAVCAM_PHYS=0x401000000UL \
+    "$READCHECK_C" -o "$KIT_DIR/libJit_s3_C${L}.so"
 done
 
 # H16/H17: Clean 3:2 HDMI + anamorphic de-squeeze (28 words in cpapp-b.bin)
@@ -71,6 +87,6 @@ done
 "${CC[@]}" -I "$SRC_DIR" -DDUMP=1 "$SRC_DIR/s3read.c" "$SEN" -o "$KIT_DIR/libJit_s3_dump.so"
 
 echo "Built a7S III 5.01 artifacts in $KIT_DIR:"
-for f in "$KIT_DIR"/libJit_s3_{L5,L6,L19,L20,V19,V20,H16,H17,B19,B20,I19,I20,check,dump}.so; do
+for f in "$KIT_DIR"/libJit_s3_{L5,L6,L16,L17,S16,S17,L19,L20,V19,V20,C19,C20,H16,H17,B19,B20,I19,I20,check,dump}.so; do
   printf "  %s  %s  %d bytes\n" "$(shasum -a 256 "$f" | awk '{print $1}')" "$(basename "$f")" "$(wc -c < "$f")"
 done

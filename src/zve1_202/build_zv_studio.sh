@@ -7,21 +7,18 @@ set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"
 STUDIO="$(cd "$SRC/../.." && pwd)"
 WS="$(cd "$STUDIO/.." && pwd)"
-KIT="$STUDIO/kits/zve1_202"
+KIT="${KIT_OUT_DIR:-$STUDIO/kits/zve1_202}"
 
 ZIG_PYTHON="${ZIG_PYTHON:-python3}"
 SONY_FW_DIR="${SONY_FW_DIR:-$WS/firmwares/zve1/ghidra_targets}"
-SEN="$SONY_FW_DIR/libsencore.so"
+SEN="${SEN_SO_PATH:-$SONY_FW_DIR/libsencore.so}"
+READCHECK_C="$STUDIO/src/common/readcheck.c"
 
-if [ -f "$STUDIO/src/common/readcheck.c" ]; then
-  READCHECK_C="$STUDIO/src/common/readcheck.c"
-else
-  READCHECK_C="$WS/zve1-pr2-preflight/windows/tools/camera_tests/CT6_memory_read_check/helper/readcheck.c"
+if [ "${SKIP_GEN:-0}" != "1" ]; then
+  export SONY_FW_DIR
+  PYTHONDONTWRITEBYTECODE=1 "$ZIG_PYTHON" -B "$SRC/gen_zv_studio.py" --fw-dir "$SONY_FW_DIR"
+  PYTHONDONTWRITEBYTECODE=1 "$ZIG_PYTHON" -B "$SRC/gen_zv_v4.py" --fw-dir "$SONY_FW_DIR"
 fi
-
-export SONY_FW_DIR
-PYTHONDONTWRITEBYTECODE=1 "$ZIG_PYTHON" -B "$SRC/gen_zv_studio.py" --fw-dir "$SONY_FW_DIR"
-PYTHONDONTWRITEBYTECODE=1 "$ZIG_PYTHON" -B "$SRC/gen_zv_v4.py" --fw-dir "$SONY_FW_DIR"
 
 CC=("$ZIG_PYTHON" -m ziglang cc -target aarch64-linux-gnu -std=gnu11 -O1 -Wall -Wextra -Werror
     -fPIC -shared -nostdlib -ffreestanding -fno-stack-protector -fno-builtin
@@ -30,11 +27,30 @@ CC=("$ZIG_PYTHON" -m ziglang cc -target aarch64-linux-gnu -std=gnu11 -O1 -Wall -
 
 mkdir -p "$KIT"
 
+# L13/L14: DMM raw write buffer resize (dmmwb_zv_v1)
+for L in 13 14; do
+  "${CC[@]}" -DLEVEL=$L '-DDMM_SITES_H="expected_dmm_dmmwb_zv_v1.h"' \
+    -DDMM_GLOBALS=0x019cf000UL -DG_WORKSPACE=0x8f0U -DG_UNITS=0x444U \
+    '-DDMM_WORDS_TEXT="the memory-manager word (the movie raw write buffer size)"' \
+    '-DDMM_DONE_TEXT="the site holds"' \
+    '-DDMM_RECS_TEXT="the record and its parent'"'"'s are as in the file; a unit of the new size fits"' \
+    '-DDMM_NOFIT_TEXT="a unit of the new size does not fit the parent"' \
+    "$READCHECK_C" "$SEN" -o "$KIT/libJit_zv_L$L.so"
+done
+
 # L5/L6: Dual-mode (0x8c0 + 0x820) NTSC/PAL sensor readout (MULTI_REC, 0x170-byte records)
 for L in 5 6; do
   "${CC[@]}" -DLEVEL=$L '-DSITES_H="expected_sites_ogsq_zv_v3.h"' '-DDESIGN_LABEL="ogsq_zv_v3"' \
     -DIMAGER=0x17f1f64UL -DCTRL_DRVPARAM=0x684U -DREC=0x170U \
     "$READCHECK_C" "$SEN" -o "$KIT/libJit_zv_L$L.so"
+done
+
+# L16/L17 & S16/S17: outsz2560_zv_v1 & lcdfill_zv_v2
+for L in 16 17; do
+  "${CC[@]}" -DLEVEL=$L '-DWORDS_H="expected_words_outsz2560_zv_v1.h"' \
+    "$READCHECK_C" "$SEN" -o "$KIT/libJit_zv_L$L.so"
+  "${CC[@]}" -DLEVEL=$L '-DWORDS_H="expected_words_lcdfill_zv_v2.h"' \
+    "$READCHECK_C" "$SEN" -o "$KIT/libJit_zv_S$L.so"
 done
 
 # L19/L20: Data-only 23.98p/25p/29.97p Long-GOP fallback (4 libmpr + 149 av-cam = 153 sites)
@@ -47,6 +63,12 @@ done
 for L in 19 20; do
   "${CC[@]}" -DLEVEL=$L '-DMP_H="expected_mp_ogfile2560_hs_s_zv_v3.h"' -DAVCAM_PHYS=0x401000000UL \
     "$READCHECK_C" -o "$KIT/libJit_zv_V$L.so"
+done
+
+# C19/C20: lcdcycle_zv_v1 (appFw.so C2 preview cycle)
+for L in 19 20; do
+  "${CC[@]}" -DLEVEL=$L '-DMP_H="expected_mp_lcdcycle_zv_v1.h"' -DAVCAM_PHYS=0x401000000UL \
+    "$READCHECK_C" -o "$KIT/libJit_zv_C$L.so"
 done
 
 # H16/H17: hdmi32_zv_202 (linked against libsencore.so)
@@ -71,7 +93,9 @@ done
 "${CC[@]}" -DDUMP=0 "$SRC/zvread.c" "$SEN" -o "$KIT/libJit_zv_check.so"
 "${CC[@]}" -DDUMP=1 "$SRC/zvread.c" "$SEN" -o "$KIT/libJit_zv_dump.so"
 
-PYTHONDONTWRITEBYTECODE=1 "$ZIG_PYTHON" -B "$SRC/emit_manifest.py"
+if [ "${SKIP_EMIT_MANIFEST:-0}" != "1" ] && [ "$KIT" = "$STUDIO/kits/zve1_202" ]; then
+  PYTHONDONTWRITEBYTECODE=1 "$ZIG_PYTHON" -B "$SRC/emit_manifest.py"
+fi
 
 for f in "$KIT"/*.so; do
   strings "$f" | grep -q "clang version 18.1.6" || { echo "MISSING clang 18.1.6 in $f"; exit 1; }

@@ -800,7 +800,7 @@ class LiveInAppOrchestratorTests(unittest.TestCase):
             self.assertIn("H16", evs_app[-1]["steps_run"])
             self.assertIn("Dry run only: nothing was sent to any device.", log_app.read_text(encoding="utf8"))
 
-            # 3. Apply simulation with --no-movie-session omits movie replug / closing dump
+            # 3. Apply simulation with --no-movie-session omits movie replug / closing dump and fails closed
             ev_nomov = root / "app_nomov.jsonl"
             proc_nomov = subprocess.run(
                 [
@@ -817,13 +817,13 @@ class LiveInAppOrchestratorTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-            self.assertEqual(proc_nomov.returncode, 0, proc_nomov.stderr + proc_nomov.stdout)
+            self.assertNotEqual(proc_nomov.returncode, 0, proc_nomov.stderr + proc_nomov.stdout)
             evs_nomov = self._read_jsonl(ev_nomov)
             self.assertFalse(evs_nomov[0]["closing_dump"])
             self.assertNotIn("wait_movie_replug", [e["type"] for e in evs_nomov])
-            self.assertEqual(evs_nomov[-1]["type"], "complete")
+            self.assertEqual(evs_nomov[-1]["type"], "error")
 
-            # 4. Putback simulation
+            # 4. Putback simulation runs closing stock_check and requires closing verification
             ev_put = root / "put.jsonl"
             log_put = root / "put.log"
             proc_put = subprocess.run(
@@ -845,12 +845,38 @@ class LiveInAppOrchestratorTests(unittest.TestCase):
             evs_put = self._read_jsonl(ev_put)
             self.assertEqual(evs_put[0]["type"], "plan")
             self.assertEqual(evs_put[0]["action"], "putback")
-            self.assertFalse(evs_put[0]["closing_dump"])
+            self.assertTrue(evs_put[0]["closing_dump"])
+            self.assertEqual(evs_put[0]["closing_kind"], "stock_check")
+            self.assertIn("closing_dump_start", [e["type"] for e in evs_put])
+            self.assertIn("closing_dump_done", [e["type"] for e in evs_put])
             self.assertEqual(evs_put[-1]["type"], "complete")
+            self.assertTrue(evs_put[-1]["ok"])
+            self.assertTrue(evs_put[-1]["ready"])
+            self.assertTrue(evs_put[-1]["verified"])
             self.assertEqual(evs_put[-1]["state"], "stock")
             self.assertEqual(evs_put[-1]["active_packs"], [])
             self.assertIn("P30", evs_put[-1]["steps_run"])
             self.assertIn("Dry run only: nothing was sent to any device.", log_put.read_text(encoding="utf8"))
+
+            ev_nocheck = root / "put_nocheck.jsonl"
+            proc_nocheck = subprocess.run(
+                [
+                    TRANSPORT_PYTHON, "-B", str(LIVE_APPLY),
+                    "putback", "--body", "fx3_702",
+                    "--packs", "mp4_3x2,fx3_playback",
+                    "--session-dir", str(root / "sess"),
+                    "--firmware-confirmed", "7.02",
+                    "--confirm-volatile-ram",
+                    "--no-closing-check",
+                    "--events-file", str(ev_nocheck),
+                    "--dry-run", "--simulate-events",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(proc_nocheck.returncode, 0, proc_nocheck.stderr + proc_nocheck.stdout)
+            evs_nocheck = self._read_jsonl(ev_nocheck)
+            self.assertEqual(evs_nocheck[-1]["type"], "error")
 
     def test_cancel_file_triggers_clean_cancelled_event_exit_130(self) -> None:
         import studio_live_apply as sla
@@ -1039,6 +1065,459 @@ class CleanRoomTests(unittest.TestCase):
         self.assertEqual(res["checked_manifests"], 3)
         self.assertEqual(res["checked_so"], 62)
         self.assertGreaterEqual(res["checked_pmca_files"], 15)
+
+
+class HardeningRegressionTests(unittest.TestCase):
+    @staticmethod
+    def _read_jsonl(path: Path) -> list[dict]:
+        return [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+
+    def _make_live_preflight_record(
+        self,
+        sdir: Path,
+        *,
+        body_id: str = "zve1_202",
+        kind: str = "preflight",
+        mode: str = "live_usb",
+        state: str = "stock",
+        ready: bool = True,
+        verified: bool = True,
+        ts: float | None = None,
+        manifest_sha256: str | None = None,
+        boot_nonce: str | None = "boot-nonce-1234",
+        preflight_result_sha256: str | None = "a" * 64,
+        device_info_sha256: str | None = None,
+        serial_sha256: str = "b" * 64,
+        msc_usb_id: str | None = "054c:0da8",
+        session_name: str = "0001_preflight",
+    ) -> Path:
+        import time
+        import studio_cli
+
+        kit_dir, man = studio_cli._load_manifests()[body_id]
+        if manifest_sha256 is None:
+            manifest_sha256 = studio_cli.compute_kit_manifest_sha256(kit_dir)
+        now_ts = time.time() if ts is None else float(ts)
+        dev_sha = (
+            man["device_info"]["sha256"]
+            if device_info_sha256 is None
+            else device_info_sha256
+        )
+        sid = f"session_{session_name}"
+        cam_id: dict[str, str] = {"device_info_sha256": dev_sha, "serial_sha256": serial_sha256}
+        if msc_usb_id:
+            cam_id["msc_usb_id"] = msc_usb_id
+        rec = {
+            "session_id": sid,
+            "timestamp": now_ts,
+            "expires_at": now_ts + studio_cli.LIVE_PREFLIGHT_TTL_SECONDS,
+            "kind": kind,
+            "mode": mode,
+            "body_id": body_id,
+            "camera": man.get("camera"),
+            "firmware": man.get("firmware"),
+            "state": state,
+            "which": "check",
+            "verdict": "VERDICT READY (stock preflight)" if ready else "VERDICT NOT READY",
+            "ready": ready,
+            "verified": verified,
+            "pins_ok": True,
+            "manifest_sha256": manifest_sha256,
+            "boot_nonce": boot_nonce,
+            "preflight_result_sha256": preflight_result_sha256,
+            "camera_identity": cam_id,
+        }
+        out = sdir / f"{sid}.json"
+        out.write_text(json.dumps(rec, indent=2) + "\n", encoding="utf-8")
+        return out
+
+    def test_live_preflight_gate_rejects_mock_stale_wrong_body_and_invalidated(self) -> None:
+        import time
+        import studio_cli
+
+        kit_dir, man = studio_cli._load_manifests()["zve1_202"]
+        with tempfile.TemporaryDirectory() as td:
+            sdir = Path(td)
+            # 1. Mock READY session must not unlock live apply
+            self._make_live_preflight_record(sdir, mode="mock", session_name="0001_mock")
+            ok, rec, reason = studio_cli.validate_live_preflight_for_apply(sdir, "zve1_202", kit_dir, man)
+            self.assertFalse(ok)
+            self.assertIn("mock", reason.lower())
+
+        with tempfile.TemporaryDirectory() as td:
+            sdir = Path(td)
+            # 2. Wrong body READY session must not unlock zve1_202
+            self._make_live_preflight_record(sdir, body_id="fx3_702", session_name="0001_fx3")
+            ok, _, reason = studio_cli.validate_live_preflight_for_apply(sdir, "zve1_202", kit_dir, man)
+            self.assertFalse(ok)
+
+        with tempfile.TemporaryDirectory() as td:
+            sdir = Path(td)
+            # 3. Applied state cannot pass fresh-apply preflight
+            self._make_live_preflight_record(sdir, state="applied", session_name="0001_applied")
+            ok, _, reason = studio_cli.validate_live_preflight_for_apply(sdir, "zve1_202", kit_dir, man)
+            self.assertFalse(ok)
+
+        with tempfile.TemporaryDirectory() as td:
+            sdir = Path(td)
+            # 4. Expired TTL rejected
+            self._make_live_preflight_record(sdir, ts=time.time() - 3600, session_name="0001_old")
+            ok, _, reason = studio_cli.validate_live_preflight_for_apply(sdir, "zve1_202", kit_dir, man)
+            self.assertFalse(ok)
+            self.assertIn("expired", reason.lower())
+
+        with tempfile.TemporaryDirectory() as td:
+            sdir = Path(td)
+            # 5. Manifest SHA-256 mismatch rejected
+            self._make_live_preflight_record(sdir, manifest_sha256="0" * 64, session_name="0001_man")
+            ok, _, reason = studio_cli.validate_live_preflight_for_apply(sdir, "zve1_202", kit_dir, man)
+            self.assertFalse(ok)
+
+        with tempfile.TemporaryDirectory() as td:
+            sdir = Path(td)
+            # 6. Missing boot_nonce / invalid preflight_result_sha256 / DeviceInfo mismatch rejected
+            self._make_live_preflight_record(sdir, boot_nonce="", session_name="0001_nononce")
+            ok, _, _ = studio_cli.validate_live_preflight_for_apply(sdir, "zve1_202", kit_dir, man)
+            self.assertFalse(ok)
+
+        with tempfile.TemporaryDirectory() as td:
+            sdir = Path(td)
+            self._make_live_preflight_record(sdir, preflight_result_sha256="bad", session_name="0001_badsha")
+            ok, _, _ = studio_cli.validate_live_preflight_for_apply(sdir, "zve1_202", kit_dir, man)
+            self.assertFalse(ok)
+
+        with tempfile.TemporaryDirectory() as td:
+            sdir = Path(td)
+            self._make_live_preflight_record(sdir, device_info_sha256="f" * 64, session_name="0001_baddev")
+            ok, _, _ = studio_cli.validate_live_preflight_for_apply(sdir, "zve1_202", kit_dir, man)
+            self.assertFalse(ok)
+
+        with tempfile.TemporaryDirectory() as td:
+            sdir = Path(td)
+            # 7. Newer putback or mock run invalidates earlier live READY
+            now = time.time()
+            self._make_live_preflight_record(sdir, ts=now - 10, session_name="0001_live")
+            (sdir / "session_0002_putback.json").write_text(
+                json.dumps({
+                    "session_id": "session_0002_putback",
+                    "body_id": "zve1_202",
+                    "kind": "putback",
+                    "mode": "live_usb",
+                    "state": "stock_unverified",
+                    "ready": False,
+                    "timestamp": now - 5,
+                }),
+                encoding="utf-8",
+            )
+            ok, _, _ = studio_cli.validate_live_preflight_for_apply(sdir, "zve1_202", kit_dir, man, now=now)
+            self.assertFalse(ok)
+
+        with tempfile.TemporaryDirectory() as td:
+            sdir = Path(td)
+            now = time.time()
+            self._make_live_preflight_record(sdir, ts=now - 10, session_name="0001_live")
+            (sdir / "session_0002_mock.json").write_text(
+                json.dumps({
+                    "session_id": "session_0002_mock",
+                    "body_id": "zve1_202",
+                    "kind": "preflight",
+                    "mode": "mock",
+                    "state": "stock",
+                    "ready": True,
+                    "timestamp": now - 5,
+                }),
+                encoding="utf-8",
+            )
+            ok, _, _ = studio_cli.validate_live_preflight_for_apply(sdir, "zve1_202", kit_dir, man, now=now)
+            self.assertFalse(ok)
+
+            # 8. latest-session --mode live_usb skips mock runs
+            code, payload = studio_cli.cmd_latest_session("zve1_202", sdir, mode_filter="live_usb")
+            self.assertEqual(code, 0)
+            self.assertTrue(payload["found"])
+            self.assertEqual(payload["mode"], "live_usb")
+
+        with tempfile.TemporaryDirectory() as td:
+            sdir = Path(td)
+            now = time.time()
+            self._make_live_preflight_record(sdir, ts=now, session_name="0001_valid")
+            ok, rec, reason = studio_cli.validate_live_preflight_for_apply(sdir, "zve1_202", kit_dir, man, now=now)
+            self.assertTrue(ok, reason)
+            self.assertIsNotNone(rec)
+
+    def test_step_runner_identity_guard_and_result_hash_gate(self) -> None:
+        import ct1_common
+        import studio_step_run
+
+        with self.assertRaises(ct1_common.StopTest):
+            studio_step_run.verify_connected_camera_identity(
+                {"camera_usb_identity": {"serial_sha256": "a" * 64, "msc_usb_id": "054c:0da8"}},
+                expect_serial_sha256="c" * 64,
+            )
+        with self.assertRaises(ct1_common.StopTest):
+            studio_step_run.verify_connected_camera_identity(
+                {"camera_usb_identity": {"serial_sha256": "a" * 64, "msc_usb_id": "054c:0da8"}},
+                expect_msc_usb_id="054c:9999",
+            )
+        studio_step_run.verify_connected_camera_identity(
+            {"camera_usb_identity": {"serial_sha256": "a" * 64, "msc_usb_id": "054c:0da8"}},
+            expect_serial_sha256="a" * 64,
+            expect_msc_usb_id="054c:0da8",
+        )
+
+    def test_live_apply_and_putback_fail_closed_under_fault_injection(self) -> None:
+        from unittest import mock
+        import studio_cli
+        import studio_live_apply
+
+        _, man = studio_cli._load_manifests()["zve1_202"]
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+
+            def write_ct6_manifest(
+                folder: Path,
+                *,
+                which: str,
+                state: str,
+                verdict: str,
+                ready: bool = True,
+                sha256: str = "e" * 64,
+                outcome: str = "DONE",
+                step_ok: bool = True,
+                malformed: bool = False,
+            ) -> None:
+                folder.mkdir(parents=True, exist_ok=True)
+                if malformed:
+                    (folder / "manifest.json").write_text("{not json", encoding="utf-8")
+                    return
+                if which in ("dump", "check"):
+                    s3 = {
+                        "ready": ready,
+                        "state": state,
+                        "verdict": verdict,
+                        "identity_differs": 0,
+                        "problem_lines": [],
+                    }
+                else:
+                    s3 = {"ok": step_ok, "outcome": outcome}
+                payload = {
+                    "status": "completed",
+                    "results": {
+                        "body_id": "zve1_202",
+                        "which": which,
+                        "ct6": {
+                            "library_on_camera_after": False,
+                            "result": {
+                                "header_ok": True,
+                                "complete": True,
+                                "problems": 0,
+                                "sha256": sha256,
+                                "s3": s3,
+                            },
+                        },
+                    },
+                }
+                (folder / "manifest.json").write_text(json.dumps(payload), encoding="utf-8")
+
+            def run_apply_case(scenario: str) -> tuple[int, list[dict], list[tuple]]:
+                sdir = base / f"s_{scenario}"
+                ct6_root = base / f"ct6_{scenario}"
+                sdir.mkdir(parents=True, exist_ok=True)
+                ct6_root.mkdir(parents=True, exist_ok=True)
+                ev_path = base / f"ev_{scenario}.jsonl"
+                self._make_live_preflight_record(sdir, session_name="0001_valid")
+                # Pre-existing stale READY CT6 folder must NEVER count as closing verification
+                write_ct6_manifest(
+                    ct6_root / "CT6_20261126_115900_stale",
+                    which="dump",
+                    state="applied",
+                    verdict="VERDICT READY (open gate applied)",
+                    sha256="f" * 64,
+                )
+
+                calls: list[tuple] = []
+                step_counter = {"n": 0}
+
+                def fake_wait_replug(timeout=900, *, ctx=None):
+                    return scenario != "movie_replug_timeout"
+
+                def fake_run_step_live(
+                    body_id,
+                    which,
+                    firmware,
+                    writes_memory,
+                    *,
+                    ctx=None,
+                    require_result_sha=None,
+                    expect_serial_sha256=None,
+                    expect_msc_usb_id=None,
+                ):
+                    step_counter["n"] += 1
+                    calls.append((which, require_result_sha, expect_serial_sha256, expect_msc_usb_id))
+                    folder = ct6_root / f"CT6_20261126_1205{step_counter['n']:02d}_{which}"
+                    if which == "dump":
+                        if scenario == "dump_fails":
+                            return 2
+                        if scenario == "stale_only_no_new_folder":
+                            return 0
+                        if scenario == "malformed_dump":
+                            write_ct6_manifest(folder, which="dump", state="applied", verdict="VERDICT READY (open gate applied)", malformed=True)
+                            return 0
+                        if scenario == "contradictory_stock":
+                            write_ct6_manifest(folder, which="dump", state="stock", verdict="VERDICT READY (stock preflight)")
+                            return 0
+                        write_ct6_manifest(
+                            folder,
+                            which="dump",
+                            state="applied",
+                            verdict="VERDICT READY (open gate applied)",
+                            sha256=f"{step_counter['n']:064x}",
+                        )
+                        return 0
+
+                    if scenario == "partial_patch_step2" and step_counter["n"] == 2:
+                        write_ct6_manifest(folder, which=which, state="stock", verdict="", outcome="ABORT", step_ok=False)
+                        return 2
+                    write_ct6_manifest(
+                        folder,
+                        which=which,
+                        state="stock",
+                        verdict="",
+                        sha256=f"{step_counter['n']:064x}",
+                        outcome="DONE",
+                        step_ok=True,
+                    )
+                    return 0
+
+                with (
+                    mock.patch.object(studio_live_apply, "private_root", return_value=ct6_root),
+                    mock.patch.object(studio_live_apply, "wait_for_drive", return_value=True),
+                    mock.patch.object(studio_live_apply, "wait_for_replug", side_effect=fake_wait_replug),
+                    mock.patch.object(studio_live_apply, "run_step_live", side_effect=fake_run_step_live),
+                ):
+                    ctx = studio_live_apply.RunContext(
+                        events_file=ev_path,
+                        firmware_confirmed=str(man["firmware"]),
+                        confirm_volatile_ram=True,
+                    )
+                    rc = studio_live_apply.run_write_flow(
+                        "apply",
+                        "zve1_202",
+                        man,
+                        "mp4_3x2",
+                        sdir,
+                        dry_run=False,
+                        no_movie_session=False,
+                        no_closing_check=False,
+                        ctx=ctx,
+                    )
+                return rc, self._read_jsonl(ev_path), calls
+
+            for bad in (
+                "movie_replug_timeout",
+                "dump_fails",
+                "stale_only_no_new_folder",
+                "malformed_dump",
+                "contradictory_stock",
+                "partial_patch_step2",
+            ):
+                rc, evs, _ = run_apply_case(bad)
+                self.assertNotEqual(rc, 0, f"{bad} unexpectedly exited 0: {evs[-1]}")
+                self.assertEqual(evs[-1]["type"], "error", bad)
+
+            rc_ok, evs_ok, calls_ok = run_apply_case("valid_dump")
+            self.assertEqual(rc_ok, 0, evs_ok)
+            self.assertEqual(evs_ok[-1]["type"], "complete")
+            self.assertTrue(evs_ok[-1]["ok"])
+            self.assertTrue(evs_ok[-1]["ready"])
+            self.assertTrue(evs_ok[-1]["verified"])
+            self.assertEqual(evs_ok[-1]["state"], "applied")
+            # Assert same-boot result SHA chaining and camera identity pinning
+            self.assertEqual(calls_ok[0][1], "a" * 64)
+            self.assertEqual(calls_ok[0][2], "b" * 64)
+            self.assertEqual(calls_ok[0][3], "054c:0da8")
+            self.assertEqual(calls_ok[1][1], f"{1:064x}")
+            self.assertEqual(calls_ok[-1][0], "dump")
+            self.assertEqual(calls_ok[-1][1], f"{len(calls_ok) - 1:064x}")
+
+            # Verify live putback closing stock_check pass vs contradictory / timeout / skipped fail closed
+            for put_case in ("put_valid", "put_contradictory", "put_check_timeout", "put_nocheck"):
+                sdir = base / f"s_{put_case}"
+                ct6_root = base / f"ct6_{put_case}"
+                sdir.mkdir(parents=True, exist_ok=True)
+                ct6_root.mkdir(parents=True, exist_ok=True)
+                ev_path = base / f"ev_{put_case}.jsonl"
+                n_step = {"n": 0}
+
+                def fake_put_wait_drive(body_id, first, timeout=600, *, ctx=None, step_index=None, total_steps=None, step_id=None):
+                    if put_case == "put_check_timeout" and step_id == "check":
+                        return False
+                    return True
+
+                def fake_put_step(
+                    body_id,
+                    which,
+                    firmware,
+                    writes_memory,
+                    *,
+                    ctx=None,
+                    require_result_sha=None,
+                    expect_serial_sha256=None,
+                    expect_msc_usb_id=None,
+                ):
+                    n_step["n"] += 1
+                    folder = ct6_root / f"CT6_20261126_1208{n_step['n']:02d}_{which}"
+                    if which == "check":
+                        verdict = "VERDICT READY (open gate applied)" if put_case == "put_contradictory" else "VERDICT READY (stock preflight)"
+                        state = "applied" if put_case == "put_contradictory" else "stock"
+                        write_ct6_manifest(folder, which="check", state=state, verdict=verdict, sha256=f"{n_step['n']:064x}")
+                    else:
+                        write_ct6_manifest(folder, which=which, state="stock", verdict="", sha256=f"{n_step['n']:064x}", outcome="DONE", step_ok=True)
+                    return 0
+
+                with (
+                    mock.patch.object(studio_live_apply, "private_root", return_value=ct6_root),
+                    mock.patch.object(studio_live_apply, "wait_for_drive", side_effect=fake_put_wait_drive),
+                    mock.patch.object(studio_live_apply, "run_step_live", side_effect=fake_put_step),
+                ):
+                    ctx = studio_live_apply.RunContext(
+                        events_file=ev_path,
+                        firmware_confirmed=str(man["firmware"]),
+                        confirm_volatile_ram=True,
+                    )
+                    rc = studio_live_apply.run_write_flow(
+                        "putback",
+                        "zve1_202",
+                        man,
+                        "mp4_3x2",
+                        sdir,
+                        dry_run=False,
+                        no_movie_session=False,
+                        no_closing_check=(put_case == "put_nocheck"),
+                        ctx=ctx,
+                    )
+                evs = self._read_jsonl(ev_path)
+                if put_case == "put_valid":
+                    self.assertEqual(rc, 0, evs)
+                    self.assertEqual(evs[-1]["type"], "complete")
+                    self.assertTrue(evs[-1]["verified"])
+                    self.assertEqual(evs[-1]["state"], "stock")
+                else:
+                    self.assertNotEqual(rc, 0, f"{put_case} should fail closed: {evs}")
+                    self.assertEqual(evs[-1]["type"], "error")
+
+    def test_support_matrix_is_in_sync_with_docs(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts" / "generate_support_matrix.py"), "--check"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,43 @@
+{
+ "design": "outsz2560_fx3_v1",
+ "build": "fx3_702",
+ "camera": "ILME-FX3 (FX3), firmware 7.02",
+ "kind": "ram_words",
+ "title": "Output size of the stock 4K movie request: 3840 x 2160 -> 3840 x 2560 (size class 3, second entry)",
+ "status": "addresses from emulating the FX3's own size-table function; never read or written on an FX3. The same word change (outsz2560_s3_v1) works on an A7S III",
+ "emulated_image_sha256": "c90d00d807874a5309dc1b65b203287e83608ceee513cc57b53409333fb6bcba",
+ "generated_by": "build/build_ram_words_fx3.py",
+ "ported_from": "outsz2560_s3_v1 (A7S III 5.01, RAM 0x13ec2e4)",
+ "sites": [
+  {
+   "ram_address": "0x13c31c8",
+   "old": "000f7008",
+   "new": "000f000a",
+   "what": "size class 3, second entry: width, height"
+  }
+ ],
+ "guards": [
+  {
+   "ram_address": "0x13c31c0",
+   "bytes": "000f70083e040000",
+   "what": "size class 3, first entry and the raw write buffer id"
+  },
+  {
+   "ram_address": "0x13c31cc",
+   "bytes": "d9020000",
+   "what": "the output buffer's memory id"
+  }
+ ],
+ "precondition": "a movie mode has run its size set-up (the table is zero before); the camera is on stills when the word is written",
+ "restore": "the old word, or a cold boot",
+ "emulated": {
+  "function": "0x4008ec",
+  "table": "0x13c3190",
+  "entries_equal_a7s3_501": true,
+  "stores_into_block": 98
+ },
+ "not_shown": [
+  "anything on an FX3",
+  "the output records' format code on this camera (2 on the A7 IV: 3840 x 2560 x 1.25 = 12,288,000 bytes fits the 13,271,040-byte units of id 0x2d9)"
+ ]
+}

@@ -1,0 +1,401 @@
+{
+ "design": "lcd32dsq_fx3_v1",
+ "build": "fx3_702",
+ "camera": "ILME-FX3 (FX3), firmware 7.02",
+ "title": "FX3 7.02: rear screen shows the open-gate live view at 3:2 (16:9 letterbox ratio 9/16 -> 2/3, frame widgets' 16:9 entries for both panel shapes), and the built-in Anamorphic Desqueeze display ratios set for a 3:2 picture (1.3x 1.95:1, 1.5x 2.25:1, 1.65x 2.475:1, 2.0x the whole frame at 3:1)",
+ "kind": "ram_words",
+ "artifact": "cpapp-b.bin 7.02 (ILME-FX3), its loaded image in coprocessor RAM: the words are in the file, the change is made in RAM only",
+ "artifact_sha256": "c90d00d807874a5309dc1b65b203287e83608ceee513cc57b53409333fb6bcba",
+ "generated_by": "build/build_lcd_fx3.py",
+ "ported_from": "lcdratio32_s3_v1 (A7S III 5.01; works on that camera, ninth test 2026-11-22): the same 2/3 ratio and frame entries, in the A7 IV's instruction form; the de-squeeze part is new (the A7S III kit has a C3 routine instead)",
+ "summary": {
+  "sites": 30,
+  "bytes": 120,
+  "guards": 32,
+  "picture": "16:9 live view (aspect code 2) holding the whole 3:2 sensor area",
+  "ratio_stock": "9/16",
+  "ratio_new": "2/3",
+  "frame_rectangles_new": {
+   "rear output, 4:3 panel": [
+    0,
+    26,
+    640,
+    428
+   ],
+   "rear output, 3:2 panel": [
+    0,
+    0,
+    640,
+    480
+   ],
+   "second output": [
+    0,
+    26,
+    640,
+    428
+   ]
+  },
+  "desqueeze": {
+   "1.3x": "45/104 -> 20/39",
+   "1.5x": "3/8 -> 4/9",
+   "1.65x": "15/44 -> 40/99",
+   "2.0x": "3/8 -> 1/3, centre crop off"
+  },
+  "goes_with": [
+   "ogsq_fx3_v1",
+   "outsz2560_fx3_v1",
+   "ogfile2560_hs_s_fx3_v1"
+  ]
+ },
+ "while_applied": "every 16:9 picture on the rear screen is shown at 3:2 and the de-squeeze ratios are those of a 3:2 picture (other movie formats look wrong there). 2.0x's ratio is the calculator's default for every picture shape and its crop is off for every shape, so 2.0x shows any picture at 3:1 (the open-gate live view is always 16:9). HDMI's own layout (0x1dfb18) and the 17:9 ratios of 1.3x / 1.5x / 1.65x are unchanged",
+ "not_checked": [
+  "on a camera: nothing of this design has run on an FX3",
+  "the FX3's panel type byte 0x14909e4 (expected 2 = 4:3; the dump reads it)",
+  "that the FX3's menu sends codes 1 to 4 for 1.3x, 1.5x, 1.65x and 2.0x (inferred from the ratios)",
+  "whether the focus frames are drawn while de-squeeze is on (the frame check has no de-squeeze input; stock behaves the same)"
+ ],
+ "sites": [
+  {
+   "ram_address": "0x1df6a8",
+   "old": "4ff0030a",
+   "new": "4ff0010a",
+   "note": "de-squeeze 2.0x (the default ratio, used only by code 4): 3 -> 1"
+  },
+  {
+   "ram_address": "0x1df6ac",
+   "old": "0825dfe8",
+   "new": "0325dfe8",
+   "note": "de-squeeze 2.0x: 8 -> 3 (1/3: 3:1, the whole 3:2 frame)"
+  },
+  {
+   "ram_address": "0x1df700",
+   "old": "4ff02d0a",
+   "new": "4ff0140a",
+   "note": "de-squeeze 1.3x, 16:9 picture: 45 -> 20"
+  },
+  {
+   "ram_address": "0x1df704",
+   "old": "682506e0",
+   "new": "272506e0",
+   "note": "de-squeeze 1.3x: 104 -> 39 (height = width x 20/39: 1.95:1)"
+  },
+  {
+   "ram_address": "0x1df708",
+   "old": "4ff0030a",
+   "new": "4ff0040a",
+   "note": "de-squeeze 1.5x, 16:9 picture: 3 -> 4"
+  },
+  {
+   "ram_address": "0x1df70c",
+   "old": "082502e0",
+   "new": "092502e0",
+   "note": "de-squeeze 1.5x: 8 -> 9 (4/9: 2.25:1)"
+  },
+  {
+   "ram_address": "0x1df710",
+   "old": "4ff00f0a",
+   "new": "4ff0280a",
+   "note": "de-squeeze 1.65x, 16:9 picture: 15 -> 40"
+  },
+  {
+   "ram_address": "0x1df714",
+   "old": "2c257869",
+   "new": "63257869",
+   "note": "de-squeeze 1.65x: 44 -> 99 (40/99: 2.475:1)"
+  },
+  {
+   "ram_address": "0x1df7b8",
+   "old": "4ff0090e",
+   "new": "4ff0020e",
+   "note": "picture-ratio function, 16:9 picture: numerator 9 -> 2"
+  },
+  {
+   "ram_address": "0x1df7bc",
+   "old": "102007e0",
+   "new": "032007e0",
+   "note": "picture-ratio function, 16:9 picture: denominator 16 -> 3"
+  },
+  {
+   "ram_address": "0x5faf34",
+   "old": "18d10428",
+   "new": "18d10528",
+   "note": "2.0x centre crop, first path: code 4 -> 5 (never): no crop"
+  },
+  {
+   "ram_address": "0x5faf68",
+   "old": "042841d1",
+   "new": "052841d1",
+   "note": "2.0x centre crop, second path: code 4 -> 5 (never): no crop"
+  },
+  {
+   "ram_address": "0xd2e528",
+   "old": "00003c00",
+   "new": "00001a00",
+   "note": "cpActAfWindow (focus area frames), row 0 (rear output, 4:3 panel), 16:9 column, x, y: (0, 60, 640, 360) to (0, 26, 640, 428) (A7S III 0xd4d75c)"
+  },
+  {
+   "ram_address": "0xd2e52c",
+   "old": "80026801",
+   "new": "8002ac01",
+   "note": "cpActAfWindow (focus area frames), row 0 (rear output, 4:3 panel), 16:9 column, w, h: (0, 60, 640, 360) to (0, 26, 640, 428) (A7S III 0xd4d760)"
+  },
+  {
+   "ram_address": "0xd2e550",
+   "old": "00002600",
+   "new": "00000000",
+   "note": "cpActAfWindow (focus area frames), row 1 (rear output, 3:2 panel), 16:9 column, x, y: (0, 38, 640, 404) to (0, 0, 640, 480) (A7S III 0xd4d784)"
+  },
+  {
+   "ram_address": "0xd2e554",
+   "old": "80029401",
+   "new": "8002e001",
+   "note": "cpActAfWindow (focus area frames), row 1 (rear output, 3:2 panel), 16:9 column, w, h: (0, 38, 640, 404) to (0, 0, 640, 480) (A7S III 0xd4d788)"
+  },
+  {
+   "ram_address": "0xd2e578",
+   "old": "00003c00",
+   "new": "00001a00",
+   "note": "cpActAfWindow (focus area frames), row 2 (second output), 16:9 column, x, y: (0, 60, 640, 360) to (0, 26, 640, 428) (A7S III 0xd4d7ac)"
+  },
+  {
+   "ram_address": "0xd2e57c",
+   "old": "80026801",
+   "new": "8002ac01",
+   "note": "cpActAfWindow (focus area frames), row 2 (second output), 16:9 column, w, h: (0, 60, 640, 360) to (0, 26, 640, 428) (A7S III 0xd4d7b0)"
+  },
+  {
+   "ram_address": "0xd2e5a0",
+   "old": "00003c00",
+   "new": "00001a00",
+   "note": "cpActAfWindowRemoteSend (the same frames for a remote viewer), row 0 (rear output, 4:3 panel), 16:9 column, x, y: (0, 60, 640, 360) to (0, 26, 640, 428) (A7S III 0xd4d7d4)"
+  },
+  {
+   "ram_address": "0xd2e5a4",
+   "old": "80026801",
+   "new": "8002ac01",
+   "note": "cpActAfWindowRemoteSend (the same frames for a remote viewer), row 0 (rear output, 4:3 panel), 16:9 column, w, h: (0, 60, 640, 360) to (0, 26, 640, 428) (A7S III 0xd4d7d8)"
+  },
+  {
+   "ram_address": "0xd2e5c8",
+   "old": "00002600",
+   "new": "00000000",
+   "note": "cpActAfWindowRemoteSend (the same frames for a remote viewer), row 1 (rear output, 3:2 panel), 16:9 column, x, y: (0, 38, 640, 404) to (0, 0, 640, 480) (A7S III 0xd4d7fc)"
+  },
+  {
+   "ram_address": "0xd2e5cc",
+   "old": "80029401",
+   "new": "8002e001",
+   "note": "cpActAfWindowRemoteSend (the same frames for a remote viewer), row 1 (rear output, 3:2 panel), 16:9 column, w, h: (0, 38, 640, 404) to (0, 0, 640, 480) (A7S III 0xd4d800)"
+  },
+  {
+   "ram_address": "0xd2e5f0",
+   "old": "00003c00",
+   "new": "00001a00",
+   "note": "cpActAfWindowRemoteSend (the same frames for a remote viewer), row 2 (second output), 16:9 column, x, y: (0, 60, 640, 360) to (0, 26, 640, 428) (A7S III 0xd4d824)"
+  },
+  {
+   "ram_address": "0xd2e5f4",
+   "old": "80026801",
+   "new": "8002ac01",
+   "note": "cpActAfWindowRemoteSend (the same frames for a remote viewer), row 2 (second output), 16:9 column, w, h: (0, 60, 640, 360) to (0, 26, 640, 428) (A7S III 0xd4d828)"
+  },
+  {
+   "ram_address": "0xd2e618",
+   "old": "00003c00",
+   "new": "00001a00",
+   "note": "cpActTrackingFrame (tracking and face frames), row 0 (rear output, 4:3 panel), 16:9 column, x, y: (0, 60, 640, 360) to (0, 26, 640, 428) (A7S III 0xd4d84c)"
+  },
+  {
+   "ram_address": "0xd2e61c",
+   "old": "80026801",
+   "new": "8002ac01",
+   "note": "cpActTrackingFrame (tracking and face frames), row 0 (rear output, 4:3 panel), 16:9 column, w, h: (0, 60, 640, 360) to (0, 26, 640, 428) (A7S III 0xd4d850)"
+  },
+  {
+   "ram_address": "0xd2e640",
+   "old": "00002600",
+   "new": "00000000",
+   "note": "cpActTrackingFrame (tracking and face frames), row 1 (rear output, 3:2 panel), 16:9 column, x, y: (0, 38, 640, 404) to (0, 0, 640, 480) (A7S III 0xd4d874)"
+  },
+  {
+   "ram_address": "0xd2e644",
+   "old": "80029401",
+   "new": "8002e001",
+   "note": "cpActTrackingFrame (tracking and face frames), row 1 (rear output, 3:2 panel), 16:9 column, w, h: (0, 38, 640, 404) to (0, 0, 640, 480) (A7S III 0xd4d878)"
+  },
+  {
+   "ram_address": "0xd2e668",
+   "old": "00003c00",
+   "new": "00001a00",
+   "note": "cpActTrackingFrame (tracking and face frames), row 2 (second output), 16:9 column, x, y: (0, 60, 640, 360) to (0, 26, 640, 428) (A7S III 0xd4d89c)"
+  },
+  {
+   "ram_address": "0xd2e66c",
+   "old": "80026801",
+   "new": "8002ac01",
+   "note": "cpActTrackingFrame (tracking and face frames), row 2 (second output), 16:9 column, w, h: (0, 60, 640, 360) to (0, 26, 640, 428) (A7S III 0xd4d8a0)"
+  }
+ ],
+ "guards": [
+  {
+   "ram_address": "0x1df794",
+   "bytes": "80b56f46d7f80cc0052b2fd84ff0030e",
+   "note": "first 16 bytes of the picture-ratio function 0x1df794, as in the file"
+  },
+  {
+   "ram_address": "0x1df7a8",
+   "bytes": "03f01303070b2b0f4ff0020e03200be0",
+   "note": "the ratio function's case table and its own 3:2 case (lr 2, r0 3), as in the file"
+  },
+  {
+   "ram_address": "0x1df7c0",
+   "bytes": "01204ff0010e03e04ff0870e4ff48070",
+   "note": "the ratio function after the 16:9 case (1:1 and 17:9 cases), as in the file"
+  },
+  {
+   "ram_address": "0x1df458",
+   "bytes": "02468a4201d1002070470020052918d8",
+   "note": "first 16 bytes of the fit-mode function 0x1df458, as in the file"
+  },
+  {
+   "ram_address": "0x1df4a8",
+   "bytes": "0300000003000000",
+   "note": "fit mode of a 16:9 picture on a 4:3 and on a 3:2 panel: 3, 3 (letterbox: what makes the ratio count), as in the file"
+  },
+  {
+   "ram_address": "0x1df680",
+   "bytes": "f0b503af2de90007d7f810900c461e46",
+   "note": "first 16 bytes of the de-squeeze calculator 0x1df680, as in the file"
+  },
+  {
+   "ram_address": "0x1df690",
+   "bytes": "d9f80000d0f85817484688470078d7f8",
+   "note": "the calculator's read of the de-squeeze code (accessor slot 0x758) and its range check, as in the file"
+  },
+  {
+   "ram_address": "0x1df6b0",
+   "bytes": "00f0020b1332022e22d0052e15d140f2",
+   "note": "the code table and the 1.3x 17:9 branch (17:9 ratios left alone), as in the file"
+  },
+  {
+   "ram_address": "0x1df6f0",
+   "bytes": "a8f80200200ca8f80440a8f8060045e0",
+   "note": "the whole-output path before the 16:9 ratios, as in the file"
+  },
+  {
+   "ram_address": "0x1df718",
+   "bytes": "a8f80440042819d1d9f80000d0f89816",
+   "note": "the height calculation after the ratios, as in the file"
+  },
+  {
+   "ram_address": "0x5faf04",
+   "bytes": "f0b503af4df8048d164680460d463046",
+   "note": "first 16 bytes of the input-crop function 0x5faf04 (de-squeeze active test), as in the file"
+  },
+  {
+   "ram_address": "0x5faf24",
+   "bytes": "04463068d0f85817304688470078012c",
+   "note": "the crop function's read of the de-squeeze code, as in the file"
+  },
+  {
+   "ram_address": "0x5faf38",
+   "bytes": "5ad1a87f05282dd0022855d1b8f80c10",
+   "note": "the first crop path after the code test, as in the file"
+  },
+  {
+   "ram_address": "0x5faf6c",
+   "bytes": "b8f81200062101eb80004af6ab21caf6",
+   "note": "the second crop path after the code test (width = (4h + 6) / 3), as in the file"
+  },
+  {
+   "ram_address": "0xd2e520",
+   "bytes": "6a000000ac01ac01",
+   "note": "cpActAfWindow row 0, the entry before the 16:9 entry (1:1), as in the file"
+  },
+  {
+   "ram_address": "0xd2e530",
+   "bytes": "0000470080025201",
+   "note": "cpActAfWindow row 0, the entry after the 16:9 entry (17:9), as in the file"
+  },
+  {
+   "ram_address": "0xd2e548",
+   "bytes": "6b000000aa01e001",
+   "note": "cpActAfWindow row 1, the entry before the 16:9 entry (1:1), as in the file"
+  },
+  {
+   "ram_address": "0xd2e558",
+   "bytes": "0000320080027c01",
+   "note": "cpActAfWindow row 1, the entry after the 16:9 entry (17:9), as in the file"
+  },
+  {
+   "ram_address": "0xd2e570",
+   "bytes": "6a001a00ac01ac01",
+   "note": "cpActAfWindow row 2, the entry before the 16:9 entry (1:1), as in the file"
+  },
+  {
+   "ram_address": "0xd2e580",
+   "bytes": "0000470080025201",
+   "note": "cpActAfWindow row 2, the entry after the 16:9 entry (17:9), as in the file"
+  },
+  {
+   "ram_address": "0xd2e598",
+   "bytes": "6a000000ac01ac01",
+   "note": "cpActAfWindowRemoteSend row 0, the entry before the 16:9 entry (1:1), as in the file"
+  },
+  {
+   "ram_address": "0xd2e5a8",
+   "bytes": "0000470080025201",
+   "note": "cpActAfWindowRemoteSend row 0, the entry after the 16:9 entry (17:9), as in the file"
+  },
+  {
+   "ram_address": "0xd2e5c0",
+   "bytes": "6b000000aa01e001",
+   "note": "cpActAfWindowRemoteSend row 1, the entry before the 16:9 entry (1:1), as in the file"
+  },
+  {
+   "ram_address": "0xd2e5d0",
+   "bytes": "0000320080027c01",
+   "note": "cpActAfWindowRemoteSend row 1, the entry after the 16:9 entry (17:9), as in the file"
+  },
+  {
+   "ram_address": "0xd2e5e8",
+   "bytes": "6a001a00ac01ac01",
+   "note": "cpActAfWindowRemoteSend row 2, the entry before the 16:9 entry (1:1), as in the file"
+  },
+  {
+   "ram_address": "0xd2e5f8",
+   "bytes": "0000470080025201",
+   "note": "cpActAfWindowRemoteSend row 2, the entry after the 16:9 entry (17:9), as in the file"
+  },
+  {
+   "ram_address": "0xd2e610",
+   "bytes": "6a000000ac01ac01",
+   "note": "cpActTrackingFrame row 0, the entry before the 16:9 entry (1:1), as in the file"
+  },
+  {
+   "ram_address": "0xd2e620",
+   "bytes": "0000470080025201",
+   "note": "cpActTrackingFrame row 0, the entry after the 16:9 entry (17:9), as in the file"
+  },
+  {
+   "ram_address": "0xd2e638",
+   "bytes": "6b000000aa01e001",
+   "note": "cpActTrackingFrame row 1, the entry before the 16:9 entry (1:1), as in the file"
+  },
+  {
+   "ram_address": "0xd2e648",
+   "bytes": "0000320080027c01",
+   "note": "cpActTrackingFrame row 1, the entry after the 16:9 entry (17:9), as in the file"
+  },
+  {
+   "ram_address": "0xd2e660",
+   "bytes": "6a001a00ac01ac01",
+   "note": "cpActTrackingFrame row 2, the entry before the 16:9 entry (1:1), as in the file"
+  },
+  {
+   "ram_address": "0xd2e670",
+   "bytes": "0000470080025201",
+   "note": "cpActTrackingFrame row 2, the entry after the 16:9 entry (17:9), as in the file"
+  }
+ ]
+}

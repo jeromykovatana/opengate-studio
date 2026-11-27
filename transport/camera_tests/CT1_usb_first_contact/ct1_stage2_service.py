@@ -158,6 +158,22 @@ def live(session, probes):
         c.print_pnp(session, "after the stop request")
 
 
+def _safe_usb_serial_sha256(dev_handle):
+    """Return SHA-256 of USB iSerialNumber descriptor without storing raw serial, or None."""
+    try:
+        import usb.util
+        raw = getattr(dev_handle, "dev", None) or dev_handle
+        idx = getattr(raw, "iSerialNumber", 0) or 0
+        if not idx:
+            return None
+        serial = usb.util.get_string(raw, idx)
+        if serial and serial.strip():
+            return c.sha256(serial.strip().encode("utf-8"))
+    except Exception:
+        pass
+    return None
+
+
 def connect(session):
     """Find the camera, switch it to service mode if needed, return the service device's driver."""
     c.use_pmca()
@@ -172,6 +188,7 @@ def connect(session):
         raise c.StopTest("libusb sees %d Sony mass-storage and %d Sony service devices; exactly one camera is "
                          "needed. %s" % (len(msc), len(senser), hint))
     handle = senser[0] if senser else None
+    serial_sha = _safe_usb_serial_sha256(msc[0]) if msc else _safe_usb_serial_sha256(handle)
     if msc:
         from pmca.usb import MscDevice
         from pmca.usb.driver.generic import libusb
@@ -199,8 +216,16 @@ def connect(session):
                                  "device has no libusb driver yet. Leave the camera connected and on, install "
                                  "libusb-win32 for it with Zadig, then run this command again")
             raise c.StopTest("the camera did not come back as a service device within 5 seconds")
+        if serial_sha is None:
+            serial_sha = _safe_usb_serial_sha256(handle)
     from pmca.usb.driver.generic import libusb
     session.results["service_interface_class"] = 255         # it was listed by interface class 255
+    session.results["camera_usb_identity"] = {
+        "msc_usb_id": session.results.get("msc_usb_id"),
+        "service_usb_id": "%04x:%04x" % (handle.idVendor, handle.idProduct),
+        "serial_sha256": serial_sha,
+        "msc_inquiry": session.results.get("msc_inquiry"),
+    }
     session.say("Found a camera in service mode")
     return libusb.VendorSpecificContext().openDevice(handle)
 

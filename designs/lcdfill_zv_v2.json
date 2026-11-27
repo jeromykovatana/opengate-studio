@@ -1,0 +1,136 @@
+{
+ "design": "lcdfill_zv_v2",
+ "build": "zve1_202",
+ "title": "Rear screen (LCD) at 3:2 in movie mode with the focus frames: VDF fills the 3:2 panel with the 16:9 live view, and the frame widgets expect the live view there (ZV-E1 2.02 port)",
+ "kind": "ram_words",
+ "artifact": "cpapp-b.bin, its loaded image in coprocessor RAM: the word is in the file, the change is made in RAM only",
+ "artifact_sha256": "8e1ee4c48ee1c94c9edd6fe71f6633b7ba689d71ca4998feb1a421bf7b49de2a",
+ "generated_by": "build/build_ram_words_zv.py",
+ "ported_from": {
+  "design": "lcdfill_v2",
+  "build": "a7iv_602"
+ },
+ "table": "VDF fit-mode table 0x1e4bc8 and the frame widgets' rectangle tables 0xd7b560, 0xd7b5d8, 0xd7b650 (entry: rear panel, 16:9) [A7 IV addresses; ZV-E1: fit table 0x1f5c84 (function 0x1f5c34), frame tables 0xe9b3e0 (AfWindow), 0xe9b458 (TrackingFrame)]",
+ "summary": {
+  "sites": 5,
+  "bytes": 20,
+  "panel": "rear LCD, 3:2 (panel code 1)",
+  "picture": "16:9 live view (picture code 2)",
+  "fit_stock": "letterbox (3)",
+  "fit_new": "fill (0)",
+  "frame_rectangle_stock": [
+   0,
+   38,
+   640,
+   404
+  ],
+  "frame_rectangle_new": [
+   0,
+   0,
+   640,
+   480
+  ],
+  "replaces": "lcdfill_v1, with which no focus frame is drawn on the rear screen (F966)",
+  "goes_with": [
+   "the open-gate state",
+   "the ZV-E1 preview-key routine"
+  ]
+ },
+ "sites": [
+  {
+   "ram_address": "0x1f5c88",
+   "old": "03000000",
+   "new": "00000000",
+   "note": "VDF fit mode for a 16:9 picture on a 3:2 panel (table for picture code 2, entry for panel code 1): 3 letterbox to 0 fill. The rear screen then shows the squeezed 16:9 live view over the whole 3:2 panel, i.e. stretched x32/27 vertically [A7 IV 0x1e4bcc]"
+  },
+  {
+   "ram_address": "0xe9b420",
+   "old": "00002600",
+   "new": "00000000",
+   "note": "cpActAfWindow (focus area frames), check 0x59f568 -> 0x128438: expected live-view rectangle for a 16:9 picture on the rear panel, x, y: stock letterbox (0, 38, 640, 404) to the whole panel (0, 0, 640, 480) [A7 IV 0xd7b5a0]"
+  },
+  {
+   "ram_address": "0xe9b424",
+   "old": "80029401",
+   "new": "8002e001",
+   "note": "cpActAfWindow (focus area frames), check 0x59f568 -> 0x128438: expected live-view rectangle for a 16:9 picture on the rear panel, w, h: stock letterbox (0, 38, 640, 404) to the whole panel (0, 0, 640, 480) [A7 IV 0xd7b5a4]"
+  },
+  {
+   "ram_address": "0xe9b498",
+   "old": "00002600",
+   "new": "00000000",
+   "note": "cpActTrackingFrame (tracking and face frames), check 0x1297e8: expected live-view rectangle for a 16:9 picture on the rear panel, x, y: stock letterbox (0, 38, 640, 404) to the whole panel (0, 0, 640, 480) [A7 IV 0xd7b690]"
+  },
+  {
+   "ram_address": "0xe9b49c",
+   "old": "80029401",
+   "new": "8002e001",
+   "note": "cpActTrackingFrame (tracking and face frames), check 0x1297e8: expected live-view rectangle for a 16:9 picture on the rear panel, w, h: stock letterbox (0, 38, 640, 404) to the whole panel (0, 0, 640, 480) [A7 IV 0xd7b694]"
+  }
+ ],
+ "guards": [
+  {
+   "ram_address": "0x1f5c34",
+   "bytes": "02468a4201d1002070470020052918d8",
+   "note": "first 16 bytes of FUN_001e4b78 (the fit-mode function), as in the file [A7 IV 0x1e4b78]"
+  },
+  {
+   "ram_address": "0x1f5c74",
+   "bytes": "022070470020032a38bf0320704700bf",
+   "note": "last 16 bytes of FUN_001e4b78 before its tables, as in the file [A7 IV 0x1e4bb8]"
+  },
+  {
+   "ram_address": "0x1f5c84",
+   "bytes": "03000000",
+   "note": "picture code 2 (16:9), panel code 0 (4:3): 3 letterbox (the EVF's entry, left alone) [A7 IV 0x1e4bc8]"
+  },
+  {
+   "ram_address": "0x1f5c8c",
+   "bytes": "00000000000000000000000002000000",
+   "note": "picture code 2, panel codes 2 to 5: 0, 0, 0, 2 [A7 IV 0x1e4bd0]"
+  },
+  {
+   "ram_address": "0x1f5c9c",
+   "bytes": "03000000000000000200000000000000",
+   "note": "the table for picture code 1 (3:2), panel codes 0 to 3: 3, 0, 2, 0 [A7 IV 0x1e4be0]"
+  },
+  {
+   "ram_address": "0xe9b418",
+   "bytes": "6b000000aa01e001",
+   "note": "the entry before (1:1 on the rear panel: 107, 0, 426, 480), as in the file [A7 IV 0xd7b598]"
+  },
+  {
+   "ram_address": "0xe9b428",
+   "bytes": "0000320080027c01",
+   "note": "the entry after (fifth aspect on the rear panel: 0, 50, 640, 380), as in the file [A7 IV 0xd7b5a8]"
+  },
+  {
+   "ram_address": "0xe9b490",
+   "bytes": "6b000000aa01e001",
+   "note": "the entry before (1:1 on the rear panel: 107, 0, 426, 480), as in the file [A7 IV 0xd7b688]"
+  },
+  {
+   "ram_address": "0xe9b4a0",
+   "bytes": "0000320080027c01",
+   "note": "the entry after (fifth aspect on the rear panel: 0, 50, 640, 380), as in the file [A7 IV 0xd7b698]"
+  }
+ ],
+ "left_out": {
+  "a7iv_addresses": [
+   "0xd7b618",
+   "0xd7b61c",
+   "0xd7b610",
+   "0xd7b620"
+  ],
+  "why": "cpActAfWindowRemoteSend and its rectangle table (A7 IV 0xd7b5d8) do not exist in the ZV-E1 2.02 firmware"
+ },
+ "checked_against": [
+  "cpapp-b.bin 2.02: fit function and tables byte-identical to the A7 IV's (0x1e4b78 -> 0x1f5c34), both frame tables byte-identical to 0xd7b560",
+  "the two checks that read the frame tables aligned with the A7C II's (build/diff_consts.py): same row computation and aspect index table"
+ ],
+ "not_shown": [
+  "that the ZV-E1's rear panel is panel code 1 (3:2): Sony's specification (1,036,800 dots = 720 x 480); the run-time panel type byte is 0x1a71840",
+  "that the frame widgets use row 1 on this body (carried over from the A7 IV)",
+  "anything on a camera"
+ ]
+}

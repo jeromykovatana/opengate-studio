@@ -1,0 +1,1095 @@
+{
+ "design": "lcdcycle_zv_v1",
+ "title": "ZV-E1 2.02: C2 steps the rear-screen preview 3:2 -> 2:1 -> 2.25:1 -> 2.4:1 in movie mode and keeps the focus frames: VDF words and the frame widgets' expected rectangle, written from appFw",
+ "generated_by": "build/build_lcdcycle_zv.py",
+ "library": "appFw.so",
+ "artifact_sha256": {
+  "appFw.so": "88146fa5f5844b45de9f20ab5f1750aa6e821e10658af37f88ce7d4d76a833f8"
+ },
+ "coprocessor_image_sha256": "8e1ee4c48ee1c94c9edd6fe71f6633b7ba689d71ca4998feb1a421bf7b49de2a",
+ "build": "zve1_202",
+ "ported_from": "lcdcycle_c2_v1 (A7C II 2.01; built and emulated, not run), itself lcdcycle_v6 (A7 IV 6.02; works on that camera, F858, F969); the 2.25:1 state from lcdcycle_s3_v3 (A7S III 5.01)",
+ "write_order": "the patches in the listed order to apply (cave, then the hook); the reverse order to put back",
+ "trigger": "0x2150003",
+ "triggers": {
+  "0x2150003": "EVENT_INPUT_KEY_TACT_CUSTOM2_ON (C2: the ZV-E1's rear key, 'Step zoom' by default)",
+  "0x2150006": "EVENT_INPUT_KEY_TACT_CUSTOM3_ON (C3; this body has no C3 key)"
+ },
+ "ignored_event": "0x20f00bc",
+ "calls": {
+  "appfw_dlsym": "0x17de7c0",
+  "appfw_system_mode": "0x28a6740",
+  "appfw_vdf_layout": "0x33a3558"
+ },
+ "cave": {
+  "from": "0x17d6000",
+  "bytes": 1460,
+  "region": ".rela.dyn",
+  "region_end": "0x17d7000",
+  "page_end": "0x17d7000",
+  "inside_zero_bytes": false,
+  "old_bytes": "relocation entries of types [257] (257 = R_AARCH64_ABS64), applied by the loader when appFw.so is mapped and not read again",
+  "why_not_after_the_segment": "the first segment ends at 0x4afa87d: the 16-aligned tail of its last page is 1920 bytes; the routine needs 1460",
+  "dynamic": {
+   "DT_RELA": "0xf3e0",
+   "DT_RELASZ": "0x17c8d70",
+   "DT_JMPREL": "0x17d8150",
+   "DT_RELACOUNT": "0xfb4d6"
+  },
+  "relocation_types_in_cave": [
+   257
+  ],
+  "tail_note": "not used: the second segment's file data starts at 0x4afa8f8, inside the first segment's last page"
+ },
+ "step_routine": "build/lcdcycle_zv/step.c at 0x17d6060 (1364 bytes)",
+ "stub_bytes": 96,
+ "lines": [
+  {
+   "name": "A",
+   "line": "0x1f5c80",
+   "first_site_word": "0x1f5c88",
+   "words": 1,
+   "guards": 4,
+   "candidates": 4
+  },
+  {
+   "name": "B",
+   "line": "0x1f5e80",
+   "first_site_word": "0x1f5e90",
+   "words": 2,
+   "guards": 3,
+   "candidates": 4
+  },
+  {
+   "name": "T0",
+   "line": "0xe9b400",
+   "first_site_word": "0xe9b420",
+   "words": 2,
+   "guards": 4,
+   "candidates": 5
+  },
+  {
+   "name": "T1",
+   "line": "0xe9b480",
+   "first_site_word": "0xe9b498",
+   "words": 2,
+   "guards": 4,
+   "candidates": 5
+  }
+ ],
+ "states": {
+  "3:2": [
+   "0x0",
+   "0xe09f04f",
+   "0x2010bf08"
+  ],
+  "2:1": [
+   "0x3",
+   "0xe01f04f",
+   "0x2002bf08"
+  ],
+  "2.25:1": [
+   "0x3",
+   "0xe04f04f",
+   "0x2009bf08"
+  ],
+  "2.4:1": [
+   "0x3",
+   "0xe05f04f",
+   "0x200cbf08"
+  ]
+ },
+ "frame_rectangles": {
+  "entries": [
+   "0xe9b420",
+   "0xe9b498"
+  ],
+  "3:2": [
+   0,
+   0,
+   640,
+   480
+  ],
+  "2:1": [
+   0,
+   60,
+   640,
+   360
+  ],
+  "2.25:1": [
+   0,
+   80,
+   640,
+   320
+  ],
+  "2.4:1": [
+   0,
+   90,
+   640,
+   300
+  ],
+  "stock": [
+   0,
+   38,
+   640,
+   404
+  ],
+  "note": "{x, y, w, h} u16 in a 640x480 grid, row 1 (rear panel) column 3 (16:9 picture) of the two tables (AF window, tracking); the widgets accept 5 units either way. 3:2, 2:1 and 2.4:1 are the values that work on the A7 IV (F969); 2.25:1 is (0, 80, 640, 320) by the same rule (height 480 x 1.5 / 2.25), not run on any camera"
+ },
+ "checked_in_files": {
+  "system_mode_field": "+0xced0 (A7C II +0xcf50, A7 IV +0xd798)",
+  "dlsym_got": "0x567dba0",
+  "frame_widget_table_loads": [
+   "0x128644",
+   "0x1295ca"
+  ]
+ },
+ "goes_with": [
+  "a ZV-E1 open-gate state (not part of this design)",
+  "a ZV-E1 lcdfill: fit word 0x1f5c88 3 -> 0 and the two entries 0xe9b420, 0xe9b498 (0, 38, 640, 404) -> (0, 0, 640, 480): without the fill word a press does nothing"
+ ],
+ "not_checked": [
+  "on a camera: nothing of this design has run on a ZV-E1",
+  "that the key labelled C2 sends 0x2150003 (the name record is the same as on the A7 IV, where CUSTOM3 = C3 was seen on the camera; the ZV-E1 has CUSTOM, CUSTOM2, CUSTOM3, CUSTOM5 and CUSTOM6 events and two physical custom keys, C1 and C2)",
+  "that system mode 3 is movie on this camera (the accessor is found by call position; its field offset differs from the A7 IV's)",
+  "that dlsym(RTLD_DEFAULT) finds libsencore's three functions in im.elf (the names are exported by this build's libsencore.so)",
+  "that the rear panel reports panel code 1 (3:2) and that the frame widgets use row 1 for it ([dev+0x244] non-zero, as on the A7 IV)",
+  "that the AF-window and tracking widgets are the only ones that compare the live-view rectangle (the A7C II's third, remote-send widget is not in this build)",
+  "the 2.25:1 rectangle (0, 80, 640, 320): derived, not seen on a camera",
+  "that the picture-ratio flag (bit 0 of its fourth argument; 1 selects 100/235) is 0 in the open-gate state, as on the A7S III",
+  "that nothing reads .rela.dyn after load on this camera (true of the glibc and musl loaders)"
+ ],
+ "note": "put back (level 20) removes the code; the coprocessor words stay in the mode last chosen until a cold boot. In movie mode the C2 key's assigned function (Step zoom by default) no longer runs (the press is turned into the ignored event); in stills C2 is normal",
+ "patches": [
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6000",
+   "va": "0x17d6000",
+   "old": "000000000000000098bf220500000000",
+   "new": "300840b971008052b142a0721f02116b",
+   "code": true,
+   "note": "cave bytes 0x17d6000-0x17d6010 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6010",
+   "va": "0x17d6010",
+   "old": "010100006f0200000000000000000000",
+   "new": "a0000054d1008052b142a0721f02116b",
+   "code": true,
+   "note": "cave bytes 0x17d6010-0x17d6020 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6020",
+   "va": "0x17d6020",
+   "old": "68c1220500000000010100006f020000",
+   "new": "c1010054fd7bbca9fd030091e00701a9",
+   "code": true,
+   "note": "cave bytes 0x17d6020-0x17d6030 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6030",
+   "va": "0x17d6030",
+   "old": "000000000000000038c3220500000000",
+   "new": "e20f02a90b000094f003002ae20f42a9",
+   "code": true,
+   "note": "cave bytes 0x17d6030-0x17d6040 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6040",
+   "va": "0x17d6040",
+   "old": "010100006f0200000000000000000000",
+   "new": "e00741a99000003491178052f141a072",
+   "code": true,
+   "note": "cave bytes 0x17d6040-0x17d6050 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6050",
+   "va": "0x17d6050",
+   "old": "08c5220500000000010100006f020000",
+   "new": "310800b9fd7bc4a8ff0312d171991e14",
+   "code": true,
+   "note": "cave bytes 0x17d6050-0x17d6060 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6060",
+   "va": "0x17d6060",
+   "old": "0000000000000000d8c6220500000000",
+   "new": "ff8302d1fe3300f9f85f07a9f65708a9",
+   "code": true,
+   "note": "cave bytes 0x17d6060-0x17d6070 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6070",
+   "va": "0x17d6070",
+   "old": "010100006f0200000000000000000000",
+   "new": "f44f09a9b3414394080040b91f0d0071",
+   "code": true,
+   "note": "cave bytes 0x17d6070-0x17d6080 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6080",
+   "va": "0x17d6080",
+   "old": "a8c8220500000000010100006f020000",
+   "new": "e10b00541f2003d5a1200010e0031faa",
+   "code": true,
+   "note": "cave bytes 0x17d6080-0x17d6090 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6090",
+   "va": "0x17d6090",
+   "old": "000000000000000078ca220500000000",
+   "new": "cc210094f40300aa0100009021b01291",
+   "code": true,
+   "note": "cave bytes 0x17d6090-0x17d60a0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d60a0",
+   "va": "0x17d60a0",
+   "old": "010100006f0200000000000000000000",
+   "new": "e0031faac7210094f30300aa01000090",
+   "code": true,
+   "note": "cave bytes 0x17d60a0-0x17d60b0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d60b0",
+   "va": "0x17d60b0",
+   "old": "48cc220500000000010100006f020000",
+   "new": "21e41291e0031faac2210094e80300aa",
+   "code": true,
+   "note": "cave bytes 0x17d60b0-0x17d60c0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d60c0",
+   "va": "0x17d60c0",
+   "old": "000000000000000018ce220500000000",
+   "new": "20008052e82700f9b40a00b4930a00b4",
+   "code": true,
+   "note": "cave bytes 0x17d60c0-0x17d60d0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d60d0",
+   "va": "0x17d60d0",
+   "old": "010100006f0200000000000000000000",
+   "new": "680a00b4e1b3019100008252ff6f00b9",
+   "code": true,
+   "note": "cave bytes 0x17d60d0-0x17d60e0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d60e0",
+   "va": "0x17d60e0",
+   "old": "e8cf220500000000010100006f020000",
+   "new": "80023fd6e02b00f9800900b408044091",
+   "code": true,
+   "note": "cave bytes 0x17d60e0-0x17d60f0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d60f0",
+   "va": "0x17d60f0",
+   "old": "0000000000000000b8d1220500000000",
+   "new": "aa00c0d2e90300aa1f010aeba8080054",
+   "code": true,
+   "note": "cave bytes 0x17d60f0-0x17d6100 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6100",
+   "va": "0x17d6100",
+   "old": "010100006f0200000000000000000000",
+   "new": "28fd62d3680800b428154092280800b5",
+   "code": true,
+   "note": "cave bytes 0x17d6100-0x17d6110 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6110",
+   "va": "0x17d6110",
+   "old": "88d3220500000000010100006f020000",
+   "new": "600c8092420082520100009021281391",
+   "code": true,
+   "note": "cave bytes 0x17d6110-0x17d6120 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6120",
+   "va": "0x17d6120",
+   "old": "000000000000000058d5220500000000",
+   "new": "080780520202a072010000d42007f8b7",
+   "code": true,
+   "note": "cave bytes 0x17d6120-0x17d6130 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6130",
+   "va": "0x17d6130",
+   "old": "010100006f0200000000000000000000",
+   "new": "2a2d4092e8ff8352f40300aae40300aa",
+   "code": true,
+   "note": "cave bytes 0x17d6130-0x17d6140 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6140",
+   "va": "0x17d6140",
+   "old": "28d7220500000000010100006f020000",
+   "new": "e0031faa5801080bc81b805225cd7492",
+   "code": true,
+   "note": "cave bytes 0x17d6140-0x17d6150 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6150",
+   "va": "0x17d6150",
+   "old": "0000000000000000f8d8220500000000",
+   "new": "010774926200805223008052010000d4",
+   "code": true,
+   "note": "cave bytes 0x17d6150-0x17d6160 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6160",
+   "va": "0x17d6160",
+   "old": "010100006f0200000000000000000000",
+   "new": "080082921f0008ebe8040054f50300aa",
+   "code": true,
+   "note": "cave bytes 0x17d6160-0x17d6170 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6170",
+   "va": "0x17d6170",
+   "old": "c8da220500000000010100006f020000",
+   "new": "082c4092880400b5a8020a8be0230191",
+   "code": true,
+   "note": "cave bytes 0x17d6170-0x17d6180 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6180",
+   "va": "0x17d6180",
+   "old": "000000000000000098dc220500000000",
+   "new": "210080520201805223018052e82f00f9",
+   "code": true,
+   "note": "cave bytes 0x17d6180-0x17d6190 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6190",
+   "va": "0x17d6190",
+   "old": "010100006f0200000000000000000000",
+   "new": "490000941f0c007128020054f703002a",
+   "code": true,
+   "note": "cave bytes 0x17d6190-0x17d61a0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d61a0",
+   "va": "0x17d61a0",
+   "old": "68de220500000000010100006f020000",
+   "new": "f607801ae0230191e1031f2ae203172a",
+   "code": true,
+   "note": "cave bytes 0x17d61a0-0x17d61b0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d61b0",
+   "va": "0x17d61b0",
+   "old": "000000000000000038e0220500000000",
+   "new": "e303162a400000941f24007100010054",
+   "code": true,
+   "note": "cave bytes 0x17d61b0-0x17d61c0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d61c0",
+   "va": "0x17d61c0",
+   "old": "010100006f0200000000000000000000",
+   "new": "e023019121008052e203172ae303162a",
+   "code": true,
+   "note": "cave bytes 0x17d61c0-0x17d61d0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d61d0",
+   "va": "0x17d61d0",
+   "old": "08e2220500000000010100006f020000",
+   "new": "390000941f240071e1020054e00315aa",
+   "code": true,
+   "note": "cave bytes 0x17d61d0-0x17d61e0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d61e0",
+   "va": "0x17d61e0",
+   "old": "0000000000000000d8e3220500000000",
+   "new": "01077492e81a8052010000d428078052",
+   "code": true,
+   "note": "cave bytes 0x17d61e0-0x17d61f0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d61f0",
+   "va": "0x17d61f0",
+   "old": "010100006f0200000000000000000000",
+   "new": "e00314aa010000d406000014e0031f2a",
+   "code": true,
+   "note": "cave bytes 0x17d61f0-0x17d6200 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6200",
+   "va": "0x17d6200",
+   "old": "a8e5220500000000010100006f020000",
+   "new": "07000014e00314aa28078052010000d4",
+   "code": true,
+   "note": "cave bytes 0x17d6200-0x17d6210 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6210",
+   "va": "0x17d6210",
+   "old": "000000000000000078e7220500000000",
+   "new": "e06f40b960023fd620008052f44f49a9",
+   "code": true,
+   "note": "cave bytes 0x17d6210-0x17d6220 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6220",
+   "va": "0x17d6220",
+   "old": "010100006f0200000000000000000000",
+   "new": "fe3340f9f65748a9f85f47a9ff830291",
+   "code": true,
+   "note": "cave bytes 0x17d6220-0x17d6230 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6230",
+   "va": "0x17d6230",
+   "old": "48e9220500000000010100006f020000",
+   "new": "c0035fd657008052e0230191e103172a",
+   "code": true,
+   "note": "cave bytes 0x17d6230-0x17d6240 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6240",
+   "va": "0x17d6240",
+   "old": "000000000000000018eb220500000000",
+   "new": "02018052e303162a1b000094f7060011",
+   "code": true,
+   "note": "cave bytes 0x17d6240-0x17d6250 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6250",
+   "va": "0x17d6250",
+   "old": "010100006f0200000000000000000000",
+   "new": "ff12007121ffff54e00315aa01077492",
+   "code": true,
+   "note": "cave bytes 0x17d6250-0x17d6260 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6260",
+   "va": "0x17d6260",
+   "old": "e8ec220500000000010100006f020000",
+   "new": "e81a8052010000d428078052e00314aa",
+   "code": true,
+   "note": "cave bytes 0x17d6260-0x17d6270 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6270",
+   "va": "0x17d6270",
+   "old": "0000000000000000b8ee220500000000",
+   "new": "010000d4e06f40b960023fd6e8031faa",
+   "code": true,
+   "note": "cave bytes 0x17d6270-0x17d6280 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6280",
+   "va": "0x17d6280",
+   "old": "010100006f0200000000000000000000",
+   "new": "e96300913f6928b8081100911fc100f1",
+   "code": true,
+   "note": "cave bytes 0x17d6280-0x17d6290 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6290",
+   "va": "0x17d6290",
+   "old": "88f0220500000000010100006f020000",
+   "new": "a1ffff54e0630091e1230091ff0b00b9",
+   "code": true,
+   "note": "cave bytes 0x17d6290-0x17d62a0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d62a0",
+   "va": "0x17d62a0",
+   "old": "000000000000000058f2220500000000",
+   "new": "ff0f00b9ff1300b9ff1700b9ab346f94",
+   "code": true,
+   "note": "cave bytes 0x17d62a0-0x17d62b0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d62b0",
+   "va": "0x17d62b0",
+   "old": "010100006f0200000000000000000000",
+   "new": "daffff17fd7bbaa9fc6f01a9fa6702a9",
+   "code": true,
+   "note": "cave bytes 0x17d62b0-0x17d62c0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d62c0",
+   "va": "0x17d62c0",
+   "old": "28f4220500000000010100006f020000",
+   "new": "f85f03a9f65704a9f44f05a988018052",
+   "code": true,
+   "note": "cave bytes 0x17d62c0-0x17d62d0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d62d0",
+   "va": "0x17d62d0",
+   "old": "0000000000000000f8f5220500000000",
+   "new": "19000090395313912864a89bf703012a",
+   "code": true,
+   "note": "cave bytes 0x17d62d0-0x17d62e0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d62e0",
+   "va": "0x17d62e0",
+   "old": "010100006f0200000000000000000000",
+   "new": "1a0840f9f303032af40300aaf603022a",
+   "code": true,
+   "note": "cave bytes 0x17d62e0-0x17d62f0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d62f0",
+   "va": "0x17d62f0",
+   "old": "c8f7220500000000010100006f020000",
+   "new": "150140b91b2140391c2540391d114039",
+   "code": true,
+   "note": "cave bytes 0x17d62f0-0x17d6300 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6300",
+   "va": "0x17d6300",
+   "old": "0000000000000000a0f9220500000000",
+   "new": "181d4039e10315aa5a00009420010034",
+   "code": true,
+   "note": "cave bytes 0x17d6300-0x17d6310 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6310",
+   "va": "0x17d6310",
+   "old": "010100006f0200000000000000000000",
+   "new": "20018052f44f45a9f65744a9f85f43a9",
+   "code": true,
+   "note": "cave bytes 0x17d6310-0x17d6320 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6320",
+   "va": "0x17d6320",
+   "old": "70fb220500000000010100006f020000",
+   "new": "fa6742a9fc6f41a9fd7bc6a8c0035fd6",
+   "code": true,
+   "note": "cave bytes 0x17d6320-0x17d6330 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6330",
+   "va": "0x17d6330",
+   "old": "000000000000000040fd220500000000",
+   "new": "e903172a88018052570b1d8b2865a89b",
+   "code": true,
+   "note": "cave bytes 0x17d6330-0x17d6340 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6340",
+   "va": "0x17d6340",
+   "old": "010100006f0200000000000000000000",
+   "new": "0a15403908000090081114910b091b8b",
+   "code": true,
+   "note": "cave bytes 0x17d6340-0x17d6350 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6350",
+   "va": "0x17d6350",
+   "old": "10ff220500000000010100006f020000",
+   "new": "08091c8b5f0500714a859f1a6b110091",
+   "code": true,
+   "note": "cave bytes 0x17d6350-0x17d6360 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6360",
+   "va": "0x17d6360",
+   "old": "0000000000000000e000230500000000",
+   "new": "6cc19fb8ec7a6cb86d0140b99f010d6b",
+   "code": true,
+   "note": "cave bytes 0x17d6360-0x17d6370 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6370",
+   "va": "0x17d6370",
+   "old": "010100006f0200000000000000000000",
+   "new": "01fdff544a0500f16b21009121ffff54",
+   "code": true,
+   "note": "cave bytes 0x17d6370-0x17d6380 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6380",
+   "va": "0x17d6380",
+   "old": "b002230500000000010100006f020000",
+   "new": "8b0180521f0700710c7f7ed32965ab9b",
+   "code": true,
+   "note": "cave bytes 0x17d6380-0x17d6390 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6390",
+   "va": "0x17d6390",
+   "old": "00000000000000008004230500000000",
+   "new": "ed03162a2e018052ef0308aa2b194039",
+   "code": true,
+   "note": "cave bytes 0x17d6390-0x17d63a0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d63a0",
+   "va": "0x17d63a0",
+   "old": "010100006f0200000000000000000000",
+   "new": "09879f1adf220071f10309aaf20317aa",
+   "code": true,
+   "note": "cave bytes 0x17d63a0-0x17d63b0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d63b0",
+   "va": "0x17d63b0",
+   "old": "5006230500000000010100006f020000",
+   "new": "44114dfae0030faaf0179f1a414640b8",
+   "code": true,
+   "note": "cave bytes 0x17d63b0-0x17d63c0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d63c0",
+   "va": "0x17d63c0",
+   "old": "00000000000000002008230500000000",
+   "new": "024440b83f00026b10029f1a310600f1",
+   "code": true,
+   "note": "cave bytes 0x17d63c0-0x17d63d0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d63d0",
+   "va": "0x17d63d0",
+   "old": "010100006f0200000000000000000000",
+   "new": "61ffff541f020071ef010c8bc0018a1a",
+   "code": true,
+   "note": "cave bytes 0x17d63d0-0x17d63e0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d63e0",
+   "va": "0x17d63e0",
+   "old": "f009230500000000010100006f020000",
+   "new": "4a0500911f24007142014bfac3fdff54",
+   "code": true,
+   "note": "cave bytes 0x17d63e0-0x17d63f0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d63f0",
+   "va": "0x17d63f0",
+   "old": "0000000000000000c00b230500000000",
+   "new": "7f26007100f9ff541f240071c0f8ff54",
+   "code": true,
+   "note": "cave bytes 0x17d63f0-0x17d6400 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6400",
+   "va": "0x17d6400",
+   "old": "010100006f0200000000000000000000",
+   "new": "0a7f131b16492a8be80317aaea0316aa",
+   "code": true,
+   "note": "cave bytes 0x17d6400-0x17d6410 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6410",
+   "va": "0x17d6410",
+   "old": "980d230500000000010100006f020000",
+   "new": "4b4540b8290500f10b4500b8a1ffff54",
+   "code": true,
+   "note": "cave bytes 0x17d6410-0x17d6420 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6420",
+   "va": "0x17d6420",
+   "old": "0000000000000000700f230500000000",
+   "new": "880640a920008052e20315aa03088052",
+   "code": true,
+   "note": "cave bytes 0x17d6420-0x17d6430 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6430",
+   "va": "0x17d6430",
+   "old": "010100006f0200000000000000000000",
+   "new": "00013fd6e0f6ff35e00314aae10315aa",
+   "code": true,
+   "note": "cave bytes 0x17d6430-0x17d6440 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6440",
+   "va": "0x17d6440",
+   "old": "5811230500000000010100006f020000",
+   "new": "0c00009460f6ff351f07007108879f1a",
+   "code": true,
+   "note": "cave bytes 0x17d6440-0x17d6450 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6450",
+   "va": "0x17d6450",
+   "old": "00000000000000004013230500000000",
+   "new": "e94640b8ca4640b83f010a6ba1f5ff54",
+   "code": true,
+   "note": "cave bytes 0x17d6450-0x17d6460 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6460",
+   "va": "0x17d6460",
+   "old": "010100006f0200000000000000000000",
+   "new": "080500f161ffff54e003132aaaffff17",
+   "code": true,
+   "note": "cave bytes 0x17d6460-0x17d6470 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6470",
+   "va": "0x17d6470",
+   "old": "2815230500000000010100006f020000",
+   "new": "090840f9e8031faaeaeb03322a6928b8",
+   "code": true,
+   "note": "cave bytes 0x17d6470-0x17d6480 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6480",
+   "va": "0x17d6480",
+   "old": "00000000000000001017230500000000",
+   "new": "081100911f0101f1a1ffff54040840a9",
+   "code": true,
+   "note": "cave bytes 0x17d6480-0x17d6490 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6490",
+   "va": "0x17d6490",
+   "old": "010100006f0200000000000000000000",
+   "new": "e0031f2a0308805280001fd65f5a3964",
+   "code": true,
+   "note": "cave bytes 0x17d6490-0x17d64a0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d64a0",
+   "va": "0x17d64a0",
+   "old": "f818230500000000010100006f020000",
+   "new": "6d6d5f616c6c6f636a506a005f5a3864",
+   "code": true,
+   "note": "cave bytes 0x17d64a0-0x17d64b0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d64b0",
+   "va": "0x17d64b0",
+   "old": "0000000000000000e01a230500000000",
+   "new": "6d6d5f667265656a0073656e5f646d61",
+   "code": true,
+   "note": "cave bytes 0x17d64b0-0x17d64c0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d64c0",
+   "va": "0x17d64c0",
+   "old": "010100006f0200000000000000000000",
+   "new": "5f7472616e73666572002f6465762f6d",
+   "code": true,
+   "note": "cave bytes 0x17d64c0-0x17d64d0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d64d0",
+   "va": "0x17d64d0",
+   "old": "c81c230500000000010100006f020000",
+   "new": "656d0000805c1f000204040100080000",
+   "code": true,
+   "note": "cave bytes 0x17d64d0-0x17d64e0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d64e0",
+   "va": "0x17d64e0",
+   "old": "0000000000000000b01e230500000000",
+   "new": "805e1f00040304020c12000000b4e900",
+   "code": true,
+   "note": "cave bytes 0x17d64e0-0x17d64f0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d64f0",
+   "va": "0x17d64f0",
+   "old": "010100006f0200000000000000000000",
+   "new": "080405021a22000080b4e90006040502",
+   "code": true,
+   "note": "cave bytes 0x17d64f0-0x17d6500 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6500",
+   "va": "0x17d6500",
+   "old": "9820230500000000010100006f020000",
+   "new": "1a220000feffffff704700bfffffffff",
+   "code": true,
+   "note": "cave bytes 0x17d6500-0x17d6510 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6510",
+   "va": "0x17d6510",
+   "old": "00000000000000008022230500000000",
+   "new": "03000000010000000000000002000000",
+   "code": true,
+   "note": "cave bytes 0x17d6510-0x17d6520 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6520",
+   "va": "0x17d6520",
+   "old": "010100006f0200000000000000000000",
+   "new": "00000000000000000300000003000000",
+   "code": true,
+   "note": "cave bytes 0x17d6520-0x17d6530 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6530",
+   "va": "0x17d6530",
+   "old": "6824230500000000010100006f020000",
+   "new": "03000000ffffffffeb0008bf02000000",
+   "code": true,
+   "note": "cave bytes 0x17d6530-0x17d6540 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6540",
+   "va": "0x17d6540",
+   "old": "00000000000000005026230500000000",
+   "new": "07e00120030000004ff0010e4ff0090e",
+   "code": true,
+   "note": "cave bytes 0x17d6540-0x17d6550 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6550",
+   "va": "0x17d6550",
+   "old": "010100006f0200000000000000000000",
+   "new": "08bf10204ff0010e08bf02204ff0040e",
+   "code": true,
+   "note": "cave bytes 0x17d6550-0x17d6560 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6560",
+   "va": "0x17d6560",
+   "old": "3828230500000000010100006f020000",
+   "new": "08bf09204ff0050e08bf0c20feffffff",
+   "code": true,
+   "note": "cave bytes 0x17d6560-0x17d6570 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6570",
+   "va": "0x17d6570",
+   "old": "0000000000000000082a230500000000",
+   "new": "6b000000ffffffffaa01e00102000000",
+   "code": true,
+   "note": "cave bytes 0x17d6570-0x17d6580 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6580",
+   "va": "0x17d6580",
+   "old": "010100006f0200000000000000000000",
+   "new": "000032000300000080027c0100000000",
+   "code": true,
+   "note": "cave bytes 0x17d6580-0x17d6590 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d6590",
+   "va": "0x17d6590",
+   "old": "e02b230500000000010100006f020000",
+   "new": "8002e00100003c008002680100005000",
+   "code": true,
+   "note": "cave bytes 0x17d6590-0x17d65a0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d65a0",
+   "va": "0x17d65a0",
+   "old": "0000000000000000b02d230500000000",
+   "new": "8002400100005a0080022c0100002600",
+   "code": true,
+   "note": "cave bytes 0x17d65a0-0x17d65b0 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "cave",
+   "file_off": "0x17d65b0",
+   "va": "0x17d65b0",
+   "old": "01010000",
+   "new": "80029401",
+   "code": true,
+   "note": "cave bytes 0x17d65b0-0x17d65b4 (in .rela.dyn: the old bytes are relocation entries, applied at load and not read again)"
+  },
+  {
+   "binary": "appFw.so",
+   "kind": "hook",
+   "file_off": "0x1f7c61c",
+   "va": "0x1f7c61c",
+   "old": "ff0312d1",
+   "new": "7966e117",
+   "code": true,
+   "note": "process_input_event: `sub sp, sp, #0x480` -> `b 0x17d6000` (the stub does it)"
+  }
+ ]
+}

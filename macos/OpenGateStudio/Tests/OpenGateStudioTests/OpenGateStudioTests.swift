@@ -628,6 +628,190 @@ struct OpenGateStudioTests {
         #expect(clipRes.cadenceConstant == true)
     }
 
+    @Test("LiveRunEvent and latestSession enforce mode, closing_kind, and verified fields")
+    func testLiveRunEventAndLatestSessionModeFilter() async throws {
+        let jsonData = #"{"type":"complete","ok":true,"state":"stock","ready":true,"verified":true,"closing_kind":"stock_check"}"#.data(using: .utf8)!
+        let event = try JSONDecoder().decode(LiveRunEvent.self, from: jsonData)
+        #expect(event.closingKind == "stock_check")
+        #expect(event.verified == true)
+        #expect(event.ready == true)
+
+        let sessionDir = try makeTempDir(prefix: "ogs-live-mode-filter")
+        defer { try? FileManager.default.removeItem(at: sessionDir) }
+        let bridge = try makeBridge(sessionDir: sessionDir)
+
+        let (mockRes, _) = try await bridge.preflight(bodyId: "zve1_202", mockCamera: true, mockState: .stock, sessionDir: sessionDir)
+        #expect(mockRes.ready == true)
+
+        let (allLatest, allTrace) = try await bridge.latestSession(bodyId: "zve1_202", sessionDir: sessionDir)
+        #expect(allTrace.exitCode == 0)
+        #expect(allLatest.found == true)
+        #expect(allLatest.mode == "mock")
+
+        let (liveLatest, liveTrace) = try await bridge.latestSession(bodyId: "zve1_202", sessionDir: sessionDir, mode: "live_usb")
+        #expect(liveTrace.exitCode == 0)
+        #expect(liveLatest.found == false)
+    }
+
+    @Test("LiveSessionOutcomeEvaluator fails closed on unverified or contradictory closing states")
+    func testLiveSessionOutcomeEvaluatorFailClosed() {
+        let baseURL = URL(fileURLWithPath: "/tmp")
+        func makeResult(exitCode: Int32 = 0, completeEvent: LiveRunEvent?) -> LiveRunResult {
+            LiveRunResult(
+                exitCode: exitCode,
+                wasUserCancelled: false,
+                events: completeEvent.map { [$0] } ?? [],
+                logOutput: "",
+                eventsFile: baseURL,
+                logFile: baseURL
+            )
+        }
+        func makeEvent(
+            ok: Bool? = true,
+            state: String? = nil,
+            ready: Bool? = nil,
+            verified: Bool? = nil,
+            closingKind: String? = nil,
+            error: String? = nil
+        ) throws -> LiveRunEvent {
+            var dict: [String: Any] = ["type": "complete"]
+            if let ok { dict["ok"] = ok }
+            if let state { dict["state"] = state }
+            if let ready { dict["ready"] = ready }
+            if let verified { dict["verified"] = verified }
+            if let closingKind { dict["closing_kind"] = closingKind }
+            if let error { dict["error"] = error }
+            let data = try JSONSerialization.data(withJSONObject: dict)
+            return try JSONDecoder().decode(LiveRunEvent.self, from: data)
+        }
+
+        // Apply requires ok == true, ready == true, state == "applied"
+        let validApply = try! makeEvent(ok: true, state: "applied", ready: true, verified: true, closingKind: "movie_dump")
+        if case .finished(let comp) = LiveSessionOutcomeEvaluator.evaluate(
+            result: makeResult(completeEvent: validApply),
+            action: .apply,
+            actionTitle: "Apply",
+            existingFailureMessage: nil,
+            existingCancelMessage: nil,
+            existingLeftBehind: false,
+            wasCancelRequestedByButton: false,
+            isOsascriptCancelled: false
+        ) {
+            #expect(comp.state == "applied")
+        } else {
+            Issue.record("Expected verified apply completion to finish")
+        }
+
+        let optimisticUnreadyApply = try! makeEvent(ok: true, state: "applied", ready: false, verified: false)
+        if case .failed = LiveSessionOutcomeEvaluator.evaluate(
+            result: makeResult(completeEvent: optimisticUnreadyApply),
+            action: .apply,
+            actionTitle: "Apply",
+            existingFailureMessage: nil,
+            existingCancelMessage: nil,
+            existingLeftBehind: false,
+            wasCancelRequestedByButton: false,
+            isOsascriptCancelled: false
+        ) {
+            // Expected fail-closed outcome
+        } else {
+            Issue.record("Expected unready apply completion to fail closed")
+        }
+
+        let contradictoryApply = try! makeEvent(ok: true, state: "stock", ready: true, verified: false)
+        if case .failed = LiveSessionOutcomeEvaluator.evaluate(
+            result: makeResult(completeEvent: contradictoryApply),
+            action: .apply,
+            actionTitle: "Apply",
+            existingFailureMessage: nil,
+            existingCancelMessage: nil,
+            existingLeftBehind: false,
+            wasCancelRequestedByButton: false,
+            isOsascriptCancelled: false
+        ) {
+            // Expected fail-closed outcome
+        } else {
+            Issue.record("Expected contradictory stock state after apply to fail closed")
+        }
+
+        // Putback requires ok == true, state == "stock", ready == true, verified == true
+        let validPutback = try! makeEvent(ok: true, state: "stock", ready: true, verified: true, closingKind: "stock_check")
+        if case .finished(let comp) = LiveSessionOutcomeEvaluator.evaluate(
+            result: makeResult(completeEvent: validPutback),
+            action: .putback,
+            actionTitle: "Putback",
+            existingFailureMessage: nil,
+            existingCancelMessage: nil,
+            existingLeftBehind: false,
+            wasCancelRequestedByButton: false,
+            isOsascriptCancelled: false
+        ) {
+            #expect(comp.state == "stock")
+        } else {
+            Issue.record("Expected verified putback completion to finish")
+        }
+
+        let unverifiedPutback = try! makeEvent(ok: true, state: "stock_unverified", ready: false, verified: false)
+        if case .failed = LiveSessionOutcomeEvaluator.evaluate(
+            result: makeResult(completeEvent: unverifiedPutback),
+            action: .putback,
+            actionTitle: "Putback",
+            existingFailureMessage: nil,
+            existingCancelMessage: nil,
+            existingLeftBehind: false,
+            wasCancelRequestedByButton: false,
+            isOsascriptCancelled: false
+        ) {
+            // Expected fail-closed outcome
+        } else {
+            Issue.record("Expected unverified putback completion to fail closed")
+        }
+    }
+
+    @Test("startLiveInAppRun simulated putback runs closing stock_check and verifies state")
+    func testLiveInAppDryRunSimulationPutbackVerification() async throws {
+        let sessionDir = try makeTempDir(prefix: "ogs-inapp-putback")
+        defer { try? FileManager.default.removeItem(at: sessionDir) }
+        let bridge = try makeBridge(sessionDir: sessionDir)
+
+        let (handle, task) = bridge.startLiveInAppRun(
+            action: .putback,
+            bodyId: "fx3_702",
+            firmwareConfirmed: "7.02",
+            confirmVolatileRam: true,
+            packs: ["mp4_3x2"],
+            sessionDir: sessionDir,
+            dryRunSimulate: true,
+            noMovieSession: false,
+            onEvent: { _ in },
+            onLogChunk: { _ in }
+        )
+        defer { try? FileManager.default.removeItem(at: handle.runDirectory) }
+
+        let result = try await task.value
+        #expect(result.exitCode == 0)
+        #expect(result.events.contains(where: { $0.type == "closing_dump_start" }))
+        #expect(result.events.contains(where: { $0.type == "closing_dump_done" }))
+        #expect(result.events.last?.type == "complete")
+        #expect(result.events.last?.state == "stock")
+        #expect(result.events.last?.ready == true)
+        #expect(result.events.last?.verified == true)
+        if case .finished(let comp) = LiveSessionOutcomeEvaluator.evaluate(
+            result: result,
+            action: .putback,
+            actionTitle: "Putback",
+            existingFailureMessage: nil,
+            existingCancelMessage: nil,
+            existingLeftBehind: false,
+            wasCancelRequestedByButton: false,
+            isOsascriptCancelled: false
+        ) {
+            #expect(comp.state == "stock")
+        } else {
+            Issue.record("Expected simulated putback outcome to finish closed cleanly")
+        }
+    }
+
     @Test("buildReport creates FIELD_REPORT.md, field_report.json, and manifest end-to-end")
     func testBuildReportEndToEnd() async throws {
         let tmpDir = try makeTempDir(prefix: "ogs-report")

@@ -505,7 +505,9 @@ public struct LatestSessionResult: Codable, Equatable, Sendable {
     public let bodyId: String
     public let sessionId: String?
     public let kind: String?
+    public let mode: String?
     public let ready: Bool
+    public let verified: Bool?
     public let state: String
     public let verdict: String
     public let activePacks: [String]
@@ -517,7 +519,9 @@ public struct LatestSessionResult: Codable, Equatable, Sendable {
         case bodyId = "body_id"
         case sessionId = "session_id"
         case kind
+        case mode
         case ready
+        case verified
         case state
         case verdict
         case activePacks = "active_packs"
@@ -530,7 +534,9 @@ public struct LatestSessionResult: Codable, Equatable, Sendable {
         bodyId: String,
         sessionId: String? = nil,
         kind: String? = nil,
+        mode: String? = nil,
         ready: Bool,
+        verified: Bool? = nil,
         state: String,
         verdict: String,
         activePacks: [String] = [],
@@ -541,7 +547,9 @@ public struct LatestSessionResult: Codable, Equatable, Sendable {
         self.bodyId = bodyId
         self.sessionId = sessionId
         self.kind = kind
+        self.mode = mode
         self.ready = ready
+        self.verified = verified
         self.state = state
         self.verdict = verdict
         self.activePacks = activePacks
@@ -555,7 +563,9 @@ public struct LatestSessionResult: Codable, Equatable, Sendable {
         self.bodyId = try c.decodeIfPresent(String.self, forKey: .bodyId) ?? ""
         self.sessionId = try c.decodeIfPresent(String.self, forKey: .sessionId)
         self.kind = try c.decodeIfPresent(String.self, forKey: .kind)
+        self.mode = try c.decodeIfPresent(String.self, forKey: .mode)
         self.ready = try c.decodeIfPresent(Bool.self, forKey: .ready) ?? false
+        self.verified = try c.decodeIfPresent(Bool.self, forKey: .verified)
         self.state = try c.decodeIfPresent(String.self, forKey: .state) ?? "unknown"
         self.verdict = try c.decodeIfPresent(String.self, forKey: .verdict) ?? ""
         self.activePacks = try c.decodeIfPresent([String].self, forKey: .activePacks) ?? []
@@ -612,6 +622,7 @@ public struct LiveRunEvent: Codable, Equatable, Sendable {
     public let firmware: String?
     public let steps: [LivePlanStep]?
     public let closingDump: Bool?
+    public let closingKind: String?
     public let first: Bool?
     public let stepIndex: Int?
     public let totalSteps: Int?
@@ -624,6 +635,7 @@ public struct LiveRunEvent: Codable, Equatable, Sendable {
     public let hint: String?
     public let verdict: String?
     public let ready: Bool?
+    public let verified: Bool?
     public let sessionId: String?
     public let state: String?
     public let stepsRun: [ExecutedStep]?
@@ -640,6 +652,7 @@ public struct LiveRunEvent: Codable, Equatable, Sendable {
         case firmware
         case steps
         case closingDump = "closing_dump"
+        case closingKind = "closing_kind"
         case first
         case stepIndex = "step_index"
         case totalSteps = "total_steps"
@@ -652,6 +665,7 @@ public struct LiveRunEvent: Codable, Equatable, Sendable {
         case hint
         case verdict
         case ready
+        case verified
         case sessionId = "session_id"
         case state
         case stepsRun = "steps_run"
@@ -669,6 +683,7 @@ public struct LiveRunEvent: Codable, Equatable, Sendable {
         firmware: String? = nil,
         steps: [LivePlanStep]? = nil,
         closingDump: Bool? = nil,
+        closingKind: String? = nil,
         first: Bool? = nil,
         stepIndex: Int? = nil,
         totalSteps: Int? = nil,
@@ -681,6 +696,7 @@ public struct LiveRunEvent: Codable, Equatable, Sendable {
         hint: String? = nil,
         verdict: String? = nil,
         ready: Bool? = nil,
+        verified: Bool? = nil,
         sessionId: String? = nil,
         state: String? = nil,
         stepsRun: [ExecutedStep]? = nil,
@@ -696,6 +712,7 @@ public struct LiveRunEvent: Codable, Equatable, Sendable {
         self.firmware = firmware
         self.steps = steps
         self.closingDump = closingDump
+        self.closingKind = closingKind
         self.first = first
         self.stepIndex = stepIndex
         self.totalSteps = totalSteps
@@ -708,6 +725,7 @@ public struct LiveRunEvent: Codable, Equatable, Sendable {
         self.hint = hint
         self.verdict = verdict
         self.ready = ready
+        self.verified = verified
         self.sessionId = sessionId
         self.state = state
         self.stepsRun = stepsRun
@@ -793,5 +811,77 @@ public struct LiveRunResult: Equatable, Sendable {
 
     public var cancelledEvent: LiveRunEvent? {
         events.last(where: { $0.type == "cancelled" })
+    }
+}
+
+public enum LiveSessionOutcome: Equatable, Sendable {
+    case finished(complete: LiveRunEvent)
+    case cancelled(adminAuth: Bool, message: String)
+    case failed(message: String, leftBehind: Bool)
+}
+
+public enum LiveSessionOutcomeEvaluator {
+    public static func evaluate(
+        result: LiveRunResult,
+        action: LiveCommandAction,
+        actionTitle: String,
+        existingFailureMessage: String?,
+        existingCancelMessage: String?,
+        existingLeftBehind: Bool,
+        wasCancelRequestedByButton: Bool,
+        isOsascriptCancelled: Bool
+    ) -> LiveSessionOutcome {
+        if result.wasUserCancelled || isOsascriptCancelled {
+            if isOsascriptCancelled || (!wasCancelRequestedByButton && result.events.isEmpty && result.cancelledEvent == nil) {
+                return .cancelled(
+                    adminAuth: true,
+                    message: "Administrator authorization cancelled — nothing was sent to the camera."
+                )
+            }
+            let msg = result.cancelledEvent?.message
+                ?? existingCancelMessage
+                ?? "Cancelled safely before the next step."
+            return .cancelled(adminAuth: false, message: msg)
+        }
+
+        if result.exitCode == 0, let complete = result.completeEvent, complete.ok == true {
+            switch action {
+            case .apply:
+                if complete.ready == true && complete.verified != false && complete.state == "applied" {
+                    return .finished(complete: complete)
+                }
+                let msg = complete.verdict ?? "Apply did not pass fail-closed closing verification."
+                return .failed(message: msg, leftBehind: existingLeftBehind)
+
+            case .putback:
+                if complete.ready == true && complete.verified != false && complete.state == "stock" {
+                    return .finished(complete: complete)
+                }
+                let msg = complete.verdict ?? "Putback did not pass closing stock verification."
+                return .failed(message: msg, leftBehind: existingLeftBehind)
+
+            case .preflight, .dump:
+                if complete.ready != nil && complete.verified != false {
+                    return .finished(complete: complete)
+                }
+                let msg = complete.verdict ?? "\(actionTitle) returned incomplete verification."
+                return .failed(message: msg, leftBehind: existingLeftBehind)
+            }
+        }
+
+        if let errEv = result.errorEvent, let msg = errEv.message, !msg.isEmpty {
+            return .failed(message: msg, leftBehind: errEv.leftBehind ?? existingLeftBehind)
+        }
+        if let existing = existingFailureMessage, !existing.isEmpty {
+            return .failed(message: existing, leftBehind: existingLeftBehind)
+        }
+        let trimmedStderr = result.stderrOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedStderr.isEmpty {
+            return .failed(message: trimmedStderr, leftBehind: existingLeftBehind)
+        }
+        return .failed(
+            message: "\(actionTitle) exited with status \(result.exitCode). Expand Live Output Log for details.",
+            leftBehind: existingLeftBehind
+        )
     }
 }

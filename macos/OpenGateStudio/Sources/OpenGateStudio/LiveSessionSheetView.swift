@@ -91,7 +91,10 @@ public struct LiveSessionSheetView: View {
                         Text("Session Plan")
                             .font(.subheadline.weight(.semibold))
                         Spacer()
-                        Text("\(session.estimatedStepCount) \(session.estimatedStepCount == 1 ? "step" : "steps")\(session.action == .apply ? " + closing Movie verify" : "")")
+                        let closingBadge = session.action == .apply
+                            ? " + closing Movie verify"
+                            : (session.action == .putback ? " + closing stock check" : "")
+                        Text("\(session.estimatedStepCount) \(session.estimatedStepCount == 1 ? "step" : "steps")\(closingBadge)")
                             .font(.caption.monospaced().weight(.semibold))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
@@ -500,8 +503,8 @@ public struct LiveSessionSheetView: View {
 
     @ViewBuilder
     private func finishedOutcomeBanner(_ session: LiveSessionPresentation) -> some View {
-        let isReady = session.completionReady ?? true
-        let isPositive = (session.action == .putback) || isReady
+        let isReady = session.completionReady ?? false
+        let isPositive = isReady
         let accent: Color = isPositive ? .green : .red
 
         let headline: String = {
@@ -515,7 +518,9 @@ public struct LiveSessionSheetView: View {
                     ? "Read-Only Preflight Passed — VERDICT READY"
                     : "Preflight Blocked — Camera Not Ready"
             case .putback:
-                return "Camera Restored to Stock RAM"
+                return isReady
+                    ? "Camera Restored & Verified Stock RAM"
+                    : "Put Back Completed — Stock Verification Unconfirmed"
             }
         }()
 
@@ -530,7 +535,9 @@ public struct LiveSessionSheetView: View {
                     ? "Gate 3 (Apply Selected Packs) is now unlocked in Tab 2."
                     : "Pull the battery for >= 10 seconds to clear residual RAM state, then run Read-Only Preflight again."
             case .putback:
-                return "Volatile RAM patches have been reversed back to stock state."
+                return isReady
+                    ? "Volatile RAM patches were reversed and verified back to stock state."
+                    : "Closing stock verification did not pass. Pull battery >= 10s to guarantee clean stock RAM."
             }
         }()
 
@@ -681,10 +688,13 @@ public struct LiveSessionSheetView: View {
                     }
 
                     if session.includesClosingDump {
+                        let isStockCheck = session.closingKind == "stock_check" || session.action == .putback
                         stepRow(
-                            code: "VERIFY",
+                            code: isStockCheck ? "CHECK" : "VERIFY",
                             indexLabel: "\(session.steps.count + 1)",
-                            summary: "Closing Movie-mode RAM verification dump",
+                            summary: isStockCheck
+                                ? "Closing read-only stock verification check"
+                                : "Closing Movie-mode RAM verification dump",
                             status: session.closingDumpStatus ?? .pending
                         )
                     }
@@ -930,7 +940,7 @@ public struct LiveSessionSheetView: View {
                     appState.dismissLiveSessionSheet()
                 }
                 .buttonStyle(.borderedProminent)
-                .tint((session.completionReady ?? true) ? .green : .accentColor)
+                .tint((session.completionReady ?? false) ? .green : .accentColor)
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
             }
@@ -993,7 +1003,7 @@ public struct LiveSessionSheetView: View {
     private func phaseColor(_ session: LiveSessionPresentation) -> Color {
         switch session.phase {
         case .confirming, .running: return .blue
-        case .finished: return (session.completionReady ?? true) || session.action == .putback ? .green : .red
+        case .finished: return (session.completionReady ?? false) ? .green : .red
         case .cancelled: return session.wasAdminAuthCancelled ? .blue : .orange
         case .failed: return .red
         }
@@ -1002,7 +1012,7 @@ public struct LiveSessionSheetView: View {
     private func phaseIcon(_ session: LiveSessionPresentation) -> String {
         switch session.phase {
         case .confirming, .running: return "bolt.horizontal.circle.fill"
-        case .finished: return (session.completionReady ?? true) || session.action == .putback ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+        case .finished: return (session.completionReady ?? false) ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
         case .cancelled: return session.wasAdminAuthCancelled ? "info.circle.fill" : "hand.raised.circle.fill"
         case .failed: return "xmark.octagon.fill"
         }

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import json
 import os
 import re
+import secrets
 import subprocess
 import sys
 import time
@@ -236,8 +237,18 @@ def _sleep_cancelable(
         time.sleep(min(0.25, remaining))
 
 
+_HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
 def private_root() -> Path:
     return Path(os.environ.get("OPENGATE_CAMERA_PRIVATE") or c.PRIVATE_ROOT)
+
+
+def snapshot_ct6_folders() -> set[str]:
+    root = private_root()
+    if not root.is_dir():
+        return set()
+    return {p.name for p in root.iterdir() if p.is_dir() and p.name.startswith("CT6_")}
 
 
 def ct6_sessions() -> list[tuple[Path, dict[str, Any]]]:
@@ -250,6 +261,110 @@ def ct6_sessions() -> list[tuple[Path, dict[str, Any]]]:
             except (OSError, ValueError):
                 continue
     return out
+
+
+def find_new_ct6_session(
+    before_folders: set[str],
+    expected_body_id: str,
+    expected_which: str,
+) -> tuple[Path | None, dict[str, Any] | None]:
+    """Locate ONLY a newly created CT6_* session folder matching body_id and step."""
+    root = private_root()
+    if not root.is_dir():
+        return None, None
+    new_dirs = sorted(
+        (p for p in root.iterdir() if p.is_dir() and p.name.startswith("CT6_") and p.name not in before_folders),
+        reverse=True,
+    )
+    for folder in new_dirs:
+        try:
+            man = json.loads((folder / "manifest.json").read_text(encoding="utf8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(man, dict):
+            continue
+        if man.get("status") != "completed":
+            continue
+        res = man.get("results") or {}
+        if res.get("body_id") == expected_body_id and res.get("which") == expected_which:
+            return folder, man
+    return None, None
+
+
+def extract_ct6_result_facts(
+    ct6_manifest: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    if not isinstance(ct6_manifest, dict):
+        return None, None
+    res = ct6_manifest.get("results")
+    if not isinstance(res, dict):
+        return None, None
+    ct6 = res.get("ct6")
+    if not isinstance(ct6, dict):
+        return None, None
+    result_dict = ct6.get("result")
+    if not isinstance(result_dict, dict):
+        return None, None
+    s3 = result_dict.get("s3")
+    if not isinstance(s3, dict):
+        return result_dict, None
+    return result_dict, s3
+
+
+def validate_readonly_verification(
+    ct6_manifest: dict[str, Any] | None,
+    *,
+    expected_body_id: str,
+    expected_which: str,
+    expected_state: str,
+    expected_verdict: str,
+) -> tuple[bool, str, str, str | None]:
+    """Fail-closed validation of a closing read-only dump/check CT6 manifest."""
+    unverified_state = "unverified" if expected_state == "applied" else "stock_unverified"
+    if not isinstance(ct6_manifest, dict) or ct6_manifest.get("status") != "completed":
+        return False, unverified_state, "VERDICT UNVERIFIED (closing verification missing or did not complete)", "closing verification session missing or incomplete"
+
+    res = ct6_manifest.get("results")
+    if not isinstance(res, dict) or res.get("body_id") != expected_body_id or res.get("which") != expected_which:
+        return False, unverified_state, "VERDICT UNVERIFIED (closing verification session mismatch)", "closing verification body/step mismatch"
+
+    result_dict, s3 = extract_ct6_result_facts(ct6_manifest)
+    if result_dict is None or s3 is None:
+        return False, unverified_state, "VERDICT UNVERIFIED (malformed closing verification result)", "closing verification result payload missing or malformed"
+
+    if result_dict.get("header_ok") is not True or result_dict.get("complete") is not True:
+        return False, unverified_state, "VERDICT UNVERIFIED (truncated or invalid closing verification header)", "closing verification result header/complete check failed"
+
+    if int(result_dict.get("problems") or 0) != 0:
+        return False, "not_ready", "VERDICT NOT READY (closing verification reported problems)", "closing verification reported problem lines"
+
+    sha = result_dict.get("sha256")
+    if not isinstance(sha, str) or not _HEX64_RE.fullmatch(sha):
+        return False, unverified_state, "VERDICT UNVERIFIED (missing closing verification result digest)", "closing verification result missing sha256"
+
+    got_ready = s3.get("ready") is True
+    got_state = str(s3.get("state") or "not_ready")
+    got_verdict = str(s3.get("verdict") or "VERDICT NOT READY")
+    id_diff = int(s3.get("identity_differs") or 0)
+    prob_lines = list(s3.get("problem_lines") or [])
+
+    if not got_ready or id_diff != 0 or prob_lines:
+        return (
+            False,
+            got_state if got_state != expected_state else "not_ready",
+            got_verdict if "NOT READY" in got_verdict else f"VERDICT NOT READY ({got_verdict})",
+            f"closing verification not ready: {got_verdict}",
+        )
+
+    if got_state != expected_state or got_verdict != expected_verdict:
+        return (
+            False,
+            "not_ready",
+            f"VERDICT NOT READY (expected {expected_verdict}, got {got_verdict})",
+            f"contradictory closing verification: expected state={expected_state!r} / {expected_verdict!r}, got state={got_state!r} / {got_verdict!r}",
+        )
+
+    return True, expected_state, expected_verdict, None
 
 
 def last_result_sha() -> str | None:
@@ -269,8 +384,14 @@ def latest_ct6_outcome() -> tuple[str | None, dict[str, Any] | None]:
     return None, None
 
 
-def left_behind() -> bool:
-    for _, man in ct6_sessions():
+def left_behind(before_folders: set[str] | None = None) -> bool:
+    sessions = ct6_sessions()
+    if before_folders is not None:
+        new_sessions = [(folder, man) for folder, man in sessions if folder.name not in before_folders]
+        if not new_sessions:
+            return False
+        sessions = new_sessions
+    for _, man in sessions:
         ct6 = man.get("results", {}).get("ct6") or {}
         on_cam = ct6.get("library_on_camera_after")
         return on_cam is True or (on_cam is None and bool(ct6.get("library_sent")))
@@ -388,6 +509,9 @@ def run_step_live(
     writes_memory: bool,
     *,
     ctx: RunContext | None = None,
+    require_result_sha: str | None = None,
+    expect_serial_sha256: str | None = None,
+    expect_msc_usb_id: str | None = None,
 ) -> int:
     cmd = [
         sys.executable,
@@ -404,9 +528,16 @@ def run_step_live(
     ]
     if writes_memory:
         cmd.append("--writes-memory")
-    clear = last_result_sha()
-    if clear:
-        cmd.extend(["--clear-result", clear])
+    if require_result_sha:
+        cmd.extend(["--require-result", require_result_sha])
+    else:
+        clear = last_result_sha()
+        if clear:
+            cmd.extend(["--clear-result", clear])
+    if expect_serial_sha256:
+        cmd.extend(["--expect-serial-sha256", expect_serial_sha256])
+    if expect_msc_usb_id:
+        cmd.extend(["--expect-msc-usb-id", expect_msc_usb_id])
     active_ctx = _active_ctx(ctx)
     if active_ctx.log_file is None:
         return subprocess.run(cmd).returncode
@@ -560,12 +691,44 @@ def run_readonly(
         step_id=which,
         summary=summary,
     )
+    kit_dir = studio_cli.KITS_DIR / body_id
+    manifest_sha = studio_cli.compute_kit_manifest_sha256(kit_dir)
+    before_ct6 = snapshot_ct6_folders()
     rc = run_step_live(body_id, which, fw, writes_memory=False, ctx=active_ctx)
-    got_which, facts = latest_ct6_outcome()
-    if rc == 0 and got_which == which and facts:
+    ct6_folder, ct6_man = find_new_ct6_session(before_ct6, body_id, which)
+    res_dict, facts = extract_ct6_result_facts(ct6_man)
+    res_sha = res_dict.get("sha256") if isinstance(res_dict, dict) else None
+
+    if (
+        rc == 0
+        and ct6_folder is not None
+        and ct6_man is not None
+        and res_dict is not None
+        and facts is not None
+        and res_dict.get("header_ok") is True
+        and res_dict.get("complete") is True
+        and isinstance(res_sha, str)
+        and _HEX64_RE.fullmatch(res_sha)
+    ):
         ready = bool(facts.get("ready", False))
         state = str(facts.get("state") or "not_ready")
         verdict = str(facts.get("verdict") or "VERDICT NOT READY")
+        res_block = ct6_man.get("results") or {}
+        usb_id = res_block.get("camera_usb_identity") or {}
+        dev_info = man.get("device_info")
+        dev_sha = dev_info.get("sha256") if isinstance(dev_info, dict) else None
+        camera_identity = {
+            "device_info_sha256": dev_sha,
+            "msc_usb_id": usb_id.get("msc_usb_id") or res_block.get("msc_usb_id"),
+            "service_usb_id": usb_id.get("service_usb_id") or res_block.get("service_usb_id"),
+            "serial_sha256": usb_id.get("serial_sha256"),
+            "msc_inquiry": usb_id.get("msc_inquiry") or res_block.get("msc_inquiry"),
+            "kernel_version": facts.get("kernel_version"),
+            "kernel_command_line": facts.get("kernel_command_line"),
+        }
+        now_ts = time.time()
+        expires_at = now_ts + studio_cli.preflight_ttl_seconds()
+        boot_nonce = secrets.token_hex(16)
         active_ctx.emit(
             "step_done",
             step_index=1,
@@ -579,8 +742,15 @@ def run_readonly(
             "body_id": body_id,
             "mode": "live_usb",
             "ready": ready,
+            "verified": True,
             "state": state,
             "verdict": verdict,
+            "manifest_sha256": manifest_sha,
+            "boot_nonce": boot_nonce,
+            "preflight_result_sha256": res_sha,
+            "ct6_session": ct6_folder.name,
+            "camera_identity": camera_identity,
+            "expires_at": expires_at,
             "pins_ok": True,
             "steps_run": [which],
             "active_packs": [],
@@ -596,6 +766,7 @@ def run_readonly(
             verdict=verdict,
             state=state,
             ready=ready,
+            verified=True,
             steps_run=[which],
             active_packs=[],
         )
@@ -606,8 +777,10 @@ def run_readonly(
         "body_id": body_id,
         "mode": "live_usb",
         "ready": False,
+        "verified": False,
         "state": "not_ready",
         "verdict": "VERDICT NOT READY (session failed or incomplete)",
+        "manifest_sha256": manifest_sha,
         "pins_ok": True,
         "steps_run": [which],
         "active_packs": [],
@@ -617,7 +790,7 @@ def run_readonly(
         f"Read-only {action} ({which}) did not complete cleanly.",
         step_index=1,
         step_id=which,
-        left_behind_flag=left_behind(),
+        left_behind_flag=left_behind(before_ct6),
         exit_code=rc or 1,
     )
 
@@ -630,11 +803,13 @@ def _simulate_write_flow(
     active_packs: list[str],
     steps_meta: dict[str, Any],
     no_movie_session: bool,
+    no_closing_check: bool,
     ctx: RunContext,
 ) -> int:
     fw = str(man["firmware"])
     applying = action == "apply"
-    closing_dump = applying and not no_movie_session
+    closing_dump = (not no_movie_session) if applying else (not no_closing_check)
+    closing_kind = "movie_dump" if applying else "stock_check"
     plan_steps = [{"id": k, "summary": steps_meta[k]["summary"]} for k in steps_run]
     ctx.emit(
         "plan",
@@ -644,6 +819,7 @@ def _simulate_write_flow(
         firmware=fw,
         steps=plan_steps,
         closing_dump=closing_dump,
+        closing_kind=closing_kind if closing_dump else None,
     )
     total = len(steps_run)
     # Keep total simulated runtime comfortably under 0.5s while remaining streamable/cancelable.
@@ -681,7 +857,22 @@ def _simulate_write_flow(
             ok=True,
         )
 
-    if closing_dump:
+    if not closing_dump:
+        msg = (
+            "Simulated closing verification skipped (--no-movie-session); failing closed."
+            if applying
+            else "Simulated closing stock check skipped (--no-closing-check); failing closed."
+        )
+        return _fail(
+            ctx,
+            msg,
+            step_index=None,
+            step_id="dump" if applying else "check",
+            left_behind_flag=False,
+            exit_code=1,
+        )
+
+    if applying:
         cancel_msg = "Cancelled safely before Movie-mode closing dump."
         ctx.check_cancelled(cancel_msg, step_index=None, step_id="dump")
         ctx.emit(
@@ -692,16 +883,16 @@ def _simulate_write_flow(
         )
         _sleep_cancelable(0.02, ctx, step_index=None, step_id="dump", message=cancel_msg)
         ctx.check_cancelled(cancel_msg, step_index=None, step_id="dump")
-        ctx.emit("closing_dump_start")
+        ctx.emit("closing_dump_start", closing_kind="movie_dump", step_id="dump")
         say("[simulated dry-run] Closing read-only session (dump in Movie mode)...")
         time.sleep(0.02)
         ctx.emit(
             "closing_dump_done",
+            closing_kind="movie_dump",
             verdict="VERDICT READY (open gate applied)",
             ready=True,
+            verified=True,
         )
-
-    if applying:
         ctx.emit(
             "complete",
             ok=True,
@@ -711,10 +902,35 @@ def _simulate_write_flow(
             verdict="VERDICT READY (open gate applied)",
             state="applied",
             ready=True,
+            verified=True,
             steps_run=list(steps_run),
             active_packs=list(active_packs),
         )
     else:
+        cancel_msg = "Cancelled safely before closing read-only stock check."
+        ctx.check_cancelled(cancel_msg, step_index=None, step_id="check")
+        title, detail = _drive_prompt_copy(body_id, first=False)
+        ctx.emit(
+            "wait_drive",
+            first=False,
+            step_index=total + 1,
+            total_steps=total + 1,
+            step_id="check",
+            title=title,
+            detail=detail,
+        )
+        _sleep_cancelable(0.02, ctx, step_index=None, step_id="check", message=cancel_msg)
+        ctx.check_cancelled(cancel_msg, step_index=None, step_id="check")
+        ctx.emit("closing_dump_start", closing_kind="stock_check", step_id="check")
+        say("[simulated dry-run] Closing read-only stock check (check in Stills mode)...")
+        time.sleep(0.02)
+        ctx.emit(
+            "closing_dump_done",
+            closing_kind="stock_check",
+            verdict="VERDICT READY (stock preflight)",
+            ready=True,
+            verified=True,
+        )
         ctx.emit(
             "complete",
             ok=True,
@@ -724,6 +940,7 @@ def _simulate_write_flow(
             verdict="VERDICT READY (stock preflight)",
             state="stock",
             ready=True,
+            verified=True,
             steps_run=list(steps_run),
             active_packs=[],
         )
@@ -740,6 +957,7 @@ def run_write_flow(
     session_dir: Path,
     dry_run: bool,
     no_movie_session: bool,
+    no_closing_check: bool = False,
     *,
     ctx: RunContext | None = None,
 ) -> int:
@@ -747,7 +965,7 @@ def run_write_flow(
     fw = str(man["firmware"])
     saved_active: list[str] = []
     if action == "putback" and packs_arg is None:
-        latest = studio_cli._latest_session_record(session_dir, body_id)
+        latest = studio_cli._latest_session_record(session_dir, body_id, mode_filter="live_usb")
         if latest:
             saved_active = list(latest.get("active_packs") or [])
 
@@ -757,6 +975,7 @@ def run_write_flow(
         return _fail(active_ctx, f"Invalid --packs: {err}")
 
     kit_dir = studio_cli.KITS_DIR / body_id
+    manifest_sha = studio_cli.compute_kit_manifest_sha256(kit_dir)
     steps_meta = man.get("steps", {})
     for k in steps_run:
         if k not in steps_meta:
@@ -766,12 +985,16 @@ def run_write_flow(
             return _fail(active_ctx, f"{p.name} missing or SHA-256 mismatch. Nothing was sent.")
 
     applying = action == "apply"
-    closing_dump = applying and not no_movie_session
+    closing_dump = (not no_movie_session) if applying else (not no_closing_check)
+    closing_kind = "movie_dump" if applying else "stock_check"
     say(f"{man['camera']} ({body_id}) firmware {fw}, {action}: {len(steps_run)} step(s)")
     for n, k in enumerate(steps_run, 1):
         say(f"  {n}. {k}  {steps_meta[k]['summary']}  ({steps_meta[k]['sha256'][:16]}...)")
     if closing_dump:
-        say("  then one closing read-only session (dump) in Movie mode.")
+        if applying:
+            say("  then one closing read-only session (dump) in Movie mode.")
+        else:
+            say("  then one closing read-only stock verification (check) in Stills mode.")
 
     if dry_run:
         if active_ctx.simulate_events:
@@ -783,6 +1006,7 @@ def run_write_flow(
                 active_packs,
                 steps_meta,
                 no_movie_session,
+                no_closing_check,
                 active_ctx,
             )
         for k in steps_run:
@@ -791,15 +1015,17 @@ def run_write_flow(
         say("Dry run only: nothing was sent to any device.")
         return 0
 
+    expected_result_sha: str | None = None
+    exp_serial: str | None = None
+    exp_msc: str | None = None
     if applying:
-        last_pre = studio_cli._latest_preflight_session(session_dir, body_id)
-        if last_pre is None or last_pre.get("ready") is not True:
-            detail = (
-                "no preflight session found"
-                if last_pre is None
-                else f"newest preflight ({last_pre.get('session_id')}) is not ready: {last_pre.get('verdict')}"
-            )
-            return _fail(active_ctx, f"Refusing apply: {detail}. Run read-only preflight first.")
+        ok_pre, pre_rec, pre_err = studio_cli.validate_live_preflight_for_apply(session_dir, body_id, kit_dir, man)
+        if not ok_pre or pre_rec is None:
+            return _fail(active_ctx, f"Refusing live apply: {pre_err}. Run read-only preflight first.")
+        expected_result_sha = pre_rec["preflight_result_sha256"]
+        cam_id = pre_rec.get("camera_identity") or {}
+        exp_serial = cam_id.get("serial_sha256")
+        exp_msc = cam_id.get("msc_usb_id")
 
     say()
     say("This WRITES into running camera RAM ONLY (volatile; battery pull >= 10s restores stock).")
@@ -823,8 +1049,10 @@ def run_write_flow(
         firmware=fw,
         steps=plan_steps,
         closing_dump=closing_dump,
+        closing_kind=closing_kind if closing_dump else None,
     )
 
+    before_run = snapshot_ct6_folders()
     completed_steps: list[str] = []
     total = len(steps_run)
     for n, k in enumerate(steps_run, 1):
@@ -843,7 +1071,7 @@ def run_write_flow(
                 f"Camera did not appear as USB drive before step {n} ({k}).",
                 step_index=n,
                 step_id=k,
-                left_behind_flag=left_behind(),
+                left_behind_flag=left_behind(before_run),
             )
         active_ctx.check_cancelled(cancel_msg, step_index=n, step_id=k)
         say()
@@ -856,10 +1084,23 @@ def run_write_flow(
             step_id=k,
             summary=steps_meta[k]["summary"],
         )
-        rc = run_step_live(body_id, k, fw, writes_memory=True, ctx=active_ctx)
-        which, facts = latest_ct6_outcome()
-        if body_id == "zve1_202" and k == "L14" and which == k and facts and facts.get("outcome") == "NOTHING WRITTEN":
+        before_ct6 = snapshot_ct6_folders()
+        rc = run_step_live(
+            body_id,
+            k,
+            fw,
+            writes_memory=True,
+            ctx=active_ctx,
+            require_result_sha=expected_result_sha,
+            expect_serial_sha256=exp_serial,
+            expect_msc_usb_id=exp_msc,
+        )
+        _, ct6_man = find_new_ct6_session(before_ct6, body_id, k)
+        res_dict, facts = extract_ct6_result_facts(ct6_man)
+        if body_id == "zve1_202" and k == "L14" and facts and facts.get("outcome") == "NOTHING WRITTEN":
             say("Step L14 wrote nothing (movie buffer open); remaining steps are put back, cold boot clears rawbuf_size.")
+            if isinstance(res_dict, dict) and isinstance(res_dict.get("sha256"), str):
+                expected_result_sha = res_dict["sha256"]
             active_ctx.emit(
                 "step_done",
                 step_index=n,
@@ -870,17 +1111,17 @@ def run_write_flow(
             )
             completed_steps.append(k)
             continue
-        if rc != 0 or which != k or not facts or not facts.get("ok"):
-            if body_id == "zve1_202" and k == "L13" and which == k and facts and facts.get("outcome") == "NOTHING WRITTEN":
+        if rc != 0 or ct6_man is None or res_dict is None or not facts or not facts.get("ok"):
+            if body_id == "zve1_202" and k == "L13" and facts and facts.get("outcome") == "NOTHING WRITTEN":
                 err_msg = "STOPPED at step 1 (L13): movie buffer already open. Pull battery >= 10s, power on in Stills, and retry."
             else:
-                reason = "session did not finish" if (rc != 0 or which != k or not facts) else f"outcome {facts.get('outcome')}"
+                reason = "session did not finish" if (rc != 0 or ct6_man is None or not facts) else f"outcome {facts.get('outcome')}"
                 if n == 1:
                     err_msg = f"STOPPED at step 1 ({k}): {reason}. Nothing was changed in camera RAM."
                 else:
                     err_msg = f"STOPPED at step {n} ({k}): {reason}. Pull battery >= 10s to return to clean stock."
             say(err_msg)
-            lb = left_behind()
+            lb = left_behind(before_ct6)
             if lb:
                 say(
                     "Note: /tmp/jiritsu/libJit.so may still remain on the service partition; "
@@ -894,6 +1135,18 @@ def run_write_flow(
                 left_behind_flag=lb,
                 exit_code=1,
                 already_printed=True,
+            )
+        step_sha = res_dict.get("sha256")
+        if isinstance(step_sha, str) and _HEX64_RE.fullmatch(step_sha):
+            expected_result_sha = step_sha
+        elif applying:
+            return _fail(
+                active_ctx,
+                f"STOPPED at step {n} ({k}): missing valid result SHA-256 for same-boot chaining.",
+                step_index=n,
+                step_id=k,
+                left_behind_flag=left_behind(before_ct6),
+                exit_code=1,
             )
         outcome = str(facts.get("outcome") or "DONE")
         active_ctx.emit(
@@ -910,9 +1163,16 @@ def run_write_flow(
     say(f"All {len(completed_steps)} step(s) passed ({action}).")
 
     if applying:
-        closing_verdict = "VERDICT READY (open gate applied)"
-        closing_ready = True
-        if closing_dump:
+        closing_verified = False
+        closing_state = "applied_unverified"
+        closing_verdict = "VERDICT UNVERIFIED (closing Movie-mode dump did not complete)"
+        closing_err: str | None = None
+
+        if not closing_dump:
+            closing_verdict = "VERDICT UNVERIFIED (--no-movie-session skipped closing dump)"
+            closing_err = "Closing Movie-mode verification was skipped (--no-movie-session); cannot certify open gate applied."
+            say(closing_err)
+        else:
             cancel_msg = "Cancelled safely before Movie-mode closing dump (applied patches remain in camera RAM)."
             active_ctx.check_cancelled(cancel_msg, step_index=None, step_id="dump")
             active_ctx.emit(
@@ -927,43 +1187,78 @@ def run_write_flow(
             say(">>> 1. Unplug the USB cable.")
             say(f">>> 2. Switch camera to {BODY_MOVIE_HINT[body_id]}.")
             say(">>> 3. Plug the USB cable back in while in Movie mode.")
-            say("Waiting for unplug and replug (Ctrl+C to skip; patches remain applied) ...")
+            say("Waiting for unplug and replug (Ctrl+C to cancel) ...")
             if wait_for_replug(ctx=active_ctx):
                 active_ctx.check_cancelled(cancel_msg, step_index=None, step_id="dump")
-                active_ctx.emit("closing_dump_start")
-                rc_dump = run_step_live(body_id, "dump", fw, writes_memory=False, ctx=active_ctx)
-                d_which, d_facts = latest_ct6_outcome()
-                if rc_dump == 0 and d_which == "dump" and d_facts:
-                    closing_verdict = str(d_facts.get("verdict") or closing_verdict)
-                    closing_ready = bool(d_facts.get("ready", True))
+                active_ctx.emit("closing_dump_start", closing_kind="movie_dump", step_id="dump")
+                before_dump = snapshot_ct6_folders()
+                rc_dump = run_step_live(
+                    body_id,
+                    "dump",
+                    fw,
+                    writes_memory=False,
+                    ctx=active_ctx,
+                    require_result_sha=expected_result_sha,
+                    expect_serial_sha256=exp_serial,
+                    expect_msc_usb_id=exp_msc,
+                )
+                _, d_man = find_new_ct6_session(before_dump, body_id, "dump")
+                if rc_dump != 0:
+                    closing_state = "unverified"
+                    closing_verdict = f"VERDICT UNVERIFIED (closing dump exited {rc_dump})"
+                    closing_err = f"Closing Movie-mode dump failed with status {rc_dump}; failing closed."
                 else:
-                    say("Closing dump did not complete; patches remain applied.")
+                    closing_verified, closing_state, closing_verdict, closing_err = validate_readonly_verification(
+                        d_man,
+                        expected_body_id=body_id,
+                        expected_which="dump",
+                        expected_state="applied",
+                        expected_verdict="VERDICT READY (open gate applied)",
+                    )
                 active_ctx.emit(
                     "closing_dump_done",
+                    closing_kind="movie_dump",
                     verdict=closing_verdict,
-                    ready=closing_ready,
+                    ready=closing_verified,
+                    verified=closing_verified,
                 )
             else:
-                say("Timed out waiting for replug; patches remain applied.")
+                closing_state = "unverified"
+                closing_verdict = "VERDICT UNVERIFIED (timed out waiting for Movie-mode replug)"
+                closing_err = "Timed out waiting for Movie-mode replug; closing verification did not run."
+                say(closing_err)
                 active_ctx.emit(
                     "closing_dump_done",
+                    closing_kind="movie_dump",
                     verdict=closing_verdict,
-                    ready=closing_ready,
+                    ready=False,
+                    verified=False,
                 )
 
-        state_str = "applied" if closing_ready else "not_ready"
         sid = studio_cli._write_session(session_dir, {
             "kind": "closing_dump",
             "body_id": body_id,
             "mode": "live_usb",
-            "ready": closing_ready,
-            "state": state_str,
+            "ready": closing_verified,
+            "verified": closing_verified,
+            "state": closing_state,
             "verdict": closing_verdict,
+            "manifest_sha256": manifest_sha,
             "active_packs": active_packs,
             "steps_run": completed_steps,
             "pins_ok": True,
         })
         say(f"Recorded apply session {sid} in {session_dir}: {closing_verdict}")
+        if not closing_verified:
+            return _fail(
+                active_ctx,
+                closing_err or closing_verdict,
+                step_index=None,
+                step_id="dump",
+                left_behind_flag=left_behind(before_run),
+                exit_code=1,
+            )
+
         say("Record ONLY in XAVC HS 4K / XAVC S 4K / XAVC S-I 4K at 24p (23.98p), 25p (PAL), or 30p (29.97p) while applied (50p/60p/120p crash or refuse).")
         if body_id == "fx3_702":
             if "fx3_playback" in active_packs:
@@ -978,34 +1273,113 @@ def run_write_flow(
             body_id=body_id,
             session_id=sid,
             verdict=closing_verdict,
-            state=state_str,
-            ready=closing_ready,
+            state="applied",
+            ready=True,
+            verified=True,
             steps_run=completed_steps,
             active_packs=active_packs,
         )
         return 0
 
+    # Putback: run final read-only stock verification check (fail-closed)
+    stock_verified = False
+    stock_state = "stock_unverified"
+    stock_verdict = "VERDICT UNVERIFIED (closing read-only stock check did not complete)"
+    stock_err: str | None = None
+
+    if not closing_dump:
+        stock_verdict = "VERDICT UNVERIFIED (--no-closing-check skipped final stock check)"
+        stock_err = "Closing read-only stock check was skipped (--no-closing-check); cannot certify stock RAM state."
+        say(stock_err)
+    else:
+        cancel_msg = "Cancelled safely before closing read-only stock check."
+        active_ctx.check_cancelled(cancel_msg, step_index=total + 1, step_id="check")
+        if wait_for_drive(
+            body_id,
+            first=False,
+            ctx=active_ctx,
+            step_index=total + 1,
+            total_steps=total + 1,
+            step_id="check",
+        ):
+            active_ctx.check_cancelled(cancel_msg, step_index=total + 1, step_id="check")
+            active_ctx.emit("closing_dump_start", closing_kind="stock_check", step_id="check")
+            before_chk = snapshot_ct6_folders()
+            rc_chk = run_step_live(
+                body_id,
+                "check",
+                fw,
+                writes_memory=False,
+                ctx=active_ctx,
+                require_result_sha=expected_result_sha,
+            )
+            _, chk_man = find_new_ct6_session(before_chk, body_id, "check")
+            if rc_chk != 0:
+                stock_state = "stock_unverified"
+                stock_verdict = f"VERDICT UNVERIFIED (closing stock check exited {rc_chk})"
+                stock_err = f"Closing read-only stock check failed with status {rc_chk}; failing closed."
+            else:
+                stock_verified, stock_state, stock_verdict, stock_err = validate_readonly_verification(
+                    chk_man,
+                    expected_body_id=body_id,
+                    expected_which="check",
+                    expected_state="stock",
+                    expected_verdict="VERDICT READY (stock preflight)",
+                )
+            active_ctx.emit(
+                "closing_dump_done",
+                closing_kind="stock_check",
+                verdict=stock_verdict,
+                ready=stock_verified,
+                verified=stock_verified,
+            )
+        else:
+            stock_state = "stock_unverified"
+            stock_verdict = "VERDICT UNVERIFIED (camera did not reconnect for closing stock check)"
+            stock_err = "Camera did not appear as USB drive for closing read-only stock check."
+            say(stock_err)
+            active_ctx.emit(
+                "closing_dump_done",
+                closing_kind="stock_check",
+                verdict=stock_verdict,
+                ready=False,
+                verified=False,
+            )
+
     sid = studio_cli._write_session(session_dir, {
         "kind": "putback",
         "body_id": body_id,
         "mode": "live_usb",
-        "ready": True,
-        "state": "stock",
-        "verdict": "VERDICT READY (stock preflight)",
-        "active_packs": [],
+        "ready": stock_verified,
+        "verified": stock_verified,
+        "state": stock_state,
+        "verdict": stock_verdict,
+        "manifest_sha256": manifest_sha,
+        "active_packs": [] if stock_verified else saved_active,
         "steps_run": completed_steps,
         "pins_ok": True,
     })
-    say(f"Recorded putback session {sid} in {session_dir}: state=stock")
+    say(f"Recorded putback session {sid} in {session_dir}: state={stock_state} ({stock_verdict})")
+    if not stock_verified:
+        return _fail(
+            active_ctx,
+            stock_err or stock_verdict,
+            step_index=None,
+            step_id="check",
+            left_behind_flag=left_behind(before_run),
+            exit_code=1,
+        )
+
     active_ctx.emit(
         "complete",
         ok=True,
         action="putback",
         body_id=body_id,
         session_id=sid,
-        verdict="VERDICT READY (stock preflight)",
+        verdict=stock_verdict,
         state="stock",
         ready=True,
+        verified=True,
         steps_run=completed_steps,
         active_packs=[],
     )
@@ -1021,6 +1395,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--session-dir", type=Path, default=studio_cli.DEFAULT_SESSION_DIR)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--no-movie-session", action="store_true")
+    ap.add_argument("--no-closing-check", action="store_true", help="Skip final read-only stock check after putback (fails closed)")
     ap.add_argument(
         "--firmware-confirmed",
         default=None,
@@ -1100,6 +1475,7 @@ def main(argv: list[str] | None = None) -> int:
             args.session_dir,
             args.dry_run,
             args.no_movie_session,
+            args.no_closing_check,
             ctx=ctx,
         )
     except CancelledRun as exc:

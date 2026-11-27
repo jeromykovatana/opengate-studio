@@ -6,14 +6,16 @@ set -euo pipefail
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 STUDIO_ROOT="$(cd "$SRC_DIR/../.." && pwd)"
 WORKSPACE_ROOT="$(cd "$STUDIO_ROOT/.." && pwd)"
-KIT_DIR="$STUDIO_ROOT/kits/fx3_702"
+KIT_DIR="${KIT_OUT_DIR:-$STUDIO_ROOT/kits/fx3_702}"
 FW_DIR="${SONY_FW_DIR:-$WORKSPACE_ROOT/firmwares/fx3/ghidra_targets}"
-SEN="$FW_DIR/libsencore.so"
+SEN="${SEN_SO_PATH:-$FW_DIR/libsencore.so}"
 READCHECK_C="$STUDIO_ROOT/src/common/readcheck.c"
 ZIG_PY="${ZIG_PY:-python3}"
 
 mkdir -p "$KIT_DIR"
-python3 -B "$SRC_DIR/gen_fx3_packs.py"
+if [ "${SKIP_GEN:-0}" != "1" ]; then
+  "$ZIG_PY" -B "$SRC_DIR/gen_fx3_packs.py"
+fi
 
 CC=(
   "$ZIG_PY" -m ziglang cc
@@ -29,6 +31,14 @@ for L in 5 6; do
   "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DSITES_H="expected_sites_ogsq_fx3_v2.h"' '-DDESIGN_LABEL="ogsq_fx3_v2"' \
     -DIMAGER=0x127ab68UL -DCTRL_DRVPARAM=0x698U \
     "$READCHECK_C" "$SEN" -o "$KIT_DIR/libJit_fx3_${N}.so"
+done
+
+# L16/L17 & S16/S17: outsz2560_fx3_v1 & lcd32dsq_fx3_v1
+for L in 16 17; do
+  "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DWORDS_H="expected_words_outsz2560_fx3_v1.h"' \
+    "$READCHECK_C" "$SEN" -o "$KIT_DIR/libJit_fx3_L${L}.so"
+  "${CC[@]}" -I "$SRC_DIR" -DLEVEL=$L '-DWORDS_H="expected_words_lcd32dsq_fx3_v1.h"' \
+    "$READCHECK_C" "$SEN" -o "$KIT_DIR/libJit_fx3_S${L}.so"
 done
 
 # L19/L20: Data-only 23.98p/25p/29.97p Long-GOP fallback (4 libmpr + 149 av-cam = 153 sites)
@@ -78,6 +88,6 @@ done
 "${CC[@]}" -I "$SRC_DIR" -DDUMP=1 "$SRC_DIR/fx3read.c" "$SEN" -o "$KIT_DIR/libJit_fx3_dump.so"
 
 echo "Built FX3 7.02 artifacts in $KIT_DIR:"
-for f in "$KIT_DIR"/libJit_fx3_{L5,L6,L19,L20,V19,V20,H16,H17,B19,B20,I19,I20,P29,P30,check,dump}.so; do
+for f in "$KIT_DIR"/libJit_fx3_{L5,L6,L16,L17,S16,S17,L19,L20,V19,V20,H16,H17,B19,B20,I19,I20,P29,P30,check,dump}.so; do
   printf "  %s  %s  %d bytes\n" "$(shasum -a 256 "$f" | awk '{print $1}')" "$(basename "$f")" "$(wc -c < "$f")"
 done

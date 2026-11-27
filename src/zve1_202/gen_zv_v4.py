@@ -17,9 +17,7 @@ WS_ROOT = STUDIO_ROOT.parent
 DEFAULT_FW_DIR = Path(
     os.environ.get("SONY_FW_DIR", str(WS_ROOT / "firmwares/zve1/ghidra_targets"))
 )
-VDES = WS_ROOT / "zve1-pr2-preflight/windows/tools/modding/designs"
-DOCS_DES = WS_ROOT / "docs/designs"
-STUDIO_DES = STUDIO_ROOT / "designs"
+STUDIO_DES = Path(os.environ.get("STUDIO_DESIGNS_DIR", str(STUDIO_ROOT / "designs")))
 
 BASE = 0x108000
 LABEL = "zvread_v4"
@@ -52,15 +50,11 @@ UNIT, CLIP, DESC, DSIZE = 0x38F848, 0x38D7EC, 0x38F8E8, 0x88
 
 
 def resolve_design(name: str, prefer_vdes: bool = False) -> Path:
-    candidates = (
-        [VDES / f"{name}.json", STUDIO_DES / f"{name}.json", DOCS_DES / f"{name}.json"]
-        if prefer_vdes
-        else [STUDIO_DES / f"{name}.json", DOCS_DES / f"{name}.json", VDES / f"{name}.json"]
-    )
-    for p in candidates:
-        if p.is_file():
-            return p
-    raise FileNotFoundError(f"Design JSON not found for {name}")
+    del prefer_vdes
+    p = STUDIO_DES / f"{name}.json"
+    if p.is_file():
+        return p
+    raise FileNotFoundError(f"Design JSON not found for {name}: expected {p}")
 
 
 def c_bytes(b: bytes) -> str:

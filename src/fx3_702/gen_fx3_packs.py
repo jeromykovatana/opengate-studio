@@ -23,14 +23,8 @@ STUDIO_ROOT = HERE.parents[1]
 WORKSPACE_ROOT = STUDIO_ROOT.parent
 
 FW_DIR = Path(os.environ.get("SONY_FW_DIR", str(WORKSPACE_ROOT / "firmwares/fx3/ghidra_targets")))
-DESIGNS_DIR = Path(os.environ.get(
-    "STUDIO_DESIGNS_DIR",
-    str(STUDIO_ROOT / "designs" if (STUDIO_ROOT / "designs").is_dir() else WORKSPACE_ROOT / "docs/designs"),
-))
-UPSTREAM_DESIGNS_DIR = Path(os.environ.get(
-    "UPSTREAM_FX3_DESIGNS_DIR",
-    str(WORKSPACE_ROOT / "fx3-open-gate-test/windows/tools/modding/designs"),
-))
+DESIGNS_DIR = Path(os.environ.get("STUDIO_DESIGNS_DIR", str(STUDIO_ROOT / "designs")))
+UPSTREAM_DESIGNS_DIR = DESIGNS_DIR
 
 BASE = 0x108000
 LABEL = "fx3read_v2"

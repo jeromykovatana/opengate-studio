@@ -1,0 +1,181 @@
+{
+ "design": "dmmwb_zv_v1",
+ "build": "zve1_202",
+ "camera": "ZV-E1, firmware 2.02",
+ "title": "Memory-only DMM change: the movie raw write buffer (memory id 0x43e) grows from 4288 x 2408 to the A7S III's 26,214,400 bytes, room for the 2848-row full-height first stage",
+ "artifact": "coprocessor RAM (the DMM server's copy of /cp/DmmCfg.bin); no file is changed",
+ "generated_by": "build/build_dmm_zv.py",
+ "why": {
+  "camera": "first test of ogsq_zv_v1 (2026-11-23): restart on entering movie mode; kept kprint: CAM_VD_SEQUENCE data abort at 0x4b2d86, the deliberate write to 0 after 'FW: S-Ele Refresh ng force exception' (Dev busy at its sync point for 11 frames)",
+  "code": "raw port set-up 0x2613a8 refuses a frame larger than its unit (0x261472: 'CamCore: AIF%d out[0x%x] > memsize[0x%x]'), required = ((step + 1) * (rows - 1) + 1) * pitch",
+  "sizes": {
+   "stock_unit": 10325504,
+   "stock_stage": "4288 x 2408",
+   "full_height_stage": "4288 x 2848 = 12,212,224",
+   "a7s3_501_unit": 26214400,
+   "a7iv_602_unit": 27864320
+  }
+ },
+ "summary": {
+  "sites": 1,
+  "bytes": 4,
+  "unit_size": 26214400,
+  "stock_unit_size": 10325504,
+  "group": "0x89",
+  "parent_key": "0x38",
+  "parent_size": 28311552,
+  "left_free_in_the_parent": 2097152,
+  "layout_limit": 7,
+  "rows_at_4288": 6113,
+  "cache_lines_64": [
+   "0x2580140"
+  ],
+  "record": "0x2580144"
+ },
+ "precondition": "no unit object of key 0x57f exists in a division still in force when the word is written (the helper checks the DMM server's unit objects and writes nothing otherwise): with the camera on stills after a cold boot, no movie buffer is open",
+ "restore": "write the old word back under the same condition, or cold boot (the tables are rebuilt from /cp/DmmCfg.bin)",
+ "checked_in_the_firmware_allocator": {
+  "tool": "build/emu_dmm_server.py --build zve1_202 (the ZV-E1's own DMM server code, alone; see its header for what is made up)",
+  "applied_before_any_open": {
+   "opens_of_0x43e": [
+    [
+     {
+      "address": "0x500000000",
+      "size": 26214400
+     }
+    ],
+    [
+     {
+      "address": "0x501b00000",
+      "size": 26214400
+     }
+    ],
+    [
+     {
+      "address": "0x503600000",
+      "size": 26214400
+     }
+    ],
+    [
+     {
+      "address": "0x505100000",
+      "size": 26214400
+     }
+    ],
+    [
+     {
+      "address": "0x506c00000",
+      "size": 26214400
+     }
+    ],
+    [
+     {
+      "address": "0x508700000",
+      "size": 26214400
+     }
+    ],
+    [
+     {
+      "address": "0x50a200000",
+      "size": 26214400
+     }
+    ]
+   ],
+   "open_beyond_the_limit": "no group offers the key now (0xfeff)",
+   "open_0x4b7": [
+    {
+     "address": "0x50bd00000",
+     "size": 3317760
+    }
+   ],
+   "open_0x4b8": [
+    {
+     "address": "0x50d800000",
+     "size": 13271040
+    }
+   ],
+   "all_inside_a_parent_and_disjoint": true,
+   "same_places_as_stock": true,
+   "all_freed": true
+  },
+  "written_while_a_stock_buffer_is_open": {
+   "open_before": [
+    {
+     "address": "0x500000000",
+     "size": 10325504
+    }
+   ],
+   "open_while_it_is_in_use": [
+    {
+     "address": "0x501b00000",
+     "size": 26214400
+    }
+   ],
+   "open_after_it_was_freed": [
+    {
+     "address": "0x500000000",
+     "size": 26214400
+    }
+   ]
+  },
+  "stock_control": [
+   [
+    {
+     "address": "0x500000000",
+     "size": 10325504
+    }
+   ],
+   [
+    {
+     "address": "0x501b00000",
+     "size": 10325504
+    }
+   ],
+   [
+    {
+     "address": "0x503600000",
+     "size": 10325504
+    }
+   ],
+   [
+    {
+     "address": "0x505100000",
+     "size": 10325504
+    }
+   ],
+   [
+    {
+     "address": "0x506c00000",
+     "size": 10325504
+    }
+   ],
+   [
+    {
+     "address": "0x508700000",
+     "size": 10325504
+    }
+   ],
+   [
+    {
+     "address": "0x50a200000",
+     "size": 10325504
+    }
+   ]
+  ]
+ },
+ "not_shown": [
+  "that the image hardware takes the full-height stage once the buffer is large enough (the A7S III does, with this size)",
+  "what the camera has open when the word is written (the helper checks it and writes nothing if a movie buffer exists)"
+ ],
+ "sites": [
+  {
+   "ram_address": "0x2580150",
+   "what": "size of the key 0x57f record of group 0x89 (memory id 0x43e, the movie raw write buffer)",
+   "file_offset_of_the_same_field": "0x7d34",
+   "old": "008e9d00",
+   "new": "00009001",
+   "old_value": 10325504,
+   "new_value": 26214400
+  }
+ ]
+}

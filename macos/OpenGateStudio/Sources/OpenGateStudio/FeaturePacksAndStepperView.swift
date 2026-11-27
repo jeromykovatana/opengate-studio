@@ -16,42 +16,42 @@ public struct FeaturePacksAndStepperView: View {
         PackMetadata(
             id: "mp4_3x2",
             title: "MP4 3:2 Native Container + Playback",
-            subtitle: "Writes native 3840x2560 MP4 dimensions & playback scaling (23.98p / 25p / 29.97p); suppresses 16:9 NRT XML aspect.",
+            subtitle: "Writes native 3840x2560 MP4 dimensions & preserves Sony rtmd gyro track (23.98p hardware core; 25p/29.97p & NLE/Gyroflow corpus qualification ongoing).",
             icon: "film.stack",
             defaultStepsHint: "V19 / V20 (fallback L19 / L20)"
         ),
         PackMetadata(
             id: "screen_3x2",
             title: "3:2 LCD / EVF Desqueeze + C2 Cycle",
-            subtitle: "Enables uncropped 3:2 viewfinder framing with C2 live aspect cycle.",
+            subtitle: "Enables uncropped 3:2 viewfinder framing with C2/C3 live aspect cycle (ZV-E1/a7S III) or native De-Squeeze (FX3).",
             icon: "rectangle.aspectratio",
             defaultStepsHint: "S16 + C19 / C20 + S17"
         ),
         PackMetadata(
             id: "hdmi32",
             title: "HDMI 3:2 Output",
-            subtitle: "Outputs 3:2 open-gate feed over HDMI to external monitors/recorders.",
+            subtitle: "Experimental: outputs clean 3:2 open-gate feed over HDMI to external monitors/recorders (emulator-verified; awaiting hardware corpus).",
             icon: "display",
             defaultStepsHint: "H16 / H17"
         ),
         PackMetadata(
             id: "high_bitrate",
             title: "High-Bitrate Long-GOP (200M / 300M)",
-            subtitle: "Unlocks 200 Mbps / 300 Mbps Long-GOP overlays for XAVC HS & XAVC S.",
+            subtitle: "Experimental: unlocks 200 Mbps / 300 Mbps Long-GOP overlays for XAVC HS & XAVC S (emulator-verified; awaiting sustained soak clips).",
             icon: "speedometer",
             defaultStepsHint: "B19 / B20"
         ),
         PackMetadata(
             id: "xavc_si",
             title: "XAVC S-I 3840x2560 All-Intra",
-            subtitle: "Enables 3:2 open-gate recording in XAVC S-I intra-frame mode (23.98p / 25p / 29.97p).",
+            subtitle: "Experimental: enables 3:2 open-gate recording in XAVC S-I intra-frame mode (23.98p / 25p / 29.97p; emulator-verified).",
             icon: "waveform.path.ecg.rectangle",
             defaultStepsHint: "I19 / I20"
         ),
         PackMetadata(
             id: "fx3_playback",
             title: "FX3 Open-Gate Playback Fix",
-            subtitle: "Experimental FX3 playback path patch for 3:2 open-gate clips (P29 / P30).",
+            subtitle: "Experimental FX3 playback path patch for 3:2 open-gate clips (P29 / P30 — untested on hardware).",
             icon: "play.rectangle.on.rectangle",
             defaultStepsHint: "P29 / P30"
         )
@@ -98,12 +98,12 @@ public struct FeaturePacksAndStepperView: View {
                 Text("Presets:")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Button("Safe Daily 3:2") {
+                Button("Safe Daily 3:2 (Recommended)") {
                     appState.applyPackPreset(.safeDaily)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
                 .controlSize(.mini)
-                Button("Cinema + H.264/All-Intra + HDMI") {
+                Button("Cinema + All-Intra + HDMI (Experimental)") {
                     appState.applyPackPreset(.cinemaFull)
                 }
                 .buttonStyle(.bordered)
@@ -185,6 +185,8 @@ public struct FeaturePacksAndStepperView: View {
         } ?? meta.defaultStepsHint
 
         let isExperimentalFX3Playback = meta.id == "fx3_playback"
+        let isExperimentalPack = meta.id == "hdmi32" || meta.id == "high_bitrate" || meta.id == "xavc_si"
+        let isRecommendedPack = meta.id == "mp4_3x2" || meta.id == "screen_3x2"
         let showHdmiAfTip = meta.id == "hdmi32" && (isEnabled || appState.selectedBodyId == "fx3_702")
 
         return HStack(alignment: .top, spacing: 12) {
@@ -204,6 +206,22 @@ public struct FeaturePacksAndStepperView: View {
                             .padding(.vertical, 2)
                             .background(Color.orange.opacity(0.18))
                             .foregroundStyle(.orange)
+                            .clipShape(Capsule())
+                    } else if isExperimentalPack {
+                        Text("EXPERIMENTAL")
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.18))
+                            .foregroundStyle(.orange)
+                            .clipShape(Capsule())
+                    } else if isRecommendedPack {
+                        Text("RECOMMENDED")
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.green.opacity(0.16))
+                            .foregroundStyle(.green)
                             .clipShape(Capsule())
                     }
                     Spacer()
@@ -522,11 +540,12 @@ public struct FeaturePacksAndStepperView: View {
             }
 
             // Gate 4: Put Back to Stock
+            let putbackVerified = appState.putbackResult.map { $0.ok && $0.state == "stock" } ?? false
             gateCard(
                 number: 4,
                 title: "Put Back to Stock RAM",
-                statusColor: appState.putbackResult != nil ? .green : .secondary,
-                statusText: appState.putbackResult != nil ? "Restored" : "Standby"
+                statusColor: appState.putbackResult == nil ? .secondary : (putbackVerified ? .green : .red),
+                statusText: appState.putbackResult == nil ? "Standby" : (putbackVerified ? "Verified Stock" : "Unverified")
             ) {
                 VStack(alignment: .leading, spacing: 10) {
                     Button {
@@ -545,6 +564,7 @@ public struct FeaturePacksAndStepperView: View {
                     .disabled(appState.isPuttingBack || appState.isLiveSessionActive)
 
                     if let putback = appState.putbackResult {
+                        let isOk = putback.ok && putback.state == "stock"
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Text("State: \(putback.state)  •  Steps: \(putback.stepsRun.map(\.step).joined(separator: " -> "))")
@@ -555,7 +575,7 @@ public struct FeaturePacksAndStepperView: View {
                         }
                         .padding(8)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.blue.opacity(0.08))
+                        .background((isOk ? Color.blue : Color.red).opacity(0.08))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                 }
