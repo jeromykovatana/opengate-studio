@@ -17,6 +17,7 @@ sessions/
 # Build, packaging, and Python artifacts
 .DS_Store
 .build/
+dist/
 macos/OpenGateStudio/dist/
 __pycache__/
 *.pyc

@@ -22,6 +22,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import bionz_clip_check as bcc  # noqa: E402
+import studio_conformance  # noqa: E402
 import studio_creator  # noqa: E402
 import studio_report  # noqa: E402
 
@@ -782,6 +783,25 @@ def cmd_build_report(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     )
 
 
+def cmd_conformance_audit(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
+    try:
+        payload = studio_conformance.audit_conformance_bundle(
+            clips_dir=args.clips_dir,
+            body_id=args.body,
+            session_dir=args.session_dir,
+            out_dir=args.out_dir,
+            measured_readout_ms=args.measured_readout_ms,
+            gyroflow_ok=args.gyroflow_ok,
+            catalyst_ok=args.catalyst_ok,
+            nle_ok=args.nle_ok,
+            playback_ok=args.playback_ok,
+            thermal_ok=args.thermal_ok,
+        )
+        return (0 if payload.get("ok", False) else 1), payload
+    except Exception as err:
+        return 2, {"ok": False, "error": str(err)}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--json", action="store_true", help="Output JSON")
@@ -885,6 +905,19 @@ def main(argv: list[str] | None = None) -> int:
     p_proxy.add_argument("--no-sidecar", action="store_true")
     p_proxy.add_argument("--json", action="store_true")
 
+    p_conf = sub.add_parser("conformance-audit", help="Audit conformance bundle, validate live_usb sessions, and recommend matrix promotions")
+    p_conf.add_argument("--body", required=True)
+    p_conf.add_argument("--clips-dir", type=Path, required=True)
+    p_conf.add_argument("--session-dir", type=Path, default=None)
+    p_conf.add_argument("--out-dir", type=Path, default=None)
+    p_conf.add_argument("--measured-readout-ms", type=float, default=None)
+    p_conf.add_argument("--gyroflow-ok", action=argparse.BooleanOptionalAction, default=None)
+    p_conf.add_argument("--catalyst-ok", action=argparse.BooleanOptionalAction, default=None)
+    p_conf.add_argument("--nle-ok", action=argparse.BooleanOptionalAction, default=None)
+    p_conf.add_argument("--playback-ok", action=argparse.BooleanOptionalAction, default=None)
+    p_conf.add_argument("--thermal-ok", action=argparse.BooleanOptionalAction, default=None)
+    p_conf.add_argument("--json", action="store_true")
+
     args = ap.parse_args(argv)
     if args.cmd == "list-bodies":
         rc, payload = cmd_list_bodies()
@@ -920,6 +953,8 @@ def main(argv: list[str] | None = None) -> int:
             not args.no_sidecar,
             args.dry_run,
         )
+    elif args.cmd == "conformance-audit":
+        rc, payload = cmd_conformance_audit(args)
     else:
         rc, payload = 2, {"ok": False, "error": f"Unsupported command {args.cmd}"}
 

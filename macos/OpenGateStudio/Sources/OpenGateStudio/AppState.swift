@@ -187,6 +187,8 @@ public final class AppState: ObservableObject {
         var preparedLiveCommandPreview: String?
         var liveStatusBanner: String?
         var lastResultSource: SessionResultSource?
+        var hasInterruptedSession: Bool = false
+        var leftBehindWarning: Bool = false
     }
 
     @Published public var selectedTab: StudioTab = .setupGuide
@@ -256,6 +258,8 @@ public final class AppState: ObservableObject {
     @Published public var latestSyncedSession: LatestSessionResult?
     @Published public var lastResultSource: SessionResultSource?
     @Published public var isSyncingSession: Bool = false
+    @Published public var hasInterruptedLiveSession: Bool = false
+    @Published public var liveLeftBehindWarning: Bool = false
 
     @Published public var isRunningPreflight: Bool = false
     @Published public var isApplying: Bool = false
@@ -416,6 +420,73 @@ public final class AppState: ObservableObject {
 
     public var isLiveSessionActive: Bool {
         activeLiveSession != nil
+    }
+
+    public var quickReapplyDecision: QuickReapplyDecision {
+        let mappedSource: QuickReapplyResultSource? = lastResultSource.map {
+            switch $0 {
+            case .mock: return .mock
+            case .liveInApp: return .liveInApp
+            case .liveTerminal: return .liveTerminal
+            }
+        }
+        return QuickReapplyPlanner.plan(
+            pinsVerified: pinsVerifiedForAllOrSelected,
+            selectedBodyId: selectedBodyId,
+            offlineMockCamera: offlineMockCamera,
+            leftBehindWarning: liveLeftBehindWarning || (activeLiveSession?.leftBehindWarning ?? false),
+            hasInterruptedSession: hasInterruptedLiveSession || (activeLiveSession?.phase == .failed),
+            preflightResult: preflightResult,
+            applyResult: applyResult,
+            putbackResult: putbackResult,
+            latestSession: latestSyncedSession,
+            resultSource: mappedSource
+        )
+    }
+
+    public func triggerQuickSafeDailyReapply() {
+        guard activeLiveSession == nil else { return }
+        stepperError = nil
+
+        if offlineMockCamera {
+            offlineMockCamera = false
+        }
+
+        applyPackPreset(.safeDaily)
+
+        switch quickReapplyDecision {
+        case .blockedPinsUnverified:
+            stepperError = "Cannot run Quick Field Re-Apply: SHA-256 kit pin verification failed or is unverified."
+
+        case .runRecoveryPreflightFirst, .runPreflightThenSafeDailyApply:
+            presentLiveSession(action: .preflight)
+
+        case .readyForSafeDailyApply(let packs):
+            let available = Set(packs.filter { selectedBody == nil || selectedBody?.packs[$0] != nil })
+            if !available.isEmpty {
+                selectedPacks = available
+            }
+            presentLiveSession(action: .apply)
+
+        case .alreadyApplied:
+            liveStatusBanner = "Safe Daily 3:2 Open Gate is already verified active. If you swapped the battery, run Read-Only Preflight first."
+        }
+    }
+
+    public func startBatterySwapQuickReapply() {
+        guard activeLiveSession == nil else { return }
+        stepperError = nil
+
+        if offlineMockCamera {
+            offlineMockCamera = false
+        }
+
+        applyPackPreset(.safeDaily)
+        liveSnapshot.applyResult = nil
+        liveSnapshot.preflightResult = nil
+        applyResult = nil
+        preflightResult = nil
+        presentLiveSession(action: .preflight)
     }
 
     public func bootstrapIfNeeded() async {
@@ -940,6 +1011,13 @@ public final class AppState: ObservableObject {
             session.phase = .cancelled
             session.wasAdminAuthCancelled = adminAuth
             session.cancelMessage = message
+            if !adminAuth && (session.completedProgressUnits > 0 || session.leftBehindWarning) {
+                liveSnapshot.hasInterruptedSession = true
+                liveSnapshot.leftBehindWarning = liveSnapshot.leftBehindWarning || session.leftBehindWarning
+                if action == .apply {
+                    liveSnapshot.preflightResult = nil
+                }
+            }
             activeLiveSession = session
             await syncLatestCameraSession(silentIfNotFound: true, source: .liveInApp)
 
@@ -957,6 +1035,12 @@ public final class AppState: ObservableObject {
                     session.steps[idx].status = .done(outcome: "DONE")
                 }
             }
+            if complete.ready == true && complete.verified != false {
+                liveSnapshot.hasInterruptedSession = false
+                liveSnapshot.leftBehindWarning = false
+            } else {
+                liveSnapshot.hasInterruptedSession = true
+            }
             activeLiveSession = session
             await syncLatestCameraSession(silentIfNotFound: true, source: .liveInApp)
 
@@ -966,6 +1050,13 @@ public final class AppState: ObservableObject {
             session.leftBehindWarning = leftBehind
             if case .active = session.closingDumpStatus {
                 session.closingDumpStatus = .failed(message: message)
+            }
+            if action == .apply || action == .putback || leftBehind {
+                liveSnapshot.hasInterruptedSession = true
+                liveSnapshot.leftBehindWarning = liveSnapshot.leftBehindWarning || leftBehind
+                if action == .apply {
+                    liveSnapshot.preflightResult = nil
+                }
             }
             activeLiveSession = session
             await syncLatestCameraSession(silentIfNotFound: true, source: .liveInApp)
@@ -1252,6 +1343,8 @@ public final class AppState: ObservableObject {
         preparedLiveCommandPreview = nil
         liveStatusBanner = nil
         lastResultSource = nil
+        hasInterruptedLiveSession = false
+        liveLeftBehindWarning = false
         stepperError = nil
     }
 
@@ -1316,7 +1409,9 @@ public final class AppState: ObservableObject {
             preparedLiveCommandPath: preparedLiveCommandPath,
             preparedLiveCommandPreview: preparedLiveCommandPreview,
             liveStatusBanner: liveStatusBanner,
-            lastResultSource: lastResultSource
+            lastResultSource: lastResultSource,
+            hasInterruptedSession: hasInterruptedLiveSession,
+            leftBehindWarning: liveLeftBehindWarning
         )
         if isMock {
             mockSnapshot = snap
@@ -1335,6 +1430,8 @@ public final class AppState: ObservableObject {
         preparedLiveCommandPreview = snap.preparedLiveCommandPreview
         liveStatusBanner = snap.liveStatusBanner
         lastResultSource = snap.lastResultSource
+        hasInterruptedLiveSession = snap.hasInterruptedSession
+        liveLeftBehindWarning = snap.leftBehindWarning
     }
 
     private func recordPreparedLiveCommand(_ prep: PrepareLiveCommandResult, actionLabel: String) {
@@ -1436,6 +1533,18 @@ public final class AppState: ObservableObject {
         }
 
         stepperError = nil
+        if res.ok && res.ready && res.verified != false {
+            if let syncedId = res.sessionId, syncedId != liveSnapshot.latestSyncedSession?.sessionId || activeLiveSession == nil {
+                // Only clear interrupted warning on a verified recovery preflight/dump/putback/apply
+                // when not currently in an active failed session.
+                if activeLiveSession?.phase != .failed {
+                    liveSnapshot.hasInterruptedSession = false
+                    liveSnapshot.leftBehindWarning = false
+                }
+            }
+        } else {
+            liveSnapshot.hasInterruptedSession = true
+        }
         if offlineMockCamera {
             if !silentIfNotFound {
                 offlineMockCamera = false

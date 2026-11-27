@@ -12,7 +12,25 @@ CONTENTS_DIR="$APP_BUNDLE/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
-echo "[1/4] Building release binary..."
+RAW_APP_VERSION="${APP_VERSION:-1.0.0}"
+BUNDLE_SHORT_VERSION="${RAW_APP_VERSION#v}"
+BUNDLE_SHORT_VERSION="${BUNDLE_SHORT_VERSION#V}"
+if [[ -z "$BUNDLE_SHORT_VERSION" ]]; then
+    echo "ERROR: APP_VERSION resolved to an empty CFBundleShortVersionString (input: '$RAW_APP_VERSION')" >&2
+    exit 1
+fi
+if [[ ! "$BUNDLE_SHORT_VERSION" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "ERROR: Invalid APP_VERSION '$RAW_APP_VERSION'. Allowed characters after optional leading v: A-Za-z0-9._-" >&2
+    exit 1
+fi
+BUNDLE_BUILD_VERSION="${APP_BUILD_VERSION:-1}"
+
+if [[ -n "${APPLE_NOTARY_PROFILE:-}" && -z "${APPLE_DEVELOPER_ID_APP:-}" ]]; then
+    echo "ERROR: APPLE_NOTARY_PROFILE requires APPLE_DEVELOPER_ID_APP (ad-hoc signatures cannot be notarized)." >&2
+    exit 1
+fi
+
+echo "[1/4] Building release binary (version $BUNDLE_SHORT_VERSION)..."
 swift build -c release
 
 BIN_DIR="$(swift build -c release --show-bin-path)"
@@ -30,7 +48,7 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$BUILT_BIN" "$MACOS_DIR/$EXECUTABLE_NAME"
 chmod +x "$MACOS_DIR/$EXECUTABLE_NAME"
 
-cat > "$CONTENTS_DIR/Info.plist" << 'EOF'
+cat > "$CONTENTS_DIR/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -50,9 +68,9 @@ cat > "$CONTENTS_DIR/Info.plist" << 'EOF'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>${BUNDLE_SHORT_VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>${BUNDLE_BUILD_VERSION}</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSHighResolutionCapable</key>
@@ -63,9 +81,10 @@ cat > "$CONTENTS_DIR/Info.plist" << 'EOF'
 </plist>
 EOF
 
-cat > "$RESOURCES_DIR/StudioMetadata.json" << 'EOF'
+cat > "$RESOURCES_DIR/StudioMetadata.json" << EOF
 {
   "app": "OpenGate Studio",
+  "version": "${BUNDLE_SHORT_VERSION}",
   "license": "GPL-3.0-or-later",
   "mode": "volatile-ram-only",
   "supported_bodies": ["zve1_202", "a7s3_501", "fx3_702"]
@@ -90,11 +109,36 @@ if [[ ! -f "$CONTENTS_DIR/Info.plist" || ! -x "$MACOS_DIR/$EXECUTABLE_NAME" ]]; 
 fi
 
 if command -v codesign >/dev/null 2>&1; then
-    echo "[4/4] Ad-hoc signing and verifying $APP_BUNDLE..."
-    codesign --force --deep --sign - "$APP_BUNDLE"
-    codesign --verify --deep --strict "$APP_BUNDLE"
+    if [[ -n "${APPLE_DEVELOPER_ID_APP:-}" ]]; then
+        echo "[4/4] Developer ID signing (hardened runtime) $APP_BUNDLE..."
+        codesign --force --deep --options runtime --timestamp --sign "$APPLE_DEVELOPER_ID_APP" "$APP_BUNDLE"
+        codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+
+        if [[ -n "${APPLE_NOTARY_PROFILE:-}" ]]; then
+            echo "[4/4] Notarizing and stapling $APP_BUNDLE via profile '$APPLE_NOTARY_PROFILE'..."
+            NOTARY_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/opengate_notary.XXXXXX")"
+            NOTARY_ZIP="$NOTARY_TMP_DIR/${APP_NAME}.zip"
+            cleanup_notary() {
+                rm -rf "$NOTARY_TMP_DIR"
+            }
+            trap cleanup_notary EXIT
+            ditto -c -k --keepParent "$APP_BUNDLE" "$NOTARY_ZIP"
+            xcrun notarytool submit "$NOTARY_ZIP" --keychain-profile "$APPLE_NOTARY_PROFILE" --wait
+            xcrun stapler staple "$APP_BUNDLE"
+            xcrun stapler validate "$APP_BUNDLE"
+            codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+            cleanup_notary
+            trap - EXIT
+        else
+            echo "[4/4] APPLE_NOTARY_PROFILE unset; skipping notarization."
+        fi
+    else
+        echo "[4/4] Ad-hoc signing and verifying $APP_BUNDLE (APPLE_DEVELOPER_ID_APP unset)..."
+        codesign --force --deep --sign - "$APP_BUNDLE"
+        codesign --verify --deep --strict "$APP_BUNDLE"
+    fi
 else
-    echo "[4/4] codesign not found; skipping ad-hoc signature."
+    echo "[4/4] codesign not found; skipping code signature."
 fi
 
 echo "Packaged successfully: $APP_BUNDLE"

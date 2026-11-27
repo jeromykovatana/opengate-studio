@@ -315,6 +315,12 @@ public struct FeaturePacksAndStepperView: View {
                 liveUsbModeBanner
             }
 
+            if appState.quickReapplyDecision == .runRecoveryPreflightFirst {
+                interruptedSessionRecoveryBanner
+            }
+
+            quickFieldReapplyCard
+
             if let err = appState.stepperError {
                 HStack(spacing: 8) {
                     Image(systemName: "xmark.octagon.fill")
@@ -762,6 +768,155 @@ public struct FeaturePacksAndStepperView: View {
     private var preflightStatusText: String {
         guard let preflight = appState.preflightResult else { return "Pending" }
         return preflight.ready ? "Ready (\(preflight.state))" : "Blocked (\(preflight.state))"
+    }
+
+    private var interruptedSessionRecoveryBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.title3)
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Interrupted or Unverified Session Detected")
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(.orange)
+                Text("If a live step stopped early or left helper state on the camera, pull the battery for >= 10 seconds to restore clean stock RAM, then run Read-Only Recovery Preflight before re-applying.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Run Recovery Preflight") {
+                appState.triggerQuickSafeDailyReapply()
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.orange)
+            .controlSize(.small)
+            .disabled(appState.isLiveSessionActive || appState.isRunningPreflight)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.orange.opacity(0.45), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var quickFieldReapplyCard: some View {
+        let decision = appState.quickReapplyDecision
+        let badgeColor: Color = {
+            switch decision {
+            case .blockedPinsUnverified: return .red
+            case .runRecoveryPreflightFirst: return .orange
+            case .runPreflightThenSafeDailyApply: return .blue
+            case .readyForSafeDailyApply: return .green
+            case .alreadyApplied: return .teal
+            }
+        }()
+        let badgeText: String = {
+            switch decision {
+            case .blockedPinsUnverified: return "Pins Unverified"
+            case .runRecoveryPreflightFirst: return "Recovery Required"
+            case .runPreflightThenSafeDailyApply: return "Preflight First"
+            case .readyForSafeDailyApply: return "Ready for Apply"
+            case .alreadyApplied: return "Applied"
+            }
+        }()
+        let detailText: String = {
+            switch decision {
+            case .blockedPinsUnverified:
+                return "SHA-256 kit pin verification must pass before any live USB preflight or Safe Daily 3:2 apply."
+            case .runRecoveryPreflightFirst:
+                return "Pull camera battery >= 10s if needed, then run read-only recovery preflight first (never bypassed)."
+            case .runPreflightThenSafeDailyApply:
+                return "After a battery swap (or from mock mode), start with live Read-Only Preflight, then apply core_open_gate + mp4_3x2 + screen_3x2."
+            case .readyForSafeDailyApply(let packs):
+                return "Verified live stock preflight is active. Ready to apply Safe Daily 3:2 (core_open_gate + \(packs.joined(separator: " + ")))."
+            case .alreadyApplied:
+                return "Safe Daily 3:2 Open Gate is verified active in this session. Swapped the battery? Re-verify with live preflight."
+            }
+        }()
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "bolt.badge.clock.fill")
+                    .foregroundStyle(badgeColor)
+                Text("Quick Field Re-Apply (Safe Daily 3:2)")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(badgeText)
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(badgeColor.opacity(0.16))
+                    .foregroundStyle(badgeColor)
+                    .clipShape(Capsule())
+            }
+
+            Text(detailText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                switch decision {
+                case .blockedPinsUnverified:
+                    Button("Verify Kit Pins") {
+                        Task { await appState.verifyPins() }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(appState.isVerifyingPins || appState.isLiveSessionActive)
+
+                case .runRecoveryPreflightFirst:
+                    Button("Run Recovery Preflight") {
+                        appState.triggerQuickSafeDailyReapply()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .controlSize(.small)
+                    .disabled(appState.isLiveSessionActive || appState.isRunningPreflight)
+
+                case .runPreflightThenSafeDailyApply:
+                    Button("Start Live Preflight for Safe Daily 3:2") {
+                        appState.triggerQuickSafeDailyReapply()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(appState.isLiveSessionActive || appState.isRunningPreflight)
+
+                case .readyForSafeDailyApply:
+                    Button("Apply Safe Daily 3:2 Now") {
+                        appState.triggerQuickSafeDailyReapply()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .controlSize(.small)
+                    .disabled(appState.isLiveSessionActive || appState.isApplying)
+
+                case .alreadyApplied:
+                    Button("Swapped Battery? Run Live Preflight") {
+                        appState.startBatterySwapQuickReapply()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(appState.isLiveSessionActive || appState.isRunningPreflight)
+                }
+
+                Spacer()
+                Text("Live USB • Volatile RAM Only")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(badgeColor.opacity(0.32), lineWidth: 1)
+        )
     }
 
     private func gateCard<Content: View>(
