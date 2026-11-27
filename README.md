@@ -139,11 +139,12 @@ Requires **macOS 14+** and **Python 3.9+** (Apple Silicon `arm64` prebuilt bundl
    cd opengate-studio
    ./setup_and_open_mac.command
    ```
-2. **Explore Safely Offline First:** Leave **Offline Mock Camera = ON** to walk through all three tabs with zero USB contact:
-   - **Tab 1 — Camera Setup Wizard:** Exact camera menu settings (`Mass Storage`, `Slot 1` card, `24p`, Stills cold-boot check).
-   - **Tab 2 — Feature Packs & 5-Gate Stepper:** Verify SHA-256 pins, toggle modular packs, run read-only Preflight, Apply, and Put Back.
-   - **Tab 3 — Clip, XML & Gyro Inspector:** Drag & drop any recorded `Cxxxx.MP4` + `CxxxxM01.XML` to verify `3840×2560` geometry, NRT XML aspect, and `rtmd` gyro samples.
-3. **Go Live Over USB-C:** Toggle **Offline Mock Camera = OFF**. Clicking Preflight, Apply, or Put Back opens the native in-app Live USB sheet (`macos/run_live_inapp.sh`) with clickable safety confirmations, a single macOS administrator dialog to release `iousbmassstorage`, live step-by-step progress/replug banners, safe between-step Cancel, and automatic verdict sync back into the app (a subtle **Use Terminal Instead** fallback to `macos/run_live_terminal.sh` remains available inside the sheet).
+2. **Explore Safely Offline or Connect Live:** The app launches in **Live USB** mode with two focused toolbar destinations (**Camera** and **Clips**):
+   - **Offline Simulation Mode (`Cmd+Option+S`):** Open the toolbar Connection Mode popover and toggle **Offline Simulation Mode** (displays an unmistakable blue top banner with `Clean Stock`, `Warm Power-Switch (Blocked)`, and `Open-Gate Active` states) to explore the full workflow with zero USB contact.
+   - **Camera Workspace:** Complete the dismissible **First-Time Setup** checklist (`Setup Guide…`, `Cmd+Shift+G`), verify `>= 10s` battery-pull cold boot and Stills mode, pick **Safe Daily 3:2** or **Cinema Full** (or expand **Customize Feature Packs**), and follow the single adaptive hero action (**Check Camera (Read-Only)** → **Apply Open-Gate (3:2)** → **Swapped Battery? Re-Check Camera** / **Restore Stock RAM**).
+   - **Clips Workspace:** Drop any recorded `Cxxxx.MP4` + `CxxxxM01.XML` or `PRIVATE/M4ROOT/CLIP` card folder via **Open Clip or Card…** to inspect `3840×2560` geometry, NRT XML aspect, `rtmd` gyro samples, and 3:2 delivery framing in the right-side **Inspector** (`Cmd+Option+I`), or launch **Export Proxies…** and **Gyroflow Presets…**.
+   - **Diagnostics & Field Tools (`Cmd+Option+D`):** View **Console Log**, **Kit Integrity** (SHA-256 pins), and the **Field Report** builder from the toolbar wrench icon.
+3. **Go Live Over USB-C:** Ensure Connection Mode is **Live USB** (green indicator). Clicking **Check Camera (Read-Only)**, **Apply Open-Gate (3:2)**, or **Restore Stock RAM** opens the native in-app Live USB sheet (`macos/run_live_inapp.sh`) with clickable firmware/volatile-RAM confirmations, a single macOS Touch ID / administrator dialog to release `iousbmassstorage`, live step progress with pulsing USB replug / Movie-mode banners, safe between-step Cancel, and automatic verdict sync (with **Use Terminal Fallback Instead** tucked under **Advanced & Step Details**).
 
 ### Option B — Live USB Terminal (macOS)
 

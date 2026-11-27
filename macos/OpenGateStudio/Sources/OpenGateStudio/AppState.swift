@@ -3,13 +3,28 @@ import Foundation
 import OpenGateStudioCore
 import SwiftUI
 
-public enum StudioTab: String, CaseIterable, Identifiable {
-    case setupGuide = "1. Camera Setup"
-    case packsAndSafety = "2. Apply & Packs"
-    case clipInspector = "3. Clip & Gyro"
-    case creatorWorkflow = "4. Ingest & Proxies"
+public enum StudioDestination: String, CaseIterable, Identifiable {
+    case camera = "Camera"
+    case clips = "Clips"
 
     public var id: String { rawValue }
+}
+
+public enum DiagnosticsTab: String, CaseIterable, Identifiable {
+    case console = "Console Log"
+    case pins = "Kit Integrity"
+    case fieldReport = "Field Report"
+
+    public var id: String { rawValue }
+}
+
+public enum CameraWorkflowStage: Equatable, Sendable {
+    case pinsBlocked
+    case recoveryRequired
+    case applied
+    case restoredStock
+    case readyToApply
+    case needsPreflight
 }
 
 public enum SessionResultSource: String, Sendable, Equatable {
@@ -191,7 +206,15 @@ public final class AppState: ObservableObject {
         var leftBehindWarning: Bool = false
     }
 
-    @Published public var selectedTab: StudioTab = .setupGuide
+    @Published public var selectedDestination: StudioDestination = .camera
+    @Published public var showSetupGuideSheet: Bool = false
+    @Published public var isSetupBannerDismissed: Bool = false
+    @Published public var showDiagnosticsSheet: Bool = false
+    @Published public var selectedDiagnosticsTab: DiagnosticsTab = .console
+    @Published public var isClipInspectorPresented: Bool = true
+    @Published public var showProxyExportSheet: Bool = false
+    @Published public var showGyroflowPresetsSheet: Bool = false
+    @Published public var showModePopover: Bool = false
 
     // Bridge & bodies
     @Published public var bodies: [BodyInfo] = []
@@ -210,8 +233,8 @@ public final class AppState: ObservableObject {
     @Published public var pinResult: VerifyPinsResult?
     @Published public var isVerifyingPins: Bool = false
 
-    // Camera mode
-    @Published public var offlineMockCamera: Bool = true {
+    // Camera mode (defaults to Live USB)
+    @Published public var offlineMockCamera: Bool = false {
         didSet {
             if oldValue != offlineMockCamera {
                 saveActiveSnapshot(forMock: oldValue)
@@ -401,7 +424,9 @@ public final class AppState: ObservableObject {
     }
 
     public var isApplyUnlocked: Bool {
-        isChecklistComplete
+        let pinsOkForLive = offlineMockCamera || pinResult == nil || pinsVerifiedForAllOrSelected
+        return isChecklistComplete
+            && pinsOkForLive
             && (preflightResult?.ready == true)
             && (offlineMockCamera || preflightResult?.state == "stock")
     }
@@ -420,6 +445,67 @@ public final class AppState: ObservableObject {
 
     public var isLiveSessionActive: Bool {
         activeLiveSession != nil
+    }
+
+    public var cameraStage: CameraWorkflowStage {
+        if !offlineMockCamera && !pinsVerifiedForAllOrSelected {
+            return .pinsBlocked
+        }
+        if isMixedPowerSwitchWarning {
+            return .recoveryRequired
+        }
+        if !offlineMockCamera && quickReapplyDecision == .runRecoveryPreflightFirst {
+            return .recoveryRequired
+        }
+        if let app = applyResult, app.ok {
+            return .applied
+        }
+        if !offlineMockCamera && quickReapplyDecision == .alreadyApplied {
+            return .applied
+        }
+        if let put = putbackResult, put.ok && put.state == "stock" {
+            return .restoredStock
+        }
+        if isApplyUnlocked {
+            return .readyToApply
+        }
+        return .needsPreflight
+    }
+
+    public var activePackPreset: PackPreset? {
+        let safeDaily = availablePackSet(from: ["mp4_3x2", "screen_3x2"])
+        if selectedPacks == safeDaily {
+            return .safeDaily
+        }
+        let cinemaFull = availablePackSet(from: ["mp4_3x2", "screen_3x2", "hdmi32", "high_bitrate", "xavc_si"])
+        if selectedPacks == cinemaFull {
+            return .cinemaFull
+        }
+        return nil
+    }
+
+    public var activeInspectedBatchClip: IngestedClipItem? {
+        guard let clips = ingestResult?.clips, !clips.isEmpty else { return nil }
+        if let selectedId = selectedIngestedClipId,
+           let matched = clips.first(where: { $0.id == selectedId }) {
+            return matched
+        }
+        return clips.first
+    }
+
+    public func humanReadablePackTitle(for packId: String) -> String {
+        ModularPackDescriptor.descriptor(for: packId, bodyId: selectedBodyId).title
+    }
+
+    private func availablePackSet(from desired: [String]) -> Set<String> {
+        var next = Set<String>()
+        for packId in desired {
+            if packId == "fx3_playback" { continue }
+            if selectedBody == nil || selectedBody?.packs[packId] != nil {
+                next.insert(packId)
+            }
+        }
+        return next
     }
 
     public var quickReapplyDecision: QuickReapplyDecision {
@@ -489,6 +575,32 @@ public final class AppState: ObservableObject {
         presentLiveSession(action: .preflight)
     }
 
+    public func handleBatterySwapReCheck() async {
+        guard activeLiveSession == nil else { return }
+        stepperError = nil
+
+        if offlineMockCamera {
+            mockSnapshot.applyResult = nil
+            mockSnapshot.preflightResult = nil
+            mockSnapshot.putbackResult = nil
+            applyResult = nil
+            preflightResult = nil
+            putbackResult = nil
+            if isChecklistComplete {
+                await runPreflight()
+            }
+            return
+        }
+
+        liveSnapshot.applyResult = nil
+        liveSnapshot.preflightResult = nil
+        liveSnapshot.putbackResult = nil
+        applyResult = nil
+        preflightResult = nil
+        putbackResult = nil
+        await runPreflight()
+    }
+
     public func bootstrapIfNeeded() async {
         guard bodies.isEmpty else { return }
         await loadBodies()
@@ -541,6 +653,10 @@ public final class AppState: ObservableObject {
         stepperError = nil
 
         if !offlineMockCamera {
+            guard pinResult == nil || pinsVerifiedForAllOrSelected else {
+                stepperError = "Cannot start Live USB preflight: SHA-256 kit pin verification failed. Open Diagnostics -> Kit Integrity to inspect."
+                return
+            }
             presentLiveSession(action: .preflight)
             return
         }
@@ -1098,7 +1214,13 @@ public final class AppState: ObservableObject {
     }
 
     public func selectMP4File(_ url: URL) async {
+        ingestRootURL = nil
+        ingestResult = nil
+        ingestError = nil
+        selectedIngestedClipId = nil
+
         selectedMP4URL = url
+        selectedProxyClipPaths = [url.path]
         gyroDiagResult = nil
         gyroDiagError = nil
         if let autoXML = StudioBridge.autoDetectSidecarXML(for: url) {
@@ -1108,6 +1230,58 @@ public final class AppState: ObservableObject {
         }
         await inspectCurrentClip()
         await runGyroDiagnosticForCurrentClip()
+    }
+
+    public func selectBatchClip(_ clip: IngestedClipItem) {
+        selectedIngestedClipId = clip.id
+        selectedMP4URL = URL(fileURLWithPath: clip.file)
+        if let sidecar = clip.sidecarXml, !sidecar.isEmpty {
+            selectedXMLURL = URL(fileURLWithPath: sidecar)
+        } else {
+            selectedXMLURL = StudioBridge.autoDetectSidecarXML(for: URL(fileURLWithPath: clip.file))
+        }
+        clipResult = nil
+        clipError = nil
+        gyroDiagResult = nil
+        gyroDiagError = nil
+    }
+
+    public func openClipsFromURLs(_ urls: [URL]) async {
+        guard let first = urls.first else { return }
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: first.path, isDirectory: &isDir), isDir.boolValue {
+            ingestRootURL = first
+            selectedMP4URL = nil
+            selectedXMLURL = nil
+            clipResult = nil
+            clipError = nil
+            gyroDiagResult = nil
+            gyroDiagError = nil
+            selectedIngestedClipId = nil
+            await runBatchIngest()
+            return
+        }
+
+        let ext = first.pathExtension.lowercased()
+        if ext == "xml" {
+            await selectXMLFile(first)
+        } else {
+            await selectMP4File(first)
+        }
+    }
+
+    public func clearClipsWorkspace() {
+        selectedMP4URL = nil
+        selectedXMLURL = nil
+        clipResult = nil
+        clipError = nil
+        gyroDiagResult = nil
+        gyroDiagError = nil
+        ingestRootURL = nil
+        ingestResult = nil
+        ingestError = nil
+        selectedIngestedClipId = nil
+        selectedProxyClipPaths = []
     }
 
     public func selectXMLFile(_ url: URL?) async {
@@ -1185,19 +1359,11 @@ public final class AppState: ObservableObject {
                 recursive: ingestRecursive
             )
             appendLog(trace)
-            ingestResult = res
-            selectedProxyClipPaths = Set(res.clips.filter(\.ok).map(\.file))
-            if selectedIngestedClipId == nil, let first = res.clips.first {
-                selectedIngestedClipId = first.id
-            }
+            applyBatchIngestResult(res)
         } catch {
             if let (decoded, trace) = StudioBridge.decodeStructuredFailureReport(BatchIngestResult.self, from: error) {
                 appendLog(trace)
-                ingestResult = decoded
-                selectedProxyClipPaths = Set(decoded.clips.filter(\.ok).map(\.file))
-                if selectedIngestedClipId == nil, let first = decoded.clips.first {
-                    selectedIngestedClipId = first.id
-                }
+                applyBatchIngestResult(decoded)
                 ingestError = nil
             } else {
                 ingestResult = nil
@@ -1207,6 +1373,19 @@ public final class AppState: ObservableObject {
                 }
                 ingestError = error.localizedDescription
             }
+        }
+    }
+
+    private func applyBatchIngestResult(_ res: BatchIngestResult) {
+        ingestResult = res
+        selectedProxyClipPaths = Set(res.clips.filter(\.ok).map(\.file))
+        if let existingId = selectedIngestedClipId,
+           let matched = res.clips.first(where: { $0.id == existingId }) {
+            selectBatchClip(matched)
+        } else if let first = res.clips.first {
+            selectBatchClip(first)
+        } else {
+            selectedIngestedClipId = nil
         }
     }
 
@@ -1416,6 +1595,7 @@ public final class AppState: ObservableObject {
         checkedMovie24pSettings = false
         batteryPulled10s = false
         cameraInStillsMode = false
+        isSetupBannerDismissed = false
     }
 
     private func saveActiveSnapshot(forMock isMock: Bool) {

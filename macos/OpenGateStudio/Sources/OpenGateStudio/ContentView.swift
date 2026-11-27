@@ -9,16 +9,78 @@ public struct ContentView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            topBar
-            Divider()
             if let startupError = appState.startupError {
                 startupBanner(startupError)
+                Divider()
             }
+
+            if let pinRes = appState.pinResult, !pinRes.ok {
+                pinMismatchBanner
+                Divider()
+            }
+
+            if appState.offlineMockCamera {
+                simulationModeBanner
+                Divider()
+            }
+
             mainBody
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                cameraModelPicker
+            }
+
+            ToolbarItem(placement: .principal) {
+                Picker("Workspace", selection: $appState.selectedDestination) {
+                    ForEach(StudioDestination.allCases) { destination in
+                        Text(destination.rawValue).tag(destination)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 190)
+            }
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                modeAndIntegrityToolbarButton
+
+                Button {
+                    appState.showDiagnosticsSheet = true
+                } label: {
+                    Label("Diagnostics", systemImage: "wrench.and.screwdriver")
+                }
+                .help("Diagnostics, Console Log & Field Report")
+
+                if appState.selectedDestination == .clips {
+                    Button {
+                        appState.isClipInspectorPresented.toggle()
+                    } label: {
+                        Label("Inspector", systemImage: "sidebar.trailing")
+                    }
+                    .help("Show or Hide Clip Inspector")
+                }
+            }
+        }
         .sheet(item: $appState.activeLiveSession) { _ in
             LiveSessionSheetView()
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $appState.showSetupGuideSheet) {
+            CameraSetupWizardView()
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $appState.showDiagnosticsSheet) {
+            DiagnosticsSheetView()
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $appState.showProxyExportSheet) {
+            ProxyExportSheetView()
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $appState.showGyroflowPresetsSheet) {
+            GyroflowPresetsSheetView()
                 .environmentObject(appState)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -28,136 +90,163 @@ public struct ContentView: View {
         }
     }
 
-    private var topBar: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 14) {
-                HStack(spacing: 8) {
-                    Image(systemName: "camera.aperture")
-                        .font(.title2)
+    // MARK: - Toolbar Controls
+
+    private var cameraModelPicker: some View {
+        Picker("Camera", selection: $appState.selectedBodyId) {
+            if appState.bodies.isEmpty {
+                Text("ZV-E1 2.02").tag("zve1_202")
+                Text("a7S III 5.01").tag("a7s3_501")
+                Text("FX3 7.02").tag("fx3_702")
+            } else {
+                ForEach(appState.bodies) { body in
+                    Text(body.displayName).tag(body.bodyId)
+                }
+            }
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .frame(width: 145)
+        .disabled(appState.isLiveSessionActive)
+        .help("Select Sony Camera Body & Firmware")
+    }
+
+    private var modeAndIntegrityToolbarButton: some View {
+        let pinMismatch = (appState.pinResult != nil && !appState.pinsVerifiedForAllOrSelected)
+
+        return Button {
+            appState.showModePopover.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                if pinMismatch {
+                    Image(systemName: "exclamationmark.shield.fill")
+                        .foregroundStyle(.orange)
+                } else if appState.offlineMockCamera {
+                    Image(systemName: "desktopcomputer")
                         .foregroundStyle(.blue)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("OpenGate Studio")
-                            .font(.headline)
-                        Text("Volatile RAM Open-Gate Controller")
+                } else {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 7, height: 7)
+                }
+
+                Text(appState.offlineMockCamera ? "Simulation" : "Live USB")
+                    .font(.callout.weight(.medium))
+            }
+        }
+        .help("Camera Connection Mode & Kit Integrity")
+        .popover(isPresented: $appState.showModePopover, arrowEdge: .bottom) {
+            modeAndIntegrityPopover
+        }
+    }
+
+    private var modeAndIntegrityPopover: some View {
+        let verified = appState.pinsVerifiedForAllOrSelected
+
+        return VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Connection Mode")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Toggle(isOn: $appState.offlineMockCamera) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Offline Simulation Mode")
+                            .font(.callout.weight(.medium))
+                        Text("Practice safely without a camera connected. Never unlocks Live USB.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
+                .toggleStyle(.switch)
+                .disabled(appState.isLiveSessionActive)
 
-                Spacer()
-
-                // Camera Picker
-                HStack(spacing: 6) {
-                    Text("Camera")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Picker("Camera", selection: $appState.selectedBodyId) {
-                        if appState.bodies.isEmpty {
-                            Text("ZV-E1 2.02").tag("zve1_202")
-                            Text("a7S III 5.01").tag("a7s3_501")
-                            Text("FX3 7.02").tag("fx3_702")
-                        } else {
-                            ForEach(appState.bodies) { body in
-                                Text(body.displayName).tag(body.bodyId)
+                if appState.offlineMockCamera {
+                    HStack {
+                        Text("Simulated State")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Picker("Simulated State", selection: $appState.mockState) {
+                            ForEach(MockCameraState.allCases) { state in
+                                Text(state.friendlyName).tag(state)
                             }
                         }
+                        .labelsHidden()
+                        .frame(width: 190)
                     }
-                    .labelsHidden()
-                    .frame(width: 160)
+                    .padding(.top, 2)
+                }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Kit Integrity (SHA-256)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    StudioStatusPill(
+                        verified ? "Verified" : "Issue Found",
+                        systemImage: verified ? "checkmark.shield.fill" : "exclamationmark.shield.fill",
+                        color: verified ? .green : .orange
+                    )
                 }
 
-                // SHA-256 Pin Verification Pill + Button
-                HStack(spacing: 6) {
-                    pinStatusPill
+                if let pinRes = appState.pinResult {
+                    Text("\(pinRes.checkedFiles) signed kit files checked.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 8) {
                     Button {
                         Task { await appState.verifyPins() }
                     } label: {
                         if appState.isVerifyingPins {
-                            ProgressView()
-                                .controlSize(.small)
+                            ProgressView().controlSize(.small)
                         } else {
-                            Text("Verify Pins")
+                            Text("Re-Verify")
                         }
                     }
                     .buttonStyle(.bordered)
+                    .controlSize(.small)
                     .disabled(appState.isVerifyingPins)
-                }
 
+                    Button("Inspect Details…") {
+                        appState.showModePopover = false
+                        appState.selectedDiagnosticsTab = .pins
+                        appState.showDiagnosticsSheet = true
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+
+                    Spacer()
+                }
+            }
+
+            if !appState.offlineMockCamera {
                 Divider()
-                    .frame(height: 22)
-
-                // Offline Mock Camera Toggle + Mock State Picker
-                HStack(spacing: 8) {
-                    Toggle("Offline Mock Camera", isOn: $appState.offlineMockCamera)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-
-                    if appState.offlineMockCamera {
-                        Picker("Mock State", selection: $appState.mockState) {
-                            ForEach(MockCameraState.allCases) { state in
-                                Text(state.displayName).tag(state)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 155)
+                HStack {
+                    Button {
+                        appState.showModePopover = false
+                        Task { await appState.syncLatestCameraSession() }
+                    } label: {
+                        Label("Sync Latest Camera Session", systemImage: "arrow.triangle.2.circlepath")
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(appState.isSyncingSession || appState.isLiveSessionActive)
+                    Spacer()
                 }
             }
-
-            HStack {
-                Picker("Workspace", selection: $appState.selectedTab) {
-                    ForEach(StudioTab.allCases) { tab in
-                        Text(tab.rawValue).tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 720)
-
-                Spacer()
-
-                safetyStatusSummaryBadge
-            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(.bar)
+        .padding(16)
+        .frame(width: 340)
     }
 
-    @ViewBuilder
-    private var pinStatusPill: some View {
-        let verified = appState.pinsVerifiedForAllOrSelected
-        HStack(spacing: 5) {
-            Image(systemName: verified ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
-            if let pinRes = appState.pinResult {
-                Text(verified ? "Verified (\(pinRes.checkedFiles))" : "Pin Mismatch")
-            } else {
-                Text(verified ? "Verified" : "Unverified")
-            }
-        }
-        .font(.caption.weight(.semibold))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(verified ? Color.green.opacity(0.16) : Color.orange.opacity(0.18))
-        .foregroundStyle(verified ? Color.green : Color.orange)
-        .clipShape(Capsule())
-    }
-
-    @ViewBuilder
-    private var safetyStatusSummaryBadge: some View {
-        HStack(spacing: 6) {
-            Image(systemName: appState.offlineMockCamera ? "desktopcomputer" : "cable.connector")
-                .foregroundStyle(appState.offlineMockCamera ? .blue : .green)
-            Text(
-                appState.offlineMockCamera
-                    ? "Mock Simulation (\(appState.mockState.displayName)) — Volatile RAM Only"
-                    : (appState.lastResultSource == .liveTerminal
-                        ? "Live USB Mode — Synced (Terminal Fallback)"
-                        : "Live USB Mode — Native In-App (Volatile RAM Only)")
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-    }
+    // MARK: - Top Window Banners
 
     private func startupBanner(_ error: String) -> some View {
         HStack(spacing: 10) {
@@ -174,21 +263,78 @@ public struct ContentView: View {
             .controlSize(.small)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color.red.opacity(0.12))
+        .padding(.vertical, 9)
+        .background(Color.red.opacity(0.11))
     }
+
+    private var pinMismatchBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.shield.fill")
+                .foregroundStyle(.orange)
+            Text("Kit SHA-256 verification failed. Live USB operations are locked until kit files pass verification.")
+                .font(.callout.weight(.medium))
+            Spacer()
+            Button("Inspect Pins…") {
+                appState.selectedDiagnosticsTab = .pins
+                appState.showDiagnosticsSheet = true
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            Button("Re-Verify") {
+                Task { await appState.verifyPins() }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.orange)
+            .controlSize(.small)
+            .disabled(appState.isVerifyingPins)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
+        .background(Color.orange.opacity(0.12))
+    }
+
+    private var simulationModeBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "desktopcomputer")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.blue)
+
+            Text("Simulation Mode — Offline Mock Camera (Volatile RAM Only)")
+                .font(.callout.weight(.medium))
+
+            Spacer()
+
+            Picker("State", selection: $appState.mockState) {
+                ForEach(MockCameraState.allCases) { state in
+                    Text(state.friendlyName).tag(state)
+                }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .frame(width: 195)
+
+            Button("Switch to Live USB") {
+                appState.offlineMockCamera = false
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(appState.isLiveSessionActive)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.blue.opacity(0.10))
+    }
+
+    // MARK: - Main Workspace
 
     @ViewBuilder
     private var mainBody: some View {
-        switch appState.selectedTab {
-        case .setupGuide:
-            CameraSetupWizardView()
-        case .packsAndSafety:
-            FeaturePacksAndStepperView()
-        case .clipInspector:
-            ClipInspectorView()
-        case .creatorWorkflow:
-            CreatorWorkflowView()
+        switch appState.selectedDestination {
+        case .camera:
+            CameraWorkspaceView()
+        case .clips:
+            ClipsWorkspaceView()
         }
     }
 }

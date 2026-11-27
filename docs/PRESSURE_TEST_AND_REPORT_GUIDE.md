@@ -26,7 +26,7 @@ This guide is designed to produce **verifiable, pressure-tested reliability evid
 
 ### Phase 0 — Cold-Boot Reversibility & Zero-Trace Proof
 1. Pull battery for **>= 10 seconds**, boot into **Stills** mode, and run **Read-Only Preflight** (`VERDICT READY (stock preflight)`).
-2. Apply your target preset (`Safe Daily 3:2` or `Cinema + H.264/All-Intra + HDMI`).
+2. Apply your target preset (`Safe Daily 3:2` or `Cinema Full`).
 3. **Power-Off Reversibility Check:** Power off, pull battery for **>= 10 seconds**, boot back into **Stills**, and run **Preflight** again. Confirm it returns **`VERDICT READY (stock preflight)`** — proving zero persistent writes.
 4. *(Optional Warm Power-Switch Check)* If testing whether flipping only the power switch leaves `mixed_powerswitch`, run Preflight after a switch-off/on without pulling the battery, record the result, then pull the battery >= 10s before continuing.
 
@@ -35,7 +35,7 @@ Because volatile RAM resets on battery swaps / power-off, time how fast a field 
 1. Cold-boot in **Stills** mode, plug in USB-C, start a stopwatch when you click **Preflight -> Apply**, and stop when the closing Movie-mode verification completes.
 2. Record seconds separately for:
    - **`Safe Daily 3:2`** (`mp4_3x2`, `screen_3x2`) — fewest USB steps for fast battery-swap recovery.
-   - **`Cinema + H.264/All-Intra + HDMI`** (`mp4_3x2`, `screen_3x2`, `hdmi32`, `high_bitrate`, `xavc_si`).
+   - **`Cinema Full`** (`mp4_3x2`, `screen_3x2`, `hdmi32`, `high_bitrate`, `xavc_si`).
 
 ### Phase 2 — Codec & Frame-Rate Matrix (H.265, H.264, All-Intra)
 Record 10–15 second clips across every combination your card supports (confirming it is **not** H.265-only):
@@ -93,10 +93,10 @@ Capture these **8 items** in one folder so the report has visual proof for every
 ## 4. How to Report Back (Builds `FIELD_REPORT.md` + `field_report.json`)
 
 ### Option A — Inside `OpenGate Studio.app` (Recommended)
-1. Open **Tab 3 (`3. Clip & Gyro`)** and scroll to **Build Field Test & Reliability Report**.
-2. Click **Select Test Clips Folder...** and pick your folder of `.MP4` / `.XML` clips, photos, and screenshots.
-3. Fill in **Media Card**, **Lens**, **Ambient °C**, **Soak Mins**, **Thermal Result**, **Re-Activation Time**, and **AF + HDMI Notes**.
-4. Click **Generate Report Bundle**, then click **Copy Markdown Report** (to paste straight into chat or a [GitHub Field Test Issue](https://github.com/jeromykovatana/opengate-studio/issues/new?template=field-test-report.yml)) or **Reveal Report Folder in Finder**.
+1. Open **Diagnostics & Field Tools** (toolbar wrench icon or `Cmd+Option+D`) and select **Field Report**.
+2. Click **Select Test Clips Folder…** and pick your folder of `.MP4` / `.XML` clips, photos, and screenshots.
+3. Fill in **Media Card**, **Lens**, **Ambient °C**, **Soak Mins**, **Thermal Result**, **Re-Activation Secs**, and **AF + De-Squeeze / HDMI Notes**.
+4. Click **Generate Report Bundle**, then click **Copy Markdown** (to paste straight into chat or a [GitHub Field Test Issue](https://github.com/jeromykovatana/opengate-studio/issues/new?template=field-test-report.yml)) or **Reveal in Finder**.
 
 ### Option B — Pure Python CLI
 ```bash

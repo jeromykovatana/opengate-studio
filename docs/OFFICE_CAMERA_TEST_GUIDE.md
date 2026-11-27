@@ -61,16 +61,16 @@ Set these **once** on each camera before starting:
 
 ### Step B — Read-Only Preflight (Gate 2)
 1. Connect USB-C directly from Mac to camera (avoid unpowered hubs if possible).
-2. In **OpenGate Studio.app**, select your body (`ZV-E1 2.02`, `a7S III 5.01`, or `FX3 7.02`), toggle **Offline Mock Camera = OFF**, check both Gate 1 boxes, and click **Run Read-Only Preflight** (or run `./macos/run_live_terminal.sh preflight --body <body_id>`).
+2. In **OpenGate Studio.app**, select your body (`ZV-E1 2.02`, `a7S III 5.01`, or `FX3 7.02`), ensure Connection Mode is **Live USB** (default), check both **Before Connecting** toggles, and click **Check Camera (Read-Only)** (or run `./macos/run_live_terminal.sh preflight --body <body_id>`).
 3. In the native in-app Live USB sheet (or Terminal fallback if chosen):
-   - Toggle the exact firmware + USB Mass Storage confirmation switch (`2.02`, `5.01`, or `7.02`), click **Authorize & Start Preflight**, and approve the macOS administrator prompt (Touch ID or password).
+   - Toggle the exact firmware + USB Mass Storage confirmation switch (`2.02`, `5.01`, or `7.02`), click **Authorize & Start Read-Only Preflight**, and approve the macOS administrator prompt (Touch ID or password).
    - *(CLI / Terminal fallback via `macos/run_live_terminal.sh`: enter your macOS admin password if prompted and type the exact firmware version.)*
 4. Verify the sheet reports **`VERDICT READY (stock preflight)`** (`ready=True, state="stock"`).
-   - `OpenGate Studio.app` syncs the session automatically on completion and unlocks Gate 3 (**Apply Selected Packs**).
+   - `OpenGate Studio.app` syncs the session automatically on completion and unlocks **Apply Open-Gate (3:2)**.
    - If preflight reports **`VERDICT NOT READY`** (e.g., warm power-switch mixed state), **pull the battery for >= 10s**, power on in **Stills**, and re-run preflight.
 
 ### Step C — Apply Selected Packs (Gate 3)
-1. Select your desired modular packs in `OpenGate Studio.app` (recommended office test set: `mp4_3x2`, `screen_3x2`, `hdmi32`, `high_bitrate`, `xavc_si`) and click **Apply Selected Packs** (or run `./macos/run_live_terminal.sh apply --body <body_id> --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si`).
+1. Select **Safe Daily 3:2** or **Cinema Full** (or expand **Customize Feature Packs** to pick `mp4_3x2`, `screen_3x2`, `hdmi32`, `high_bitrate`, `xavc_si`) in `OpenGate Studio.app` and click **Apply Open-Gate (3:2)** (or run `./macos/run_live_terminal.sh apply --body <body_id> --packs mp4_3x2,screen_3x2,hdmi32,high_bitrate,xavc_si`).
 2. In the in-app confirmation sheet, toggle both confirmation switches (exact firmware `2.02` / `5.01` / `7.02` and volatile-RAM-only / keep camera ON), then click **Authorize & Start Apply** *(in Terminal fallback, confirm the exact firmware and type `YES`)*.
 3. **Between every step:** When prompted, **unplug the USB cable and plug it right back in** — **do NOT power the camera off**.
    - *macOS USB Note:* On macOS, after a step completes and sends the USB reset/stop request, the camera may re-enumerate automatically ~5 seconds later without requiring a physical cable replug — wait briefly or replug if it does not reappear.
@@ -105,7 +105,7 @@ Set these **once** on each camera before starting:
 
 ## 4. Verify Recorded Clips & Gyro Telemetry (`bionz_clip_check.py`)
 
-Copy the recorded `Cxxxx.MP4` and matching `CxxxxM01.XML` sidecar files to a folder on your Mac (keep card originals intact), then inspect via Tab 3 (**Clip, XML & Gyro Inspector**) in `OpenGate Studio.app` or CLI:
+Copy the recorded `Cxxxx.MP4` and matching `CxxxxM01.XML` sidecar files to a folder on your Mac (keep card originals intact), then inspect via the **Clips** workspace (open a clip or SD card folder and view the right-side **Inspector**) in `OpenGate Studio.app` or CLI:
 
 ```bash
 # Baseline stock clip (expects 3840x2160)
@@ -124,5 +124,5 @@ Copy the recorded `Cxxxx.MP4` and matching `CxxxxM01.XML` sidecar files to a fol
 
 ## 5. Returning to Stock (`putback` or Battery Pull)
 
-- **Software putback (same power-on):** Switch back to **Stills** mode, cycle C2/C3 preview to **3:2** (ZV-E1 / a7S III), and run **Put Back to Stock** in `OpenGate Studio.app` (or `./macos/run_live_terminal.sh putback --body <body_id>`).
+- **Software putback (same power-on):** Switch back to **Stills** mode, cycle C2/C3 preview to **3:2** (ZV-E1 / a7S III), and click **Restore Stock RAM** in `OpenGate Studio.app` (or `./macos/run_live_terminal.sh putback --body <body_id>`).
 - **Hardware reset (always works):** Turn off the camera and **pull the battery for >= 10 seconds**. All volatile RAM patches vanish immediately.
