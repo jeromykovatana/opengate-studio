@@ -19,6 +19,12 @@ if str(CLI_DIR) not in sys.path:
 import bionz_clip_check as bcc  # noqa: E402
 import studio_cli  # noqa: E402
 import studio_conformance as sconf  # noqa: E402
+import studio_conformance_plan as sconf_plan  # noqa: E402
+
+SCRIPTS_DIR = REPO_ROOT / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+import verify_clean_room  # noqa: E402
 
 
 def _sha256_file(path: Path) -> str:
@@ -361,6 +367,92 @@ class ConformanceKitTests(unittest.TestCase):
             self.assertEqual(data["calibration_patch"]["new_evidence_level"], "hardware_measured")
             self.assertTrue((out_dir / "CONFORMANCE_REPORT.md").is_file())
             self.assertTrue((out_dir / "conformance_manifest.json").is_file())
+
+    def test_conformance_plan_cli_body_and_json(self) -> None:
+        plan_script = REPO_ROOT / "cli" / "studio_conformance_plan.py"
+        # 1. --body all --json
+        proc_all = subprocess.run(
+            [sys.executable, "-W", "error::ResourceWarning", "-B", str(plan_script), "--body", "all", "--json"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc_all.returncode, 0, proc_all.stderr)
+        data = json.loads(proc_all.stdout)
+        self.assertTrue(data["ok"])
+        self.assertFalse(data["persistent_writes"])
+        self.assertEqual([b["body_id"] for b in data["bodies"]], ["zve1_202", "a7s3_501", "fx3_702"])
+        self.assertEqual(data["priority_queue"][0]["priority"], 1)
+        self.assertEqual(data["priority_queue"][0]["body_id"], "zve1_202")
+        zv = data["bodies"][0]
+        self.assertEqual(zv["v19_helper"]["sha256_prefix"], "511e8afe")
+        self.assertEqual(zv["priorities"][0]["target_design"], "ogfile2560_hs_s_zv_v3")
+        self.assertEqual(zv["priorities"][0]["matrix_promotion"]["dimension"], "clip_xml_validated")
+        self.assertGreaterEqual(data["section5_ct6_targets_count"], 9)
+        zv_sec5 = zv["priorities"][1]["section5_verified_ct6_targets"]
+        self.assertGreaterEqual(len(zv_sec5), 9)
+        self.assertTrue(any("0x11d70d0" in t["address_or_ptr"] for t in zv_sec5))
+        self.assertTrue(any("0x199655c" in t["address_or_ptr"] for t in zv_sec5))
+
+        # 2. --body fx3_702 --json + markdown output
+        proc_fx3 = subprocess.run(
+            [sys.executable, "-W", "error::ResourceWarning", "-B", str(plan_script), "--body", "fx3_702", "--json"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc_fx3.returncode, 0, proc_fx3.stderr)
+        fx3_data = json.loads(proc_fx3.stdout)
+        self.assertEqual([b["body_id"] for b in fx3_data["bodies"]], ["fx3_702"])
+        fx3_p2 = fx3_data["bodies"][0]["priorities"][0]
+        self.assertEqual(fx3_p2["priority"], 2)
+        self.assertEqual(fx3_p2["optional_playback_pack"]["pack_id"], "fx3_playback")
+        self.assertEqual(fx3_p2["optional_playback_pack"]["apply_steps"], ["P29"])
+
+        proc_md = subprocess.run(
+            [sys.executable, "-W", "error::ResourceWarning", "-B", str(plan_script), "--body", "zve1_202"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc_md.returncode, 0, proc_md.stderr)
+        self.assertIn("511e8afe", proc_md.stdout)
+        self.assertIn("Setup Guide…", proc_md.stdout)
+        self.assertIn("Restore Stock RAM", proc_md.stdout)
+
+    def test_conformance_plan_offline_selftest_and_clean_room(self) -> None:
+        # In-process call ensures ResourceWarning / handle coverage under -W error::ResourceWarning
+        res_direct = sconf_plan.run_offline_selftest()
+        self.assertTrue(res_direct["ok"])
+        self.assertEqual(res_direct["bodies_checked"], ["zve1_202", "a7s3_501", "fx3_702"])
+        for bid in ("zve1_202", "a7s3_501", "fx3_702"):
+            b_res = res_direct["results"][bid]
+            self.assertTrue(b_res["ok"])
+            self.assertTrue(b_res["clip_check_ok"])
+            self.assertTrue(b_res["nrt_xml_complete"])
+            self.assertEqual(b_res["embedded_nrt_tags"], ["<Device>", "<VideoLayout>", "<VideoFrame>"])
+            self.assertEqual(b_res["sidecar_nrt_tags"], ["<Device>", "<VideoLayout>", "<VideoFrame>"])
+            self.assertTrue(b_res["report_ok"])
+            self.assertEqual(b_res["clips_scanned"], 2)
+            self.assertEqual(b_res["clips_passed"], 2)
+            self.assertEqual(b_res["clips_failed"], 0)
+
+        # CLI --offline-selftest --json round-trip
+        plan_script = REPO_ROOT / "cli" / "studio_conformance_plan.py"
+        proc = subprocess.run(
+            [sys.executable, "-W", "error::ResourceWarning", "-B", str(plan_script), "--offline-selftest", "--json"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        cli_res = json.loads(proc.stdout)
+        self.assertTrue(cli_res["ok"])
+        self.assertTrue(cli_res["selftest"])
+
+        # Clean-room compliance check
+        cr_res = verify_clean_room.verify_clean_room(REPO_ROOT)
+        self.assertTrue(cr_res["ok"], cr_res.get("errors"))
 
 
 if __name__ == "__main__":
