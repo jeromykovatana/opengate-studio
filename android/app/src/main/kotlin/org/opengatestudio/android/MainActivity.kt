@@ -7,31 +7,46 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Computer
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -46,8 +61,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
@@ -94,9 +111,13 @@ private enum class CameraBodyOption(val bodyId: String, val label: String, val f
     FX3("fx3_702", "FX3", "7.02")
 }
 
-private enum class ExpressPreset(val label: String, val packs: List<String>) {
-    SAFE_DAILY("Safe Daily 3:2", QuickReapplyPlanner.safeDailyPacks),
-    CINEMA_FULL("Cinema Full 3:2", QuickReapplyPlanner.cinemaFullPacks)
+private enum class ExpressPreset(
+    val label: String,
+    val subtitle: String,
+    val packs: List<String>
+) {
+    SAFE_DAILY("Safe Daily 3:2", "MP4 · Gyro · LCD", QuickReapplyPlanner.safeDailyPacks),
+    CINEMA_FULL("Cinema Full 3:2", "HDMI · High-Bitrate", QuickReapplyPlanner.cinemaFullPacks)
 }
 
 private const val COMPANION_PREFS_NAME = "opengate_companion_prefs"
@@ -116,6 +137,7 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
 
     var selectedBody by remember { mutableStateOf(CameraBodyOption.ZVE1) }
     var selectedPreset by remember { mutableStateOf(ExpressPreset.SAFE_DAILY) }
+    var bodyMenuExpanded by remember { mutableStateOf(false) }
     var offlineMockMode by remember { mutableStateOf(false) }
     var batteryPulled10s by remember { mutableStateOf(false) }
     var inStillsMode by remember { mutableStateOf(false) }
@@ -139,6 +161,7 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
     var lastRunResult by remember { mutableStateOf<ChaquopyRuntimeBridge.RunResult?>(null) }
     var exportNotice by remember { mutableStateOf<String?>(null) }
     var usbDeviceSummary by remember { mutableStateOf("Scanning USB-OTG…") }
+    var usbDetectedCount by remember { mutableIntStateOf(0) }
     var isFx3aBlocked by remember { mutableStateOf(false) }
     var usbWarning by remember { mutableStateOf<String?>(null) }
     val eventLog = remember { mutableStateListOf<String>() }
@@ -161,6 +184,7 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
         val detected = QuickReapplyPlanner.detectCameraFromUsbDevices(devs)
         isFx3aBlocked = detected.isFx3aBlocked
         usbWarning = detected.warning
+        usbDetectedCount = devs.size
 
         if (!isRunning && !detected.isFx3aBlocked && detected.bodyId != null) {
             val matchedBody = CameraBodyOption.entries.firstOrNull { it.bodyId == detected.bodyId }
@@ -371,54 +395,239 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("OpenGate Field Companion") }
+                title = {
+                    Box {
+                        Row(
+                            modifier = Modifier
+                                .clickable(enabled = !isRunning) { bodyMenuExpanded = true }
+                                .padding(vertical = 6.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "${selectedBody.label} ${selectedBody.firmware}",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Icon(
+                                imageVector = Icons.Rounded.KeyboardArrowDown,
+                                contentDescription = "Select camera body",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = bodyMenuExpanded,
+                            onDismissRequest = { bodyMenuExpanded = false }
+                        ) {
+                            CameraBodyOption.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text("${option.label} ${option.firmware}") },
+                                    trailingIcon = if (selectedBody == option) {
+                                        {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Check,
+                                                contentDescription = "Selected",
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    } else null,
+                                    onClick = {
+                                        selectBody(option)
+                                        bodyMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                },
+                actions = {
+                    val pillBg = when {
+                        bootstrapping -> MaterialTheme.colorScheme.surfaceContainer
+                        pinsVerified -> SafeGreenBg
+                        else -> AlertRedBg
+                    }
+                    val pillInk = when {
+                        bootstrapping -> MaterialTheme.colorScheme.onSurfaceVariant
+                        pinsVerified -> SafeGreenInk
+                        else -> AlertRedInk
+                    }
+                    val pillLabel = when {
+                        bootstrapping -> "Checking…"
+                        pinsVerified -> "✓ Verified"
+                        else -> "Kit Error"
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = pillBg
+                    ) {
+                        Text(
+                            text = pillLabel,
+                            color = pillInk,
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        onClick = { showAdvanced = !showAdvanced },
+                        shape = CircleShape,
+                        color = if (showAdvanced) {
+                            MaterialTheme.colorScheme.secondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainer
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Build,
+                                contentDescription = "Advanced and diagnostics",
+                                tint = if (showAdvanced) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
             )
+        },
+        bottomBar = {
+            Surface(
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 2.dp,
+                shadowElevation = 6.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !isRunning) {
+                                val checked = !confirmFirmwareAndRam
+                                confirmFirmwareAndRam = checked
+                                prefs.edit().putBoolean(ramAckKey(selectedBody), checked).apply()
+                            },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = confirmFirmwareAndRam,
+                            enabled = !isRunning,
+                            onCheckedChange = { checked ->
+                                confirmFirmwareAndRam = checked
+                                prefs.edit().putBoolean(ramAckKey(selectedBody), checked).apply()
+                            }
+                        )
+                        Text(
+                            text = "FW ${selectedBody.firmware} · Volatile RAM only (battery >= 10s resets)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (isRunning) {
+                        Button(
+                            onClick = { OpenGateForegroundService.requestSafeCancel(context) },
+                            colors = ButtonDefaults.buttonColors(containerColor = AlertRedInk),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                        ) {
+                            Text(
+                                text = "Cancel Safely (Between Steps)",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    } else {
+                        val primaryLabel = when {
+                            !pinsVerified -> "Re-Verify Payload Integrity"
+                            offlineMockMode -> "Simulate ${selectedPreset.label} (Mock)"
+                            else -> "Apply ${selectedPreset.label} (~6s)"
+                        }
+                        Button(
+                            onClick = {
+                                if (!pinsVerified) {
+                                    scope.launch { runBootstrapAndQuery() }
+                                } else {
+                                    launchAction("express-apply", selectedPreset.packs)
+                                }
+                            },
+                            enabled = expressEnabled,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                        ) {
+                            Text(
+                                text = primaryLabel,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
         }
     ) { padding ->
         Column(
             modifier = Modifier
                 .padding(padding)
-                .padding(16.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Pin verification status badge
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (pinsVerified) SafeGreenBg else AlertRedBg
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = if (bootstrapping) {
-                            "Verifying Clean-Room Kit Pins…"
-                        } else if (pinsVerified) {
-                            "Clean-Room Kit Verified ($checkedFilesCount SHA-256 pinned files)"
-                        } else {
-                            "Kit Verification Failed — Live USB Blocked"
-                        },
-                        color = if (pinsVerified) SafeGreenInk else AlertRedInk,
-                        fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    if (pinErrors.isNotEmpty()) {
+            // Conditional kit pin failure alert
+            if (!bootstrapping && !pinsVerified) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = AlertRedBg),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         Text(
-                            text = pinErrors.joinToString("\n"),
+                            text = "Kit Verification Failed — Live USB Blocked",
                             color = AlertRedInk,
-                            style = MaterialTheme.typography.bodySmall
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodyMedium
                         )
+                        if (pinErrors.isNotEmpty()) {
+                            Text(
+                                text = pinErrors.joinToString("\n"),
+                                color = AlertRedInk,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                     }
                 }
             }
 
-            // Unsupported FX3A hardware block banner
+            // Conditional unsupported FX3A hardware block banner
             if (isFx3aBlocked) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = AlertRedBg),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         Text(
                             text = "Unsupported Camera Detected — Live USB Disabled",
                             color = AlertRedInk,
@@ -434,282 +643,50 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
                 }
             }
 
-            // Body selector
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CameraBodyOption.entries.forEach { option ->
-                    FilterChip(
-                        selected = selectedBody == option,
-                        enabled = !isRunning,
-                        onClick = { selectBody(option) },
-                        label = { Text("${option.label} ${option.firmware}") }
-                    )
-                }
-            }
-
-            // Mode toggle (Amber Offline Simulation vs Live USB-OTG)
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (offlineMockMode) AmberBg else MaterialTheme.colorScheme.surfaceVariant
-                ),
-                border = if (offlineMockMode) BorderStroke(1.dp, AmberBorder) else null,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (offlineMockMode) {
-                                    "OFFLINE SIMULATION MODE (AMBER)"
-                                } else {
-                                    "Live USB-OTG Mode (Sony VID 0x054C)"
-                                },
-                                color = if (offlineMockMode) AmberInk else MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                            Text(
-                                text = if (offlineMockMode) {
-                                    "Simulated dry-run only — mock results NEVER unlock live USB apply."
-                                } else {
-                                    usbDeviceSummary
-                                },
-                                color = if (offlineMockMode) AmberInk else MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                        Switch(
-                            checked = offlineMockMode,
-                            enabled = !isRunning,
-                            onCheckedChange = { offlineMockMode = it }
-                        )
-                    }
-                    if (!offlineMockMode) {
-                        OutlinedButton(
-                            onClick = { refreshUsbSummary() },
-                            enabled = !isRunning
-                        ) {
-                            Text("Refresh USB-OTG Scan")
-                        }
-                    }
-                }
-            }
-
-            // Main 1-Tap Express Apply & planner card
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+            // Conditional Amber offline simulation warning
+            if (offlineMockMode) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = AmberBg),
+                    border = BorderStroke(1.dp, AmberBorder),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = when (decision) {
-                            QuickReapplyDecision.BlockedPinsUnverified ->
-                                "Kit Verification Required"
-                            QuickReapplyDecision.RunRecoveryPreflightFirst ->
-                                "1-Tap Express Ready (${selectedBody.label} — Recovery Recommended)"
-                            QuickReapplyDecision.AlreadyApplied ->
-                                "Open-Gate 3:2 Active (${selectedBody.label})"
-                            else ->
-                                if (offlineMockMode) "1-Tap Express Simulation (${selectedBody.label})"
-                                else "1-Tap Express Open-Gate (${selectedBody.label})"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-                    Text(
-                        text = "Volatile RAM only — zero flash or SD card writes. Fused Q19/F19 verifies stock RAM & mixed power-switch atomically before writing (~6s, 1 USB session).",
+                        text = "OFFLINE SIMULATION MODE — Simulated dry-run only; mock results never unlock live USB apply.",
+                        color = AmberInk,
+                        fontWeight = FontWeight.SemiBold,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        modifier = Modifier.padding(12.dp)
                     )
-
-                    companionState?.latestSession?.let { sess ->
-                        Text(
-                            text = "Last session: mode=${sess.mode ?: "?"}, kind=${sess.kind ?: "?"}, state=${sess.state}, ready=${sess.ready}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // Express preset selector
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ExpressPreset.entries.forEach { preset ->
-                            FilterChip(
-                                selected = selectedPreset == preset,
-                                enabled = !isRunning,
-                                onClick = { selectedPreset = preset },
-                                label = { Text(preset.label) }
-                            )
-                        }
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = confirmFirmwareAndRam,
-                            enabled = !isRunning,
-                            onCheckedChange = { checked ->
-                                confirmFirmwareAndRam = checked
-                                prefs.edit().putBoolean(ramAckKey(selectedBody), checked).apply()
-                            }
-                        )
-                        Text("Confirm firmware ${selectedBody.firmware} & volatile RAM only (remembered)")
-                    }
-
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    val primaryLabel = when {
-                        !pinsVerified -> "Re-Verify Payload Integrity"
-                        offlineMockMode -> "Simulate 1-Tap ${selectedPreset.label} (Mock)"
-                        else -> "Apply ${selectedPreset.label} (~6s, 1-Tap)"
-                    }
-
-                    Button(
-                        onClick = {
-                            if (!pinsVerified) {
-                                scope.launch { runBootstrapAndQuery() }
-                            } else {
-                                launchAction("express-apply", selectedPreset.packs)
-                            }
-                        },
-                        enabled = expressEnabled,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(primaryLabel)
-                    }
-
-                    OutlinedButton(
-                        onClick = { launchAction("express-putback", selectedPreset.packs) },
-                        enabled = expressPutbackEnabled,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Restore Stock RAM (1-Tap)")
-                    }
-
-                    if (isRunning) {
-                        Button(
-                            onClick = { OpenGateForegroundService.requestSafeCancel(context) },
-                            colors = ButtonDefaults.buttonColors(containerColor = AlertRedInk),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Cancel Safely (Between Steps)")
-                        }
-                    }
-
-                    TextButton(
-                        onClick = { showAdvanced = !showAdvanced },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            if (showAdvanced) "Hide Advanced & Diagnostics"
-                            else "Advanced & Diagnostics"
-                        )
-                    }
-
-                    if (showAdvanced) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = batteryPulled10s,
-                                    enabled = !isRunning,
-                                    onCheckedChange = { batteryPulled10s = it }
-                                )
-                                Text("Pulled battery >= 10 seconds (cold RAM baseline)")
-                            }
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = inStillsMode,
-                                    enabled = !isRunning,
-                                    onCheckedChange = { inStillsMode = it }
-                                )
-                                Text("Camera is in Stills mode (Mass Storage)")
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = { launchAction("preflight") },
-                                    enabled = !isRunning && pinsVerified && liveUsbAllowed,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Check Camera (Read-Only)")
-                                }
-                                OutlinedButton(
-                                    onClick = { launchAction("dump") },
-                                    enabled = !isRunning && pinsVerified && liveUsbAllowed,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Read-Only Dump")
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = { launchAction("apply", selectedPreset.packs) },
-                                    enabled = !isRunning && pinsVerified && checklistReady && confirmFirmwareAndRam && liveUsbAllowed,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Legacy Multi-Step Apply")
-                                }
-                                OutlinedButton(
-                                    onClick = { launchAction("putback", selectedPreset.packs) },
-                                    enabled = !isRunning && pinsVerified && checklistReady && confirmFirmwareAndRam && liveUsbAllowed,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Legacy Putback")
-                                }
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    scope.launch {
-                                        val exp = withContext(Dispatchers.IO) { bridge.exportBundle() }
-                                        if (exp.ok) {
-                                            val file = File(exp.zipPath)
-                                            val uri = FileProvider.getUriForFile(
-                                                context,
-                                                "${context.packageName}.fileprovider",
-                                                file
-                                            )
-                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                type = "application/zip"
-                                                putExtra(Intent.EXTRA_STREAM, uri)
-                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                            }
-                                            exportNotice = "Exported ${exp.exportedCount} safe file(s); skipped ${exp.skippedPrivate} private file(s)."
-                                            context.startActivity(Intent.createChooser(shareIntent, "Share OpenGate Session Bundle"))
-                                        } else {
-                                            exportNotice = "Export failed."
-                                        }
-                                    }
-                                },
-                                enabled = !isRunning,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Export Session Bundle (Excludes Private Dumps)")
-                            }
-
-                            exportNotice?.let {
-                                Text(
-                                    text = it,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
                 }
             }
 
-            // Live progress / prompt card
+            // Conditional state / recovery notice
+            if (decision == QuickReapplyDecision.AlreadyApplied ||
+                decision == QuickReapplyDecision.RunRecoveryPreflightFirst
+            ) {
+                val recovery = decision == QuickReapplyDecision.RunRecoveryPreflightFirst
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (recovery) AmberBg else SafeGreenBg
+                    ),
+                    border = if (recovery) BorderStroke(1.dp, AmberBorder) else null,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = if (recovery) {
+                            "Recovery Preflight Recommended (${selectedBody.label})"
+                        } else {
+                            "Open-Gate 3:2 Active (${selectedBody.label})"
+                        },
+                        color = if (recovery) AmberInk else SafeGreenInk,
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
+            // Live progress / prompt card placed above controls so camera replug prompts appear immediately
             if (isRunning || lastRunResult != null || eventLog.isNotEmpty()) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(
@@ -737,7 +714,10 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
                                 border = BorderStroke(1.dp, AmberBorder),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
                                     promptTitle?.let {
                                         Text(it, color = AmberInk, fontWeight = FontWeight.Bold)
                                     }
@@ -769,6 +749,305 @@ fun FieldCompanionScreen(onKeepScreenOn: (Boolean) -> Unit = {}) {
                         }
                     }
                 }
+            }
+
+            // 2x2 Quick-Tap Tile Grid
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    ExpressPreset.entries.forEach { preset ->
+                        val isSelected = selectedPreset == preset
+                        QuickTapTile(
+                            title = preset.label,
+                            subtitle = preset.subtitle,
+                            icon = if (isSelected) Icons.Rounded.Check else Icons.Rounded.Movie,
+                            iconTint = if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            containerColor = if (isSelected) {
+                                MaterialTheme.colorScheme.secondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainer
+                            },
+                            contentColor = if (isSelected) {
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            subtitleColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            border = if (isSelected) {
+                                BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                            } else null,
+                            enabled = !isRunning,
+                            modifier = Modifier.weight(1f),
+                            onClick = { selectedPreset = preset }
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    val usbContainer = when {
+                        isFx3aBlocked -> AlertRedBg
+                        usbDetectedCount > 0 -> SafeGreenBg
+                        else -> MaterialTheme.colorScheme.surfaceContainer
+                    }
+                    val usbContentInk = when {
+                        isFx3aBlocked -> AlertRedInk
+                        usbDetectedCount > 0 -> SafeGreenInk
+                        else -> MaterialTheme.colorScheme.onSurface
+                    }
+                    val usbSubtitleInk = when {
+                        isFx3aBlocked -> AlertRedInk
+                        usbDetectedCount > 0 -> SafeGreenInk
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    val usbSubtitle = when {
+                        isFx3aBlocked -> "FX3A blocked"
+                        usbDetectedCount > 0 -> "$usbDetectedCount Sony USB"
+                        else -> "Tap to scan"
+                    }
+
+                    QuickTapTile(
+                        title = "USB-OTG",
+                        subtitle = usbSubtitle,
+                        icon = Icons.Rounded.Refresh,
+                        iconTint = usbContentInk,
+                        containerColor = usbContainer,
+                        contentColor = usbContentInk,
+                        subtitleColor = usbSubtitleInk,
+                        border = null,
+                        enabled = !isRunning,
+                        modifier = Modifier.weight(1f),
+                        onClick = { refreshUsbSummary() }
+                    )
+
+                    QuickTapTile(
+                        title = "Simulation",
+                        subtitle = if (offlineMockMode) "On · Amber Mock" else "Off · Live USB",
+                        icon = Icons.Rounded.Computer,
+                        iconTint = if (offlineMockMode) AmberInk else MaterialTheme.colorScheme.onSurfaceVariant,
+                        containerColor = if (offlineMockMode) AmberBg else MaterialTheme.colorScheme.surfaceContainer,
+                        contentColor = if (offlineMockMode) AmberInk else MaterialTheme.colorScheme.onSurface,
+                        subtitleColor = if (offlineMockMode) AmberInk else MaterialTheme.colorScheme.onSurfaceVariant,
+                        border = if (offlineMockMode) BorderStroke(1.5.dp, AmberBorder) else null,
+                        enabled = !isRunning,
+                        modifier = Modifier.weight(1f),
+                        onClick = { offlineMockMode = !offlineMockMode }
+                    )
+                }
+            }
+
+            // Two side-by-side outlined utility pills
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { launchAction("express-putback", selectedPreset.packs) },
+                    enabled = expressPutbackEnabled,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Restore Stock",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                OutlinedButton(
+                    onClick = { showAdvanced = !showAdvanced },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = if (showAdvanced) "Hide Advanced" else "Advanced & Logs",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            // Expandable Advanced & Diagnostics card
+            if (showAdvanced) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Advanced & Diagnostics",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Kit pins: $checkedFilesCount SHA-256 pinned files · USB: $usbDeviceSummary",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        companionState?.latestSession?.let { sess ->
+                            Text(
+                                text = "Last session: mode=${sess.mode ?: "?"}, kind=${sess.kind ?: "?"}, state=${sess.state}, ready=${sess.ready}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = batteryPulled10s,
+                                enabled = !isRunning,
+                                onCheckedChange = { batteryPulled10s = it }
+                            )
+                            Text("Pulled battery >= 10 seconds (cold RAM baseline)")
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = inStillsMode,
+                                enabled = !isRunning,
+                                onCheckedChange = { inStillsMode = it }
+                            )
+                            Text("Camera is in Stills mode (Mass Storage)")
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { launchAction("preflight") },
+                                enabled = !isRunning && pinsVerified && liveUsbAllowed,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Check Camera (Read-Only)")
+                            }
+                            OutlinedButton(
+                                onClick = { launchAction("dump") },
+                                enabled = !isRunning && pinsVerified && liveUsbAllowed,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Read-Only Dump")
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { launchAction("apply", selectedPreset.packs) },
+                                enabled = !isRunning && pinsVerified && checklistReady && confirmFirmwareAndRam && liveUsbAllowed,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Legacy Multi-Step Apply")
+                            }
+                            OutlinedButton(
+                                onClick = { launchAction("putback", selectedPreset.packs) },
+                                enabled = !isRunning && pinsVerified && checklistReady && confirmFirmwareAndRam && liveUsbAllowed,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Legacy Putback")
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    val exp = withContext(Dispatchers.IO) { bridge.exportBundle() }
+                                    if (exp.ok) {
+                                        val file = File(exp.zipPath)
+                                        val uri = FileProvider.getUriForFile(
+                                            context,
+                                            "${context.packageName}.fileprovider",
+                                            file
+                                        )
+                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "application/zip"
+                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        exportNotice = "Exported ${exp.exportedCount} safe file(s); skipped ${exp.skippedPrivate} private file(s)."
+                                        context.startActivity(Intent.createChooser(shareIntent, "Share OpenGate Session Bundle"))
+                                    } else {
+                                        exportNotice = "Export failed."
+                                    }
+                                }
+                            },
+                            enabled = !isRunning,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Export Session Bundle (Excludes Private Dumps)")
+                        }
+
+                        exportNotice?.let {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickTapTile(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    iconTint: Color,
+    containerColor: Color,
+    contentColor: Color,
+    subtitleColor: Color,
+    border: BorderStroke?,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(18.dp),
+        color = containerColor,
+        contentColor = contentColor,
+        border = border,
+        modifier = modifier.heightIn(min = 96.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = iconTint,
+                modifier = Modifier.size(18.dp)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = subtitleColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

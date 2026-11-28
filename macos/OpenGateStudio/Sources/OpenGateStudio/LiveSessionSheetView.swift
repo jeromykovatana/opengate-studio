@@ -13,20 +13,18 @@ public struct LiveSessionSheetView: View {
     public var body: some View {
         Group {
             if let session = appState.activeLiveSession {
-                VStack(spacing: 0) {
-                    sheetHeader(session)
-                    Divider()
-
-                    if session.phase == .confirming {
-                        confirmingBody(session)
-                    } else {
-                        executionBody(session)
-                    }
+                HStack(spacing: 0) {
+                    timelineRail(session)
+                        .frame(width: 224)
+                        .background(.bar)
 
                     Divider()
-                    sheetFooter(session)
+
+                    detailPane(session)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color(nsColor: .controlBackgroundColor))
                 }
-                .frame(minWidth: 620, idealWidth: 660, minHeight: 500, idealHeight: 600)
+                .frame(minWidth: 680, idealWidth: 720, minHeight: 460, idealHeight: 540)
                 .interactiveDismissDisabled(session.phase == .running)
                 .onAppear {
                     withAnimation(.easeInOut(duration: 0.95).repeatForever(autoreverses: true)) {
@@ -48,289 +46,562 @@ public struct LiveSessionSheetView: View {
         }
     }
 
-    // MARK: - Header
+    // MARK: - Left Timeline Rail
 
-    private func sheetHeader(_ session: LiveSessionPresentation) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: actionIcon(for: session.action))
-                .font(.title2)
-                .foregroundStyle(actionAccent(for: session.action))
-                .frame(width: 34, height: 34)
-                .background(actionAccent(for: session.action).opacity(0.14))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(session.actionTitle)
-                    .font(.headline)
-                HStack(spacing: 6) {
-                    Text(session.cameraDisplayName)
-                        .font(.caption.weight(.semibold))
-                    Text("·")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("FW \(session.requiredFirmware)")
-                        .font(.caption.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(session.bodyId == "fx3_702" ? .orange : .green)
-                }
-            }
-
-            Spacer()
-
-            StudioStatusPill("Volatile RAM Only", systemImage: "memorychip", color: .blue)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(.bar)
+    private enum RailNodeState {
+        case done
+        case active
+        case failed
+        case idle
     }
 
-    // MARK: - Confirming Phase
+    private func timelineRail(_ session: LiveSessionPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 9) {
+                    Image(systemName: actionIcon(for: session.action))
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(actionAccent(for: session.action))
+                        .frame(width: 28, height: 28)
+                        .background(actionAccent(for: session.action).opacity(0.14))
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
 
-    private func confirmingBody(_ session: LiveSessionPresentation) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                StudioSurface(padding: 15) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("Session Summary")
-                                .font(.subheadline.weight(.semibold))
-                            Spacer()
-                            if session.isExpressAction {
-                                StudioStatusPill(
-                                    expressBadgeText(for: session),
-                                    systemImage: "bolt.fill",
-                                    color: .green
-                                )
-                            } else {
-                                let stepNoun = session.estimatedStepCount == 1 ? "step" : "steps"
-                                let suffix = session.action == .apply
-                                    ? " + closing verify"
-                                    : (session.action == .putback ? " + stock verify" : "")
-                                Text("\(session.estimatedStepCount) \(stepNoun)\(suffix)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        HStack(spacing: 22) {
-                            labeledBadge(title: "Camera", value: session.cameraDisplayName)
-                            labeledBadge(title: "Required Firmware", value: session.requiredFirmware)
-                            labeledBadge(
-                                title: "Access",
-                                value: session.requiresVolatileRamConfirmation ? "Volatile RAM Write" : "Read-Only"
-                            )
-                        }
-
-                        if (session.action == .apply || session.action == .expressApply) && !session.selectedPacks.isEmpty {
-                            Divider()
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Enabled Features")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 6) {
-                                        StudioStatusPill(appState.humanReadablePackTitle(for: "core_open_gate"), color: .blue)
-                                        ForEach(session.selectedPacks.filter { $0 != "core_open_gate" }, id: \.self) { pack in
-                                            StudioStatusPill(appState.humanReadablePackTitle(for: pack), color: .secondary)
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(session.cameraDisplayName)
+                            .font(.callout.weight(.semibold))
+                            .lineLimit(1)
+                        Text("FW \(session.requiredFirmware) · \(railModeSummary(session))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
 
-                // Safety Reminders
-                VStack(alignment: .leading, spacing: 8) {
-                    if session.requiresVolatileRamConfirmation {
-                        safetyCalloutRow(
-                            icon: "bolt.shield.fill",
-                            color: .blue,
-                            text: "Writes to volatile RAM only — zero eMMC flash or SD card writes. Keep the camera ON between USB replug prompts; pull the battery for >= 10 seconds anytime to restore stock."
-                        )
-                        safetyCalloutRow(
-                            icon: "film",
-                            color: .orange,
-                            text: (session.bodyId == "a7c_203" || session.bodyId == "zve10_203")
-                                ? "Shoot XAVC S 4K 24p (23.98p) 100M while Open-Gate is active (1.185x vertical de-squeeze in post unless True 3840x2560 Raster is enabled)."
-                                : "Shoot 24p (23.98p), 25p (PAL), or 30p (29.97p) only while Open-Gate is active. Do not switch to 50p, 60p, or 120p."
-                        )
-                        if session.bodyId == "fx3_702" {
-                            safetyCalloutRow(
-                                icon: "hand.raised.fill",
-                                color: .red,
-                                text: "FX3: Verify Model Name is ILME-FX3 (NOT ILME-FX3A). Do not retry Playback if an open-gate clip says Unable to Display."
-                            )
-                        }
-                    } else {
-                        safetyCalloutRow(
-                            icon: "checkmark.shield.fill",
-                            color: .green,
-                            text: "Read-only inspection checks camera RAM without writing anything. Connect the camera in Stills mode (Mass Storage) when prompted."
-                        )
-                    }
-                }
-                .padding(13)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.blue.opacity(0.06))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Color.blue.opacity(0.20), lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                // Mandatory Safety Confirmation Switches
-                StudioSurface(accent: session.canAuthorizeAndStart ? .green : .orange, padding: 15) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(session.isExpressAction ? "One-Time Express Safety Consent" : "Confirm Before Authorizing")
-                            .font(.subheadline.weight(.semibold))
-
-                        if session.isExpressAction {
-                            Toggle(isOn: Binding(
-                                get: { appState.activeLiveSession?.confirmedVolatileRam ?? false },
-                                set: { newValue in
-                                    appState.activeLiveSession?.confirmedVolatileRam = newValue
-                                    appState.activeLiveSession?.confirmedFirmwareAndUsb = newValue
-                                }
-                            )) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("I understand OpenGate Studio patches volatile RAM only (shoot 24p/25p/30p; battery pull >= 10s restores stock)")
-                                        .font(.callout.weight(.medium))
-                                    Text("Saved once for future 1-click runs. Connect camera in Stills mode (USB Mass Storage, FW \(session.requiredFirmware)).")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .toggleStyle(.switch)
-                        } else {
-                            Toggle(isOn: Binding(
-                                get: { appState.activeLiveSession?.confirmedFirmwareAndUsb ?? false },
-                                set: { appState.activeLiveSession?.confirmedFirmwareAndUsb = $0 }
-                            )) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("I verified camera firmware \(session.requiredFirmware) and USB Connection = Mass Storage")
-                                        .font(.callout.weight(.medium))
-                                    Text("Checked in MENU > Setup > Setup Option > Version and USB Connection Mode.")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .toggleStyle(.switch)
-
-                            if session.requiresVolatileRamConfirmation {
-                                Divider()
-                                Toggle(isOn: Binding(
-                                    get: { appState.activeLiveSession?.confirmedVolatileRam ?? false },
-                                    set: { appState.activeLiveSession?.confirmedVolatileRam = $0 }
-                                )) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("I understand this writes volatile RAM only (keep camera ON between steps; battery pull >= 10s restores stock)")
-                                            .font(.callout.weight(.medium))
-                                        Text("Nothing is flashed to permanent camera memory or written to your SD card.")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .toggleStyle(.switch)
-                            }
-                        }
-                    }
-                }
-
-                adminAuthSection(session)
-
-                DisclosureGroup("Advanced & Step Details", isExpanded: $showConfirmAdvanced) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        if !session.estimatedStepsPreview.isEmpty {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Planned Step Order")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                Text(session.estimatedStepsPreview.joined(separator: "  →  "))
-                                    .font(.caption.monospaced())
-                                    .textSelection(.enabled)
-                            }
-                        }
-
-                        Button {
-                            Task { await appState.launchTerminalFallbackFromSheet() }
-                        } label: {
-                            Label("Use Terminal Fallback Instead", systemImage: "terminal")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    }
-                    .padding(.top, 8)
-                }
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            }
-            .padding(20)
-        }
-    }
-
-    // MARK: - Running / Finished / Cancelled / Failed Phase
-
-    private func executionBody(_ session: LiveSessionPresentation) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                progressHeaderCard(session)
-
-                if session.phase == .running, let banner = session.activeBanner {
-                    actionBannerView(banner)
-                }
-
-                if session.phase == .finished {
-                    finishedOutcomeBanner(session)
-                } else if session.phase == .cancelled {
-                    cancelledOutcomeBanner(session)
-                } else if session.phase == .failed {
-                    failedOutcomeBanner(session)
-                }
-
-                stepsListCard(session)
-
-                liveLogDisclosure(session)
-            }
-            .padding(20)
-        }
-    }
-
-    private func progressHeaderCard(_ session: LiveSessionPresentation) -> some View {
-        StudioSurface(accent: phaseColor(session), padding: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    HStack(spacing: 8) {
-                        if session.phase == .running {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: phaseIcon(session))
-                                .foregroundStyle(phaseColor(session))
-                        }
+                if session.phase != .confirming {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ProgressView(value: session.progressFraction)
+                            .progressViewStyle(.linear)
+                            .tint(phaseColor(session))
                         Text(phaseHeadline(session))
-                            .font(.subheadline.weight(.semibold))
+                            .font(.caption)
+                            .foregroundStyle(session.phase == .failed ? .red : .secondary)
+                            .lineLimit(2)
                     }
-                    Spacer()
-                    if session.isExpressAction {
-                        StudioStatusPill(
-                            expressBadgeText(for: session),
-                            systemImage: "bolt.fill",
-                            color: .green
+                }
+            }
+            .padding(16)
+
+            Divider()
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    timelineItems(for: session)
+                }
+                .padding(16)
+            }
+
+            Divider()
+
+            railFooter(session)
+                .padding(14)
+        }
+    }
+
+    @ViewBuilder
+    private func timelineItems(for session: LiveSessionPresentation) -> some View {
+        let authDone = session.phase != .confirming && !session.wasAdminAuthCancelled
+        let authState: RailNodeState = {
+            if session.phase == .confirming { return .active }
+            if session.wasAdminAuthCancelled { return .failed }
+            return .done
+        }()
+
+        if session.phase == .confirming {
+            if session.isExpressAction {
+                timelineNode(index: "1", title: "Authorize", subtitle: nil, state: .active, isLast: false)
+                timelineNode(
+                    index: "2",
+                    title: session.action == .expressPutback ? "Restore Stock" : "Patch RAM",
+                    subtitle: session.estimatedStepsPreview.first,
+                    state: .idle,
+                    isLast: false
+                )
+                timelineNode(index: "3", title: "Verify & Unplug", subtitle: nil, state: .idle, isLast: true)
+            } else {
+                let preview = session.estimatedStepsPreview
+                let showEachStep = !preview.isEmpty && preview.count <= 4
+                let finalTitle: String = {
+                    switch session.action {
+                    case .apply: return "Verify & Unplug"
+                    case .putback: return "Stock Check"
+                    case .preflight, .dump: return "Verify RAM"
+                    case .expressApply, .expressPutback: return "Verify & Unplug"
+                    }
+                }()
+
+                timelineNode(index: "1", title: "Authorize", subtitle: nil, state: .active, isLast: false)
+
+                if showEachStep {
+                    ForEach(Array(preview.enumerated()), id: \.offset) { idx, stepCode in
+                        timelineNode(
+                            index: "\(idx + 2)",
+                            title: stepCode,
+                            subtitle: nil,
+                            state: .idle,
+                            isLast: false
                         )
                     }
-                    if !session.steps.isEmpty {
-                        Text("\(session.completedProgressUnits) / \(session.steps.count + (session.includesClosingDump ? 1 : 0)) steps")
-                            .font(.caption.monospacedDigit().weight(.semibold))
+                    timelineNode(
+                        index: "\(preview.count + 2)",
+                        title: finalTitle,
+                        subtitle: nil,
+                        state: .idle,
+                        isLast: true
+                    )
+                } else {
+                    let stepCount = max(session.estimatedStepCount, 1)
+                    timelineNode(
+                        index: "2",
+                        title: "Run \(stepCount) steps",
+                        subtitle: nil,
+                        state: .idle,
+                        isLast: false
+                    )
+                    timelineNode(index: "3", title: finalTitle, subtitle: nil, state: .idle, isLast: true)
+                }
+            }
+        } else {
+            let hasClosing = session.includesClosingDump
+            let hasSteps = !session.steps.isEmpty
+
+            timelineNode(
+                index: "1",
+                title: authDone ? "Authorized" : "Authorize",
+                subtitle: nil,
+                state: authState,
+                isLast: !hasSteps && !hasClosing && session.phase != .running
+            )
+
+            if !hasSteps && !hasClosing {
+                if session.phase == .running {
+                    timelineNode(
+                        index: "2",
+                        title: "Preparing step plan…",
+                        subtitle: nil,
+                        state: .active,
+                        isLast: true
+                    )
+                } else {
+                    timelineNode(
+                        index: "2",
+                        title: "No steps executed",
+                        subtitle: nil,
+                        state: session.phase == .failed ? .failed : .idle,
+                        isLast: true
+                    )
+                }
+            } else {
+                ForEach(Array(session.steps.enumerated()), id: \.element.id) { idx, step in
+                    timelineNode(
+                        index: "\(idx + 2)",
+                        title: step.summary,
+                        subtitle: step.id,
+                        state: mapStepStatus(step.status),
+                        isLast: !hasClosing && idx == session.steps.count - 1
+                    )
+                }
+
+                if hasClosing {
+                    let isStockCheck = session.closingKind == "stock_check" || session.action == .putback || session.action == .expressPutback
+                    timelineNode(
+                        index: "\(session.steps.count + 2)",
+                        title: isStockCheck ? "Stock Check" : "Verify & Unplug",
+                        subtitle: isStockCheck ? "CHECK" : "VERIFY",
+                        state: mapStepStatus(session.closingDumpStatus ?? .pending),
+                        isLast: true
+                    )
+                }
+            }
+        }
+    }
+
+    private func timelineNode(
+        index: String,
+        title: String,
+        subtitle: String?,
+        state: RailNodeState,
+        isLast: Bool
+    ) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(spacing: 2) {
+                ZStack {
+                    switch state {
+                    case .done:
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 18, height: 18)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                    case .active:
+                        Circle()
+                            .fill(Color.blue)
+                            .frame(width: 18, height: 18)
+                        Text(index)
+                            .font(.caption2.weight(.bold).monospacedDigit())
+                            .foregroundStyle(.white)
+                    case .failed:
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 18, height: 18)
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                    case .idle:
+                        Circle()
+                            .strokeBorder(Color.primary.opacity(0.22), lineWidth: 1.5)
+                            .background(Circle().fill(Color(nsColor: .controlBackgroundColor)))
+                            .frame(width: 18, height: 18)
+                        Text(index)
+                            .font(.caption2.weight(.semibold).monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                ProgressView(value: session.progressFraction)
-                    .progressViewStyle(.linear)
-                    .tint(phaseColor(session))
+                if !isLast {
+                    Rectangle()
+                        .fill(state == .done ? Color.green : Color.primary.opacity(0.14))
+                        .frame(width: 1.5, height: 22)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.caption.weight(state == .active ? .semibold : .medium))
+                    .foregroundStyle(state == .active ? .primary : .secondary)
+                    .lineLimit(2)
+
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.top, 1)
+            .padding(.bottom, isLast ? 0 : 8)
+        }
+    }
+
+    @ViewBuilder
+    private func railFooter(_ session: LiveSessionPresentation) -> some View {
+        switch session.phase {
+        case .confirming:
+            Button {
+                sudoPassword = ""
+                appState.dismissLiveSessionSheet()
+            } label: {
+                Text("Cancel")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .keyboardShortcut(.cancelAction)
+
+        case .running:
+            VStack(spacing: 6) {
+                Button(role: .destructive) {
+                    appState.cancelActiveLiveSession()
+                } label: {
+                    Text(session.isCancelling ? "Cancelling…" : "Cancel Safely")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(session.isCancelling)
+
+                Text(
+                    session.isCancelling
+                        ? "Stopping cleanly before next step…"
+                        : "Stops safely before next step."
+                )
+                .font(.caption2)
+                .foregroundStyle(session.isCancelling ? .orange : .secondary)
+                .multilineTextAlignment(.center)
+            }
+
+        case .cancelled, .failed:
+            VStack(spacing: 8) {
+                Button {
+                    appState.retryActiveLiveSession()
+                } label: {
+                    Text("Try Again")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    appState.dismissLiveSessionSheet()
+                } label: {
+                    Text("Close")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+            }
+
+        case .finished:
+            Button {
+                appState.dismissLiveSessionSheet()
+            } label: {
+                Text("Done")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint((session.completionReady ?? false) ? .green : .accentColor)
+            .keyboardShortcut(.defaultAction)
+        }
+    }
+
+    // MARK: - Right Active Detail Pane
+
+    @ViewBuilder
+    private func detailPane(_ session: LiveSessionPresentation) -> some View {
+        if session.phase == .confirming {
+            confirmingDetailPane(session)
+        } else {
+            executionDetailPane(session)
+        }
+    }
+
+    private func confirmingDetailPane(_ session: LiveSessionPresentation) -> some View {
+        let missingPassword = !isSudoCached && !appState.useSystemAuthDialog && sudoPassword.isEmpty
+
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .center, spacing: 8) {
+                    Text("Authorize \(session.actionTitle)")
+                        .font(.title3.weight(.semibold))
+                    Spacer()
+                    StudioStatusPill(
+                        session.requiresVolatileRamConfirmation ? "Volatile RAM" : "Read-Only",
+                        color: session.requiresVolatileRamConfirmation ? .blue : .green
+                    )
+                }
+
+                if (session.action == .apply || session.action == .expressApply) && !session.selectedPacks.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            StudioStatusPill(appState.humanReadablePackTitle(for: "core_open_gate"), color: .blue)
+                            ForEach(session.selectedPacks.filter { $0 != "core_open_gate" }, id: \.self) { pack in
+                                StudioStatusPill(appState.humanReadablePackTitle(for: pack), color: .secondary)
+                            }
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    if session.requiresVolatileRamConfirmation {
+                        Text("Writes volatile RAM only (zero eMMC or SD writes; battery pull >= 10s restores stock). Keep the camera ON between prompts.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Text(
+                            (session.bodyId == "a7c_203" || session.bodyId == "zve10_203")
+                                ? "Shoot XAVC S 4K 24p (23.98p) 100M while active (1.185x vertical de-squeeze unless True 3840x2560 Raster is enabled)."
+                                : "Shoot 24p, 25p, or 30p only while Open-Gate is active (do not switch to 50p, 60p, or 120p)."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                        if session.bodyId == "fx3_702" {
+                            Text("FX3: Verify Model Name is ILME-FX3 (not ILME-FX3A). Do not retry Playback if Unable to Display appears.")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.red)
+                        }
+                    } else {
+                        Text("Read-only inspection checks camera RAM without writing anything. Connect the camera in Stills mode (Mass Storage) when prompted.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if session.isExpressAction {
+                    Toggle(
+                        "I understand volatile RAM & 24p/25p/30p rules (connect in Stills / Mass Storage)",
+                        isOn: Binding(
+                            get: { appState.activeLiveSession?.confirmedVolatileRam ?? false },
+                            set: { newValue in
+                                appState.activeLiveSession?.confirmedVolatileRam = newValue
+                                appState.activeLiveSession?.confirmedFirmwareAndUsb = newValue
+                            }
+                        )
+                    )
+                    .font(.callout)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle(
+                            "I verified camera firmware \(session.requiredFirmware) and USB Connection = Mass Storage",
+                            isOn: Binding(
+                                get: { appState.activeLiveSession?.confirmedFirmwareAndUsb ?? false },
+                                set: { appState.activeLiveSession?.confirmedFirmwareAndUsb = $0 }
+                            )
+                        )
+                        .font(.callout)
+
+                        if session.requiresVolatileRamConfirmation {
+                            Toggle(
+                                "I understand this writes volatile RAM only (keep camera ON; battery pull >= 10s restores stock)",
+                                isOn: Binding(
+                                    get: { appState.activeLiveSession?.confirmedVolatileRam ?? false },
+                                    set: { appState.activeLiveSession?.confirmedVolatileRam = $0 }
+                                )
+                            )
+                            .font(.callout)
+                        }
+                    }
+                }
+
+                Divider()
+
+                inlineAdminAuthSection(session)
+
+                Button {
+                    startSessionFromSheet()
+                } label: {
+                    Label("Authorize & Start", systemImage: "lock.open.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(actionAccent(for: session.action))
+                .controlSize(.large)
+                .disabled(!session.canAuthorizeAndStart || missingPassword)
+
+                HStack(alignment: .top) {
+                    DisclosureGroup("Planned Steps (\(session.estimatedStepsPreview.count))", isExpanded: $showConfirmAdvanced) {
+                        if !session.estimatedStepsPreview.isEmpty {
+                            Text(session.estimatedStepsPreview.joined(separator: "  →  "))
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .padding(.top, 4)
+                        }
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Button("Terminal Fallback") {
+                        Task { await appState.launchTerminalFallbackFromSheet() }
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .padding(20)
+        }
+    }
+
+    @ViewBuilder
+    private func inlineAdminAuthSection(_ session: LiveSessionPresentation) -> some View {
+        if isSudoCached {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.shield.fill")
+                    .foregroundStyle(.green)
+                Text("Administrator session active (no password prompt needed)")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.green)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.green.opacity(0.10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.green.opacity(0.30), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("Authorization Method", selection: $appState.useSystemAuthDialog) {
+                    Text("sudo Password").tag(false)
+                    Text("Touch ID").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+
+                if !appState.useSystemAuthDialog {
+                    SecureField("Enter your Mac login password", text: $sudoPassword)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit {
+                            if session.canAuthorizeAndStart && !sudoPassword.isEmpty {
+                                startSessionFromSheet()
+                            }
+                        }
+                    Text("Caches administrator session for ~5 min · never saved or logged.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    HStack(spacing: 8) {
+                        Image(systemName: "touchid")
+                            .foregroundStyle(.secondary)
+                        Text("macOS will show the Touch ID / password prompt. If macOS 26/27 blocks USB access, switch to sudo Password.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
         }
     }
+
+    private func executionDetailPane(_ session: LiveSessionPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if session.phase == .running, let banner = session.activeBanner {
+                actionBannerView(banner)
+            } else if session.phase == .finished {
+                finishedOutcomeBanner(session)
+            } else if session.phase == .cancelled {
+                cancelledOutcomeBanner(session)
+            } else if session.phase == .failed {
+                failedOutcomeBanner(session)
+            }
+
+            liveOutputPanel(session)
+        }
+        .padding(20)
+    }
+
+    private func liveOutputPanel(_ session: LiveSessionPresentation) -> some View {
+        let lineCount = session.logText.isEmpty ? 0 : session.logText.split(whereSeparator: \.isNewline).count
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Live Output")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(lineCount) lines")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            ScrollView {
+                Text(session.logText.isEmpty ? "Waiting for live output…" : session.logText)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .padding(10)
+            }
+            .frame(minHeight: 150, maxHeight: .infinity)
+            .background(Color(nsColor: .textBackgroundColor))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+
+    // MARK: - Action & Outcome Banners
 
     @ViewBuilder
     private func actionBannerView(_ banner: LiveActionBanner) -> some View {
@@ -338,141 +609,103 @@ public struct LiveSessionSheetView: View {
         case .awaitingAdminAuth:
             HStack(alignment: .center, spacing: 12) {
                 Image(systemName: "lock.shield.fill")
-                    .font(.title2)
+                    .font(.title3)
                     .foregroundStyle(.blue)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Waiting for macOS Administrator Authorization")
-                        .font(.headline)
-                    Text("Approve the native macOS Touch ID or password prompt to start the Live USB session.")
+                    Text("Waiting for Administrator Authorization")
+                        .font(.callout.weight(.semibold))
+                    Text("Approve the native macOS Touch ID or password prompt to start.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 ProgressView().controlSize(.small)
             }
-            .padding(16)
+            .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.blue.opacity(0.10))
+            .background(Color.blue.opacity(0.09))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color.blue.opacity(0.40), lineWidth: 1.5)
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(Color.blue.opacity(0.35), lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
 
         case .connectInitialDrive(_, let detail, let stepId):
-            HStack(alignment: .top, spacing: 14) {
-                Image(systemName: "cable.connector")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 46, height: 46)
-                    .background(Color.blue)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text("Connect USB-C in Stills Mode (Mass Storage)")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.blue)
+                    Spacer()
+                    if let stepId, !stepId.isEmpty {
+                        Text(stepId)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.blue.opacity(0.09))
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(Color.blue.opacity(0.40), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+        case .replugUsbDrive(_, let detail, let stepId):
+            HStack(alignment: .top, spacing: 11) {
+                Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.orange)
+                    .scaleEffect(pulseActive ? 1.06 : 0.96)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        StudioStatusPill("ACTION REQUIRED", color: .blue)
+                    HStack(spacing: 6) {
+                        StudioStatusPill("UNPLUG & REPLUG USB-C", color: .orange)
+                        StudioStatusPill("KEEP CAMERA ON", color: .red)
                         if let stepId, !stepId.isEmpty {
                             Text(stepId)
                                 .font(.caption2.monospaced())
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    Text("Connect USB-C in Stills Mode (Mass Storage)")
-                        .font(.title3.weight(.bold))
-                    Text(detail)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.blue.opacity(0.14))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color.blue.opacity(0.75), lineWidth: 2)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-        case .replugUsbDrive(_, let detail, let stepId):
-            HStack(alignment: .top, spacing: 14) {
-                Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 48, height: 48)
-                    .background(Color.orange)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .scaleEffect(pulseActive ? 1.06 : 0.96)
-
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 8) {
-                        Text("UNPLUG & REPLUG USB-C")
-                            .font(.caption2.weight(.heavy))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
-                            .background(Color.orange)
-                            .foregroundStyle(.white)
-                            .clipShape(Capsule())
-
-                        StudioStatusPill("KEEP CAMERA ON", color: .red)
-
-                        if let stepId, !stepId.isEmpty {
-                            Text("Next: \(stepId)")
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
                     Text("Unplug USB-C and Plug Right Back In — Keep Camera ON!")
-                        .font(.title3.weight(.bold))
+                        .font(.callout.weight(.semibold))
                     Text(detail)
-                        .font(.callout)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
             }
-            .padding(16)
+            .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.orange.opacity(pulseActive ? 0.22 : 0.12))
+            .background(Color.orange.opacity(pulseActive ? 0.18 : 0.10))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color.orange.opacity(pulseActive ? 0.95 : 0.55), lineWidth: 2.5)
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(Color.orange.opacity(pulseActive ? 0.85 : 0.45), lineWidth: 1.5)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
 
         case .switchToMovieMode(_, let detail, let hint):
-            HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: .top, spacing: 11) {
                 Image(systemName: "video.fill")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 48, height: 48)
-                    .background(
-                        LinearGradient(
-                            colors: [Color.purple, Color.blue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .font(.title2)
+                    .foregroundStyle(.purple)
                     .scaleEffect(pulseActive ? 1.06 : 0.96)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 8) {
-                        Text("SWITCH TO MOVIE MODE")
-                            .font(.caption2.weight(.heavy))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
-                            .background(Color.purple)
-                            .foregroundStyle(.white)
-                            .clipShape(Capsule())
-
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        StudioStatusPill("SWITCH TO MOVIE MODE", color: .purple)
                         StudioStatusPill("24p / 25p / 30p ONLY", color: .blue)
                     }
-
                     Text("Unplug USB-C → Switch Camera to MOVIE Mode (24p/25p/30p) → Replug USB-C")
-                        .font(.title3.weight(.bold))
+                        .font(.callout.weight(.semibold))
                     Text(detail)
-                        .font(.callout)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                     if let hint, !hint.isEmpty {
                         Text("Camera control: \(hint)")
@@ -482,23 +715,14 @@ public struct LiveSessionSheetView: View {
                 }
                 Spacer()
             }
-            .padding(16)
+            .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                LinearGradient(
-                    colors: [
-                        Color.purple.opacity(pulseActive ? 0.20 : 0.12),
-                        Color.blue.opacity(pulseActive ? 0.18 : 0.10)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
+            .background(Color.purple.opacity(pulseActive ? 0.16 : 0.09))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color.purple.opacity(pulseActive ? 0.90 : 0.50), lineWidth: 2.5)
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(Color.purple.opacity(pulseActive ? 0.75 : 0.40), lineWidth: 1.5)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
     }
 
@@ -552,22 +776,23 @@ public struct LiveSessionSheetView: View {
             || session.action == .putback
         )
 
-        StudioSurface(accent: accent, padding: 14) {
-            VStack(alignment: .leading, spacing: 10) {
+        StudioSurface(accent: accent, padding: 13) {
+            VStack(alignment: .leading, spacing: 9) {
                 if showSafeToUnplug {
                     safeToUnplugHeader(isPutback: session.action == .expressPutback || session.action == .putback)
                 }
 
                 HStack(spacing: 10) {
                     Image(systemName: isReady ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                        .font(.title2)
+                        .font(.title3)
                         .foregroundStyle(accent)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(headline)
-                            .font(.headline)
+                            .font(.callout.weight(.semibold))
                             .foregroundStyle(accent)
                         Text(subtitle)
-                            .font(.callout)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     Spacer()
                 }
@@ -584,7 +809,7 @@ public struct LiveSessionSheetView: View {
 
                 if let verdict = session.completionVerdict, !verdict.isEmpty {
                     Text("Verdict: \(verdict)\(session.completionSessionId.map { "  ·  Session: \($0)" } ?? "")")
-                        .font(.caption.monospaced())
+                        .font(.caption2.monospaced())
                         .foregroundStyle(.secondary)
                 }
             }
@@ -604,12 +829,12 @@ public struct LiveSessionSheetView: View {
     }
 
     private func failedOutcomeBanner(_ session: LiveSessionPresentation) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             StudioCallout(
                 icon: "xmark.octagon.fill",
                 color: .red,
                 title: "\(session.actionTitle) Stopped With an Error",
-                detail: session.failureMessage ?? "An unexpected error occurred. Expand Live Output Log for details."
+                detail: session.failureMessage ?? "An unexpected error occurred. Check Live Output below for details."
             )
 
             if session.leftBehindWarning {
@@ -620,389 +845,68 @@ public struct LiveSessionSheetView: View {
                     detail: "Pull the camera battery for >= 10 seconds to restore clean stock RAM before retrying."
                 )
             }
-        }
-    }
 
-    // MARK: - Live Step Cards
-
-    private func stepsListCard(_ session: LiveSessionPresentation) -> some View {
-        StudioSurface(padding: 14) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Progress")
-                    .font(.subheadline.weight(.semibold))
-
-                if session.steps.isEmpty && !session.includesClosingDump {
-                    HStack(spacing: 8) {
-                        if session.phase == .running {
-                            ProgressView().controlSize(.small)
-                            Text("Preparing step plan…")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("No steps were executed.")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                } else {
-                    VStack(spacing: 8) {
-                        ForEach(session.steps) { step in
-                            stepRow(
-                                code: step.id,
-                                indexLabel: "\(step.index)",
-                                summary: step.summary,
-                                status: step.status
-                            )
-                        }
-
-                        if session.includesClosingDump {
-                            let isStockCheck = session.closingKind == "stock_check" || session.action == .putback
-                            stepRow(
-                                code: isStockCheck ? "CHECK" : "VERIFY",
-                                indexLabel: "\(session.steps.count + 1)",
-                                summary: isStockCheck
-                                    ? "Closing read-only stock verification check"
-                                    : "Closing Movie-mode RAM verification dump",
-                                status: session.closingDumpStatus ?? .pending
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func stepRow(code: String, indexLabel: String, summary: String, status: LiveStepStatus) -> some View {
-        let rowAccent = stepStatusColor(status)
-        return HStack(spacing: 10) {
-            Text(indexLabel)
-                .font(.caption2.monospacedDigit().weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 18, alignment: .trailing)
-
-            Text(summary)
-                .font(.callout)
-                .lineLimit(2)
-
-            Spacer()
-
-            Text(code)
-                .font(.caption2.monospaced())
-                .foregroundStyle(.secondary)
-
-            stepStatusAccessory(status)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(stepRowBackground(status))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(rowAccent.opacity(stepRowBorderOpacity(status)), lineWidth: 1)
-        )
-    }
-
-    @ViewBuilder
-    private func stepStatusAccessory(_ status: LiveStepStatus) -> some View {
-        switch status {
-        case .pending:
-            Image(systemName: "circle")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-        case .waitingDrive(let first):
-            StudioStatusPill(
-                first ? "Connect USB" : "Replug USB",
-                systemImage: first ? "cable.connector" : "arrow.triangle.2.circlepath",
-                color: first ? .blue : .orange
-            )
-
-        case .active:
-            HStack(spacing: 5) {
-                ProgressView().controlSize(.small)
-                Text("Running")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.blue)
-            }
-
-        case .done(let outcome):
-            HStack(spacing: 4) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Text(outcome)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.green)
-            }
-
-        case .failed(let msg):
-            HStack(spacing: 4) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.red)
-                Text(msg ?? "Failed")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.red)
-                    .lineLimit(1)
-            }
-        }
-    }
-
-    // MARK: - Live Output Log Disclosure
-
-    private func liveLogDisclosure(_ session: LiveSessionPresentation) -> some View {
-        StudioSurface(padding: 12) {
-            DisclosureGroup(
-                isExpanded: Binding(
-                    get: { appState.activeLiveSession?.isLogExpanded ?? false },
-                    set: { appState.activeLiveSession?.isLogExpanded = $0 }
-                )
-            ) {
-                ScrollView {
-                    Text(session.logText.isEmpty ? "Waiting for live output…" : session.logText)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .padding(10)
-                }
-                .frame(minHeight: 110, maxHeight: 180)
-                .background(Color(nsColor: .textBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .padding(.top, 6)
+            Button {
+                Task { await appState.launchTerminalFallbackFromSheet() }
             } label: {
-                HStack {
-                    Label("Live Output Log", systemImage: "text.alignleft")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    let lineCount = session.logText.isEmpty ? 0 : session.logText.split(whereSeparator: \.isNewline).count
-                    Text("\(lineCount) lines")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
+                Label("Use Terminal Instead", systemImage: "terminal")
             }
-        }
-    }
-
-    // MARK: - Footer
-
-    private func sheetFooter(_ session: LiveSessionPresentation) -> some View {
-        HStack(spacing: 10) {
-            switch session.phase {
-            case .confirming:
-                let missingPassword: Bool = !isSudoCached && !appState.useSystemAuthDialog && sudoPassword.isEmpty
-                Button("Cancel") {
-                    sudoPassword = ""
-                    appState.dismissLiveSessionSheet()
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Spacer()
-
-                Button {
-                    startSessionFromSheet()
-                } label: {
-                    Label("Authorize & Start \(session.actionTitle)", systemImage: "lock.open.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(actionAccent(for: session.action))
-                .controlSize(.large)
-                .disabled(!session.canAuthorizeAndStart || missingPassword)
-
-            case .running:
-                if session.isCancelling {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text("Cancelling safely before next step…")
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(.orange)
-                    }
-                } else {
-                    Text("Safe cancel stops cleanly before the next step (never mid-write).")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Button(role: .destructive) {
-                    appState.cancelActiveLiveSession()
-                } label: {
-                    Text(session.isCancelling ? "Cancelling…" : "Cancel Safely")
-                }
-                .buttonStyle(.bordered)
-                .disabled(session.isCancelling)
-
-            case .cancelled:
-                Button("Try Again") {
-                    appState.retryActiveLiveSession()
-                }
-                .buttonStyle(.bordered)
-
-                Spacer()
-
-                Button("Close") {
-                    appState.dismissLiveSessionSheet()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-
-            case .failed:
-                Button("Try Again") {
-                    appState.retryActiveLiveSession()
-                }
-                .buttonStyle(.bordered)
-
-                Button {
-                    Task { await appState.launchTerminalFallbackFromSheet() }
-                } label: {
-                    Label("Use Terminal Instead", systemImage: "terminal")
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
-                .font(.callout)
-
-                Spacer()
-
-                Button("Close") {
-                    appState.dismissLiveSessionSheet()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-
-            case .finished:
-                Spacer()
-
-                Button("Done") {
-                    appState.dismissLiveSessionSheet()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint((session.completionReady ?? false) ? .green : .accentColor)
-                .controlSize(.large)
-                .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(.bar)
-    }
-
-    // MARK: - Helpers
-
-    @ViewBuilder
-    private func adminAuthSection(_ session: LiveSessionPresentation) -> some View {
-        StudioSurface(padding: 14) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: isSudoCached ? "lock.open.fill" : "lock.shield.fill")
-                        .foregroundStyle(isSudoCached ? .green : .blue)
-                    Text("Administrator Authorization")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    if isSudoCached {
-                        StudioStatusPill("Cached sudo", systemImage: "checkmark.circle.fill", color: .green)
-                    }
-                }
-
-                if isSudoCached {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.shield.fill")
-                            .foregroundStyle(.green)
-                        Text("Administrator session active (no password prompt needed)")
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(.green)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.green.opacity(0.10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(Color.green.opacity(0.30), lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                } else {
-                    Picker("Authorization Method", selection: $appState.useSystemAuthDialog) {
-                        Text("Direct sudo Password").tag(false)
-                        Text("Touch ID / System Dialog").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-
-                    if !appState.useSystemAuthDialog {
-                        SecureField("Enter your Mac login password", text: $sudoPassword)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit {
-                                if session.canAuthorizeAndStart && !sudoPassword.isEmpty {
-                                    startSessionFromSheet()
-                                }
-                            }
-                        Text("macOS 14–27 compatible · caches administrator session for ~5 min · never saved or logged.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        HStack(spacing: 8) {
-                            Image(systemName: "touchid")
-                                .foregroundStyle(.secondary)
-                            Text("macOS will show the system Touch ID / password prompt (osascript). If macOS 26/27 blocks USB access, switch to Direct sudo Password.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
+            .buttonStyle(.borderless)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
         }
     }
 
     private func safeToUnplugHeader(isPutback: Bool) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "cable.connector")
-                .font(.callout.weight(.bold))
+                .font(.caption.weight(.bold))
             Text("SAFE TO UNPLUG USB-C")
-                .font(.callout.weight(.heavy))
+                .font(.caption.weight(.heavy))
                 .tracking(0.6)
             Spacer()
             Text(isPutback ? "Stock RAM Verified" : "3:2 Open-Gate Ready")
-                .font(.caption.weight(.bold))
+                .font(.caption2.weight(.bold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)
                 .background(Color.white.opacity(0.22))
                 .clipShape(Capsule())
         }
         .foregroundStyle(.white)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.green)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 
     @ViewBuilder
     private func safeToUnplugStepsBox(isPutback: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             if isPutback {
                 Text("Camera RAM is 100% stock — safe to unplug USB-C")
-                    .font(.callout.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
             } else {
                 Text("1. Unplug USB-C cable now")
-                    .font(.callout.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                 Text("2. Switch camera to Movie (24p / 25p / 30p only)")
-                    .font(.callout.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                 Text("3. Keep Power Save = Off while shooting")
-                    .font(.callout.weight(.semibold))
+                    .font(.caption.weight(.semibold))
             }
         }
-        .padding(10)
+        .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.green.opacity(0.10))
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .strokeBorder(Color.green.opacity(0.32), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
+
+    // MARK: - Helpers
 
     private func refreshSudoCacheStatus() {
         Task {
@@ -1026,33 +930,20 @@ public struct LiveSessionSheetView: View {
         }
     }
 
-    private func labeledBadge(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.callout.weight(.semibold))
+    private func railModeSummary(_ session: LiveSessionPresentation) -> String {
+        if session.isExpressAction {
+            return session.isSinglePassFused ? "1-Pass Express" : "Express"
         }
+        return session.requiresVolatileRamConfirmation ? "Step-by-Step" : "Read-Only"
     }
 
-    private func safetyCalloutRow(icon: String, color: Color, text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: icon)
-                .font(.callout)
-                .foregroundStyle(color)
-                .frame(width: 18)
-            Text(text)
-                .font(.caption)
-                .foregroundStyle(.primary)
+    private func mapStepStatus(_ status: LiveStepStatus) -> RailNodeState {
+        switch status {
+        case .pending: return .idle
+        case .waitingDrive, .active: return .active
+        case .done: return .done
+        case .failed: return .failed
         }
-    }
-
-    private func expressBadgeText(for session: LiveSessionPresentation) -> String {
-        if session.action == .expressApply && session.isSinglePassFused {
-            return "1-Pass Express Apply (~10s · Zero Cable Replugs)"
-        }
-        return "Single-Session Express (Zero Cable Replugs)"
     }
 
     private func actionIcon(for action: LiveCommandAction) -> String {
@@ -1080,56 +971,20 @@ public struct LiveSessionSheetView: View {
         }
     }
 
-    private func phaseIcon(_ session: LiveSessionPresentation) -> String {
-        switch session.phase {
-        case .confirming, .running: return "bolt.horizontal.circle.fill"
-        case .finished: return (session.completionReady ?? false) ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-        case .cancelled: return session.wasAdminAuthCancelled ? "info.circle.fill" : "hand.raised.circle.fill"
-        case .failed: return "xmark.octagon.fill"
-        }
-    }
-
     private func phaseHeadline(_ session: LiveSessionPresentation) -> String {
         switch session.phase {
         case .confirming:
             return "Ready to Authorize"
         case .running:
-            return session.isCancelling ? "Cancelling safely before next step…" : "Running \(session.actionTitle)…"
+            return session.isCancelling
+                ? "Cancelling safely before next step…"
+                : "Running · Step \(min(session.completedProgressUnits + 1, max(session.totalProgressUnits, 1))) of \(session.totalProgressUnits)"
         case .finished:
             return "\(session.actionTitle) Complete"
         case .cancelled:
             return session.wasAdminAuthCancelled ? "Authorization Cancelled" : "Session Cancelled"
         case .failed:
             return "\(session.actionTitle) Failed"
-        }
-    }
-
-    private func stepStatusColor(_ status: LiveStepStatus) -> Color {
-        switch status {
-        case .pending: return .secondary
-        case .waitingDrive(let first): return first ? .blue : .orange
-        case .active: return .blue
-        case .done: return .green
-        case .failed: return .red
-        }
-    }
-
-    private func stepRowBackground(_ status: LiveStepStatus) -> Color {
-        switch status {
-        case .pending: return Color(nsColor: .textBackgroundColor).opacity(0.45)
-        case .waitingDrive(let first): return (first ? Color.blue : Color.orange).opacity(0.08)
-        case .active: return Color.blue.opacity(0.09)
-        case .done: return Color.green.opacity(0.07)
-        case .failed: return Color.red.opacity(0.09)
-        }
-    }
-
-    private func stepRowBorderOpacity(_ status: LiveStepStatus) -> Double {
-        switch status {
-        case .pending: return 0.14
-        case .waitingDrive, .active: return 0.45
-        case .done: return 0.30
-        case .failed: return 0.45
         }
     }
 }

@@ -3,7 +3,6 @@ import SwiftUI
 
 public struct CameraWorkspaceView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var showGate1EditorWhenReady: Bool = false
     @State private var showLastResultDetails: Bool = false
     @State private var isPacksExpanded: Bool = false
     @State private var showTechnicalPackIds: Bool = false
@@ -26,182 +25,59 @@ public struct CameraWorkspaceView: View {
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(spacing: 18) {
-                if !appState.isSetupWizardChecklistComplete && !appState.isSetupBannerDismissed {
-                    firstTimeSetupBanner
-                }
-
-                heroCard
-
-                customizePacksDisclosure
-
-                persistentSafetyFooter
-            }
-            .frame(maxWidth: 740)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 22)
-        }
-        .onChange(of: appState.cameraStage) { _, newStage in
-            if newStage != .readyToApply {
-                showGate1EditorWhenReady = false
-            }
-        }
-    }
-
-    // MARK: - Dismissible First-Time Setup Banner
-
-    private var firstTimeSetupBanner: some View {
-        StudioSurface(accent: .blue, padding: 14) {
-            HStack(spacing: 12) {
-                Image(systemName: "checklist")
-                    .font(.title3)
-                    .foregroundStyle(.blue)
-                    .frame(width: 30, height: 30)
-                    .background(Color.blue.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("First-time setup for \(profile.displayName)")
-                        .font(.callout.weight(.semibold))
-                    Text("Confirm firmware, Slot 1 SD card, USB Mass Storage, Power Save = Off, and 24p/25p/30p menu settings (\(setupCheckedCount) of 6 checked).")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 8)
-
-                Button("Open Setup Guide") {
-                    appState.showSetupGuideSheet = true
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        appState.isSetupBannerDismissed = true
-                    }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.borderless)
-                .help("Dismiss setup reminder")
-            }
-        }
-    }
-
-    // MARK: - Primary Camera Hero Card
-
-    private var heroCard: some View {
         let stage = appState.cameraStage
 
-        return StudioSurface(accent: heroAccentBorder(for: stage), padding: 20) {
-            VStack(alignment: .leading, spacing: 18) {
-                heroHeader(stage: stage)
+        ScrollView {
+            VStack(spacing: 16) {
+                topHeader(stage: stage)
 
                 activeAlertCallouts(stage: stage)
 
-                if stage != .pinsBlocked && stage != .applied {
-                    Divider()
-                    gate1Section(stage: stage)
+                checklistCard(stage: stage)
+
+                primaryActionBlock(stage: stage)
+
+                secondaryActionsRow(stage: stage)
+
+                if isPacksExpanded {
+                    featurePacksCard
                 }
 
-                if stage != .pinsBlocked {
-                    Divider()
-                    presetSelectorRow
-                }
-
-                Divider()
-
-                primaryActionRow(stage: stage)
-
-                if hasSessionSummary {
-                    Divider()
-                    lastResultSummarySection
-                }
+                persistentSafetyFooter
             }
+            .frame(maxWidth: 560)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 24)
+            .padding(.top, 32)
+            .padding(.bottom, 24)
         }
     }
 
-    private func heroHeader(stage: CameraWorkflowStage) -> some View {
-        HStack(alignment: .top, spacing: 14) {
+    // MARK: - Centered Top Header
+
+    private func topHeader(stage: CameraWorkflowStage) -> some View {
+        VStack(spacing: 8) {
             Image(systemName: heroIcon(for: stage))
-                .font(.system(size: 24, weight: .semibold))
+                .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(heroColor(for: stage))
                 .frame(width: 44, height: 44)
                 .background(heroColor(for: stage).opacity(0.13))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(heroHeadline(for: stage))
-                    .font(.title3.weight(.semibold))
-                Text(heroSubtitle(for: stage))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text(heroHeadline(for: stage))
+                .font(.title2.weight(.semibold))
+                .multilineTextAlignment(.center)
 
-            Spacer(minLength: 8)
-
-            VStack(alignment: .trailing, spacing: 6) {
-                HStack(spacing: 6) {
-                    if let usb = appState.detectedUsbCamera, usb.detected, !usb.isFx3aBlocked {
-                        let mode: String = usb.usbMode ?? "other"
-                        let pillLabel: String = {
-                            switch mode {
-                            case "msc": return "USB Mass Storage"
-                            case "service": return "USB Service Mode"
-                            default: return "Wrong USB Mode"
-                            }
-                        }()
-                        let pillColor: Color = (mode == "msc") ? .green : .orange
-                        StudioStatusPill(
-                            pillLabel,
-                            systemImage: "cable.connector",
-                            color: pillColor
-                        )
-                    }
-
-                    StudioStatusPill(
-                        profile.isFX3 ? "\(profile.displayName) · ILME-FX3 only" : profile.displayName,
-                        systemImage: profile.isFX3 ? "exclamationmark.triangle.fill" : "camera.fill",
-                        color: profile.isFX3 ? .orange : .secondary
-                    )
-                }
-
-                HStack(spacing: 10) {
-                    Button {
-                        Task { await appState.refreshDetectedUsbCamera() }
-                    } label: {
-                        HStack(spacing: 4) {
-                            if appState.isDetectingUsbCamera {
-                                ProgressView()
-                                    .controlSize(.mini)
-                            } else {
-                                Image(systemName: "arrow.clockwise")
-                            }
-                            Text("Detect USB")
-                        }
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .disabled(appState.isDetectingUsbCamera || appState.isLiveSessionActive)
-                    .help("Scan USB bus for a connected Sony camera")
-
-                    Button("Setup Guide…") {
-                        appState.showSetupGuideSheet = true
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
-                    .foregroundStyle(Color.accentColor)
-                }
-            }
+            Text(heroSubtitle(for: stage))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(.bottom, 4)
     }
+
+    // MARK: - Conditional Alert Callouts
 
     @ViewBuilder
     private func activeAlertCallouts(stage: CameraWorkflowStage) -> some View {
@@ -267,64 +143,155 @@ public struct CameraWorkspaceView: View {
         }
     }
 
-    @ViewBuilder
-    private func gate1Section(stage: CameraWorkflowStage) -> some View {
-        if !appState.hasAcceptedExpressSafetyTerms {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("One-Time Volatile RAM Consent")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    Text("First Run")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+    // MARK: - Single Checklist Card
+
+    private func checklistCard(stage: CameraWorkflowStage) -> some View {
+        StudioSurface(accent: checklistBorderAccent(for: stage), padding: 0) {
+            VStack(spacing: 0) {
+                cameraUsbRow
+
+                Divider()
+
+                setupChecklistRow
+
+                if stage != .pinsBlocked {
+                    Divider()
+                    profileRow
                 }
 
-                Toggle(
-                    "I understand OpenGate Studio patches volatile RAM only (shoot 24p/25p/30p; battery pull >= 10s restores stock)",
-                    isOn: $appState.hasAcceptedExpressSafetyTerms
-                )
-                .font(.callout)
+                if stage != .pinsBlocked && stage != .applied {
+                    Divider()
+                    consentRow
+                }
+
+                if hasSessionSummary {
+                    Divider()
+                    lastResultSummarySection
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                }
             }
-        } else {
-            HStack(spacing: 8) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .font(.caption)
-                Text("Cold boot >=10s · Stills mode · Mass Storage · 24p/25p/30p only")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.green.opacity(0.08))
-            .overlay(
-                Capsule()
-                    .strokeBorder(Color.green.opacity(0.24), lineWidth: 1)
-            )
-            .clipShape(Capsule())
         }
     }
 
-    private var presetSelectorRow: some View {
-        HStack(spacing: 12) {
+    private var cameraUsbRow: some View {
+        let usb = appState.detectedUsbCamera
+        let usbDetected = usb?.detected == true && usb?.isFx3aBlocked != true
+        let usbMode = usb?.usbMode ?? "other"
+        let badgeIcon = usbDetected ? "cable.connector" : "camera.fill"
+        let badgeColor: Color = {
+            guard usbDetected else { return .secondary }
+            return usbMode == "msc" ? .green : .orange
+        }()
+
+        return HStack(spacing: 11) {
+            rowIconBadge(systemImage: badgeIcon, color: badgeColor)
+
             VStack(alignment: .leading, spacing: 2) {
-                Text("Open-Gate Profile")
-                    .font(.subheadline.weight(.semibold))
-                Text(presetSummaryText)
+                HStack(spacing: 6) {
+                    Text("Camera USB")
+                        .font(.callout.weight(.semibold))
+
+                    if usbDetected {
+                        let pillLabel: String = {
+                            switch usbMode {
+                            case "msc": return "USB Mass Storage"
+                            case "service": return "USB Service Mode"
+                            default: return "Wrong USB Mode"
+                            }
+                        }()
+                        StudioStatusPill(
+                            pillLabel,
+                            systemImage: "cable.connector",
+                            color: usbMode == "msc" ? .green : .orange
+                        )
+                    }
+
+                    if profile.isFX3 {
+                        StudioStatusPill("ILME-FX3 only", color: .orange)
+                    }
+                }
+
+                Text("\(profile.shortModelName) · FW \(profile.requiredFirmware)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            if appState.activePackPreset == nil {
-                StudioStatusPill(
-                    "Custom (\(appState.selectedPacks.count) packs)",
-                    color: .secondary
-                )
+            Button {
+                Task { await appState.refreshDetectedUsbCamera() }
+            } label: {
+                HStack(spacing: 4) {
+                    if appState.isDetectingUsbCamera {
+                        ProgressView()
+                            .controlSize(.mini)
+                    }
+                    Text("Detect USB")
+                }
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(appState.isDetectingUsbCamera || appState.isLiveSessionActive)
+            .help("Scan USB bus for a connected Sony camera")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
+    }
+
+    private var setupChecklistRow: some View {
+        let complete = appState.isSetupWizardChecklistComplete
+
+        return HStack(spacing: 11) {
+            rowIconBadge(
+                systemImage: complete ? "checkmark.circle.fill" : "checklist",
+                color: complete ? .green : .secondary
+            )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("First-time setup")
+                    .font(.callout.weight(.semibold))
+                Text(
+                    complete
+                        ? "All 6 camera menu items checked"
+                        : "\(setupCheckedCount) of 6 camera menu items checked"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 8)
+
+            Button(complete ? "Review" : "Open Guide") {
+                appState.showSetupGuideSheet = true
+            }
+            .buttonStyle(.borderless)
+            .font(.callout.weight(.medium))
+            .foregroundStyle(Color.accentColor)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
+    }
+
+    private var profileRow: some View {
+        HStack(spacing: 11) {
+            rowIconBadge(systemImage: "aspectratio", color: .secondary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text("Open-Gate profile")
+                        .font(.callout.weight(.semibold))
+                    if appState.activePackPreset == nil {
+                        StudioStatusPill("Custom (\(appState.selectedPacks.count))", color: .secondary)
+                    }
+                }
+                Text(compactPresetSummaryText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
 
             Picker("Profile", selection: Binding(
                 get: { appState.activePackPreset ?? .safeDaily },
@@ -335,53 +302,89 @@ public struct CameraWorkspaceView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 240)
+            .frame(width: 210)
             .disabled(appState.isLiveSessionActive || appState.isApplying)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
+    }
+
+    @ViewBuilder
+    private var consentRow: some View {
+        if !appState.hasAcceptedExpressSafetyTerms {
+            Toggle(
+                "I understand OpenGate Studio patches volatile RAM only (24p/25p/30p; battery pull >= 10s restores stock)",
+                isOn: $appState.hasAcceptedExpressSafetyTerms
+            )
+            .font(.callout)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+        } else {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.caption)
+                Text("Cold boot >=10s · Stills mode · Mass Storage · 24p/25p/30p only")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
         }
     }
 
-    private var presetSummaryText: String {
+    private func rowIconBadge(systemImage: String, color: Color) -> some View {
+        Image(systemName: systemImage)
+            .font(.callout.weight(.medium))
+            .foregroundStyle(color)
+            .frame(width: 28, height: 28)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+
+    private var compactPresetSummaryText: String {
         let isBionzX = appState.selectedBodyId == "a7c_203" || appState.selectedBodyId == "zve10_203"
         switch appState.activePackPreset {
         case .safeDaily:
             if isBionzX {
-                return "Recommended — 6000x4000 3:2 sensor readout squeezed into standard 3840x2160 XAVC S 4K 24p."
+                return "6000x4000 3:2 readout in XAVC S 4K 24p"
             }
-            return "Recommended — 3840x2560 3:2 MP4, Gyro metadata, and 3:2 LCD framing."
+            return "3840x2560 MP4, Gyro, 3:2 LCD"
         case .cinemaFull, .reliabilityAudit:
             if isBionzX {
-                return "Experimental — Enables native 3840x2560 3:2 H.264 raster & MP4 dimensions."
+                return "Native 3840x2560 3:2 H.264 raster & MP4"
             }
-            return "Experimental — Adds HDMI 3:2 output, 200M/300M bitrates, and XAVC S-I."
+            return "HDMI 3:2, 200M/300M bitrates, XAVC S-I"
         case nil:
-            return "Custom selection of \(appState.selectedPacks.count) optional feature pack(s)."
+            return "\(appState.selectedPacks.count) custom feature pack(s) enabled"
         }
     }
 
-    // MARK: - Single Primary Action Row
+    // MARK: - Primary Action Block
 
-    private func primaryActionRow(stage: CameraWorkflowStage) -> some View {
-        HStack(spacing: 12) {
+    private func primaryActionBlock(stage: CameraWorkflowStage) -> some View {
+        VStack(spacing: 8) {
             primaryActionButton(stage: stage)
 
             if stage == .applied {
                 Button {
                     Task { await appState.runExpressPutback() }
                 } label: {
-                    if appState.isPuttingBack {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Text("Restore Stock RAM")
+                    HStack(spacing: 6) {
+                        if appState.isPuttingBack {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Text("Restore Stock RAM")
+                        }
                     }
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
                 .disabled(appState.isPuttingBack || appState.isLiveSessionActive)
             }
-
-            Spacer()
-
-            overflowMenu(stage: stage)
         }
     }
 
@@ -462,6 +465,38 @@ public struct CameraWorkspaceView: View {
             }
             Text(title)
         }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Secondary Actions Row
+
+    private func secondaryActionsRow(stage: CameraWorkflowStage) -> some View {
+        let experimentalActive = appState.selectedPacks.contains(where: {
+            ["hdmi32", "high_bitrate", "xavc_si", "fx3_playback"].contains($0)
+        })
+
+        return HStack(spacing: 12) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isPacksExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Customize Feature Packs (\(appState.selectedPacks.count) enabled)")
+                    if experimentalActive {
+                        StudioStatusPill("Experimental", color: .orange)
+                    }
+                }
+            }
+            .buttonStyle(.borderless)
+            .font(.callout.weight(.medium))
+            .foregroundStyle(Color.accentColor)
+
+            Text("·")
+                .foregroundStyle(.secondary)
+
+            overflowMenu(stage: stage)
+        }
     }
 
     private func overflowMenu(stage: CameraWorkflowStage) -> some View {
@@ -505,12 +540,16 @@ public struct CameraWorkspaceView: View {
                 }
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.title3)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Text("More Actions")
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.semibold))
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
-        .frame(width: 28)
+        .fixedSize()
         .help("More Camera Actions")
     }
 
@@ -605,49 +644,42 @@ public struct CameraWorkspaceView: View {
         return ""
     }
 
-    // MARK: - Customize Feature Packs Disclosure
+    // MARK: - Expandable Feature Packs Card
 
-    private var customizePacksDisclosure: some View {
-        let experimentalActive = appState.selectedPacks.contains(where: {
-            ["hdmi32", "high_bitrate", "xavc_si", "fx3_playback"].contains($0)
-        })
-
-        return StudioSurface(padding: 16) {
-            DisclosureGroup(isExpanded: $isPacksExpanded) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Divider()
-                        .padding(.vertical, 10)
-
-                    requiredCorePackRow
-
-                    ForEach(visibleModularPackIds, id: \.self) { packId in
-                        Divider()
-                            .padding(.vertical, 10)
-                        modularPackRow(packId: packId)
-                    }
-
-                    Divider()
-                        .padding(.vertical, 10)
-
-                    Toggle("Show technical pack & step IDs", isOn: $showTechnicalPackIds)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    Label("Customize Feature Packs", systemImage: "slider.horizontal.3")
+    private var featurePacksCard: some View {
+        StudioSurface(padding: 16) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Label("Feature Packs", systemImage: "slider.horizontal.3")
                         .font(.headline)
-
                     Spacer()
-
-                    if experimentalActive {
-                        StudioStatusPill("Experimental Active", color: .orange)
+                    Button("Done") {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            isPacksExpanded = false
+                        }
                     }
-
-                    Text("\(appState.selectedPacks.count) enabled")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+                    .buttonStyle(.borderless)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Color.accentColor)
                 }
+
+                Divider()
+                    .padding(.vertical, 10)
+
+                requiredCorePackRow
+
+                ForEach(visibleModularPackIds, id: \.self) { packId in
+                    Divider()
+                        .padding(.vertical, 10)
+                    modularPackRow(packId: packId)
+                }
+
+                Divider()
+                    .padding(.vertical, 10)
+
+                Toggle("Show technical pack & step IDs", isOn: $showTechnicalPackIds)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -783,10 +815,10 @@ public struct CameraWorkspaceView: View {
         return appState.selectedPacks.contains("fx3_playback")
     }
 
-    private func heroAccentBorder(for stage: CameraWorkflowStage) -> Color? {
+    private func checklistBorderAccent(for stage: CameraWorkflowStage) -> Color? {
         switch stage {
         case .pinsBlocked, .recoveryRequired: return .orange
-        case .readyToApply, .applied, .needsPreflight, .restoredStock: return .green
+        case .readyToApply, .applied, .needsPreflight, .restoredStock: return nil
         }
     }
 
@@ -818,7 +850,7 @@ public struct CameraWorkspaceView: View {
         case .restoredStock:
             return "Camera Restored to Stock RAM"
         case .readyToApply, .needsPreflight:
-            return "Ready for 1-Click Open-Gate on \(profile.shortModelName)"
+            return "Ready for Open-Gate on \(profile.shortModelName)"
         }
     }
 
@@ -833,7 +865,7 @@ public struct CameraWorkspaceView: View {
         case .restoredStock:
             return "Stock camera RAM was verified. Click Apply Open-Gate (3:2) anytime to patch volatile RAM again."
         case .readyToApply, .needsPreflight:
-            return "Connect your camera over USB-C in Stills mode (Mass Storage) and click Apply Open-Gate (3:2)."
+            return "Connect in Stills mode (Mass Storage) and apply to volatile RAM."
         }
     }
 }
