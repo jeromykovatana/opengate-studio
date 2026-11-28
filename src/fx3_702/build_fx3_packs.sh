@@ -100,6 +100,11 @@ done
 "${CC[@]}" -I "$SRC_DIR" -DDUMP=0 "$SRC_DIR/fx3read.c" "$SEN" -o "$KIT_DIR/libJit_fx3_check.so"
 "${CC[@]}" -I "$SRC_DIR" -DDUMP=1 "$SRC_DIR/fx3read.c" "$SEN" -o "$KIT_DIR/libJit_fx3_dump.so"
 
+# Read-only Cinema Line unlock probe
+"${CC[@]}" -O2 -DBODY_FX3 "$STUDIO_ROOT/src/common/cineprobe.c" "$SEN" -o "$KIT_DIR/libJit_fx3_cineprobe.so"
+sz=$(wc -c < "$KIT_DIR/libJit_fx3_cineprobe.so" | tr -d ' ')
+[ "$sz" -le 65520 ] || { echo "SIZE LIMIT EXCEEDED ($sz > 65520) for libJit_fx3_cineprobe.so"; exit 1; }
+
 if [ "${SKIP_EMIT_MANIFEST:-0}" != "1" ] && [ "$KIT_DIR" = "$STUDIO_ROOT/kits/fx3_702" ]; then
   "$ZIG_PY" -B "$SRC_DIR/gen_fx3_packs.py" --emit-manifest
 fi
@@ -109,6 +114,6 @@ for f in "$KIT_DIR"/*.so; do
 done
 
 echo "Built FX3 7.02 artifacts in $KIT_DIR:"
-for f in "$KIT_DIR"/libJit_fx3_{L5,L6,L16,L17,S16,S17,L19,L20,V19,V20,H16,H17,B19,B20,I19,I20,P29,P30,Q19,Q20,F19,F20,check,dump}.so; do
+for f in "$KIT_DIR"/libJit_fx3_{L5,L6,L16,L17,S16,S17,L19,L20,V19,V20,H16,H17,B19,B20,I19,I20,P29,P30,Q19,Q20,F19,F20,check,dump,cineprobe}.so; do
   printf "  %s  %s  %d bytes\n" "$(shasum -a 256 "$f" | awk '{print $1}')" "$(basename "$f")" "$(wc -c < "$f")"
 done

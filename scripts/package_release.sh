@@ -241,8 +241,8 @@ if [[ "$MANIFEST_COUNT" -ne 5 ]]; then
     echo "ERROR: Expected 5 kits/*/manifest.json files in staging, found $MANIFEST_COUNT" >&2
     exit 1
 fi
-if [[ "$SO_COUNT" -ne 90 ]]; then
-    echo "ERROR: Expected 90 kits/*/*.so helpers in staging, found $SO_COUNT" >&2
+if [[ "$SO_COUNT" -ne 93 ]]; then
+    echo "ERROR: Expected 93 kits/*/*.so helpers in staging, found $SO_COUNT" >&2
     exit 1
 fi
 

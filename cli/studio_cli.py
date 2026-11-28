@@ -23,6 +23,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import bionz_clip_check as bcc  # noqa: E402
+import studio_cineprobe  # noqa: E402
 import studio_conformance  # noqa: E402
 import studio_creator  # noqa: E402
 import studio_report  # noqa: E402
@@ -1185,6 +1186,29 @@ def cmd_conformance_audit(args: argparse.Namespace) -> tuple[int, dict[str, Any]
         return 2, {"ok": False, "error": str(err)}
 
 
+def cmd_inspect_cineprobe(result_path: Path, body: str | None) -> tuple[int, dict[str, Any]]:
+    try:
+        data = result_path.read_bytes()
+        parsed = studio_cineprobe.parse_cineprobe_report(body, data)
+        summary = studio_cineprobe.summarize_cineprobe(parsed)
+        summary["result_path"] = str(result_path)
+        return (0 if summary.get("ok", False) else 1), summary
+    except Exception as err:
+        return 2, {"ok": False, "error": str(err)}
+
+
+def cmd_diff_cineprobe(path_a: Path, path_b: Path, body: str | None) -> tuple[int, dict[str, Any]]:
+    try:
+        data_a = path_a.read_bytes()
+        data_b = path_b.read_bytes()
+        diff = studio_cineprobe.diff_cineprobe_reports(data_a, data_b, body_id=body)
+        diff["path_a"] = str(path_a)
+        diff["path_b"] = str(path_b)
+        return (0 if diff.get("ok", False) else 1), diff
+    except Exception as err:
+        return 2, {"ok": False, "error": str(err)}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--json", action="store_true", help="Output JSON")
@@ -1329,6 +1353,17 @@ def main(argv: list[str] | None = None) -> int:
     p_conf.add_argument("--thermal-ok", action=argparse.BooleanOptionalAction, default=None)
     p_conf.add_argument("--json", action="store_true")
 
+    p_cprobe = sub.add_parser("inspect-cineprobe", help="Inspect and summarize a CT6 cineprobe readcheck_result.txt capture")
+    p_cprobe.add_argument("result_path", type=Path)
+    p_cprobe.add_argument("--body", default=None)
+    p_cprobe.add_argument("--json", action="store_true")
+
+    p_cdiff = sub.add_parser("diff-cineprobe", help="Diff two CT6 cineprobe readcheck_result.txt captures (A/B RAM & coprocessor delta)")
+    p_cdiff.add_argument("path_a", type=Path)
+    p_cdiff.add_argument("path_b", type=Path)
+    p_cdiff.add_argument("--body", default=None)
+    p_cdiff.add_argument("--json", action="store_true")
+
     args = ap.parse_args(argv)
     if args.cmd == "list-bodies":
         rc, payload = cmd_list_bodies()
@@ -1374,6 +1409,10 @@ def main(argv: list[str] | None = None) -> int:
         )
     elif args.cmd == "conformance-audit":
         rc, payload = cmd_conformance_audit(args)
+    elif args.cmd == "inspect-cineprobe":
+        rc, payload = cmd_inspect_cineprobe(args.result_path, args.body)
+    elif args.cmd == "diff-cineprobe":
+        rc, payload = cmd_diff_cineprobe(args.path_a, args.path_b, args.body)
     else:
         rc, payload = 2, {"ok": False, "error": f"Unsupported command {args.cmd}"}
 

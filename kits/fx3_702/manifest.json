@@ -25,6 +25,13 @@
       "size": 60376,
       "level": 102,
       "summary": "Coherent read-only diagnostic dump + coprocessor pages (fx3read_v2)"
+    },
+    "cineprobe": {
+      "file": "libJit_fx3_cineprobe.so",
+      "sha256": "8863615a1f2cb6a684bf5937d23638da280ac8cf79d257d313089cbb51f0d864",
+      "size": 40024,
+      "level": 103,
+      "summary": "Read-only Cinema Line unlock probe (appFw .dynsym/xrefs/.bss + cpapp state)"
     }
   },
   "packs": {

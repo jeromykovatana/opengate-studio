@@ -67,16 +67,16 @@ Sony's 12.1MP full-frame sensor (`IMX510` + `CXD90057` BIONZ XR) physically read
 
 ## Supported Cameras, Firmware Pins & Evidence Matrix
 
-All 90 `.so` helper binaries across 5 bodies in `kits/` are compiled reproducibly with `ziglang 0.13.0` (`clang 18.1.6`), pinned by SHA-256, and verified in Unicorn AArch64 / ARM32 emulation (`0` clean-room violations). **Recommended profile for field use: `Safe Daily 3:2` (`core_open_gate` + `mp4_3x2` + `screen_3x2`).**
+All 93 `.so` helper binaries across 5 bodies in `kits/` are compiled reproducibly with `ziglang 0.13.0` (`clang 18.1.6`), pinned by SHA-256, and verified in Unicorn AArch64 / ARM32 emulation (`0` clean-room violations). **Recommended profile for field use: `Safe Daily 3:2` (`core_open_gate` + `mp4_3x2` + `screen_3x2`).**
 
 <!-- BEGIN GENERATED SUPPORT MATRIX -->
 ### Supported Bodies & Pinned Firmware (`v0.3.1-alpha (1-Click Express Release)`)
 
 | Camera Body | Model ID | Pinned Firmware | `body_id` | Build ID (`version.txt`) | Pinned Helpers | Evidence Summary |
 |---|---|---|---|---|---:|---|
-| **Sony ZV-E1** | `ZV-E1` | **`2.02`** | `zve1_202` | `32000_08.2025101101` | 26 `.so` | Bytes + Emu ✅ · `23.98p` + SteadyShot HW ✅ · `25p`/`29.97p`/Experimental ⬜ |
-| **Sony a7S III** | `ILCE-7SM3` | **`5.01`** | `a7s3_501` | `39183_16.2026041504` | 24 `.so` | Bytes + Emu ✅ · `23.98p` HW ✅ · `25p`/`29.97p`/Experimental ⬜ |
-| **Sony FX3** | `ILME-FX3 (not FX3A)` | **`7.02`** | `fx3_702` | `39180_21.2025122503` | 24 `.so` | Bytes + Emu ✅ · `23.98p` + PAL `25p` + 4:3 panel HW ✅ · `29.97p`/Experimental ⬜ |
+| **Sony ZV-E1** | `ZV-E1` | **`2.02`** | `zve1_202` | `32000_08.2025101101` | 27 `.so` | Bytes + Emu ✅ · `23.98p` + SteadyShot HW ✅ · `25p`/`29.97p`/Experimental ⬜ |
+| **Sony a7S III** | `ILCE-7SM3` | **`5.01`** | `a7s3_501` | `39183_16.2026041504` | 25 `.so` | Bytes + Emu ✅ · `23.98p` HW ✅ · `25p`/`29.97p`/Experimental ⬜ |
+| **Sony FX3** | `ILME-FX3 (not FX3A)` | **`7.02`** | `fx3_702` | `39180_21.2025122503` | 25 `.so` | Bytes + Emu ✅ · `23.98p` + PAL `25p` + 4:3 panel HW ✅ · `29.97p`/Experimental ⬜ |
 | **Sony a7C** | `ILCE-7C` | **`2.03`** | `a7c_203` | `39119_08.2026013101` | 8 `.so` | Bytes + ARM32 Emu ✅ · `23.98p` squeezed 3:2 + `raster_2560` awaiting HW test ⬜ |
 | **Sony ZV-E10** | `ZV-E10` | **`2.03`** | `zve10_203` | `30110_06.2026060501` | 8 `.so` | Bytes + ARM32 Emu ✅ · `23.98p` squeezed 3:2 + `raster_2560` awaiting HW test ⬜ |
 
@@ -177,7 +177,7 @@ All `cli/studio_cli.py` commands use pure Python 3 standard library and default 
 # List supported bodies and modular packs
 python3 cli/studio_cli.py list-bodies --json
 
-# Verify SHA-256 pins of all 95 pinned kit files (90 .so helpers + 5 device_info XMLs)
+# Verify SHA-256 pins of all 98 pinned kit files (93 .so helpers + 5 device_info XMLs)
 python3 cli/studio_cli.py verify-pins --json
 
 # Single-session express apply / putback in mock mode

@@ -106,6 +106,11 @@ done
 "${CC[@]}" -DDUMP=0 "$SRC/zvread.c" "$SEN" -o "$KIT/libJit_zv_check.so"
 "${CC[@]}" -DDUMP=1 "$SRC/zvread.c" "$SEN" -o "$KIT/libJit_zv_dump.so"
 
+# Read-only Cinema Line unlock probe
+"${CC[@]}" -O2 -DBODY_ZVE1 "$STUDIO/src/common/cineprobe.c" "$SEN" -o "$KIT/libJit_zv_cineprobe.so"
+sz=$(wc -c < "$KIT/libJit_zv_cineprobe.so" | tr -d ' ')
+[ "$sz" -le 65520 ] || { echo "SIZE LIMIT EXCEEDED ($sz > 65520) for libJit_zv_cineprobe.so"; exit 1; }
+
 if [ "${SKIP_EMIT_MANIFEST:-0}" != "1" ] && [ "$KIT" = "$STUDIO/kits/zve1_202" ]; then
   PYTHONDONTWRITEBYTECODE=1 "$ZIG_PYTHON" -B "$SRC/emit_manifest.py"
 fi

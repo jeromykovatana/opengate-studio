@@ -25,6 +25,13 @@
       "size": 57784,
       "level": 102,
       "summary": "Coherent read-only diagnostic dump + coprocessor pages (zvread_v4)"
+    },
+    "cineprobe": {
+      "file": "libJit_zv_cineprobe.so",
+      "sha256": "0438210013bb92964a283439c7bcf9a721985017309e125fed652dbd115febc2",
+      "size": 40464,
+      "level": 103,
+      "summary": "Read-only Cinema Line unlock probe (appFw .dynsym/xrefs/.bss + cpapp state)"
     }
   },
   "packs": {

@@ -626,7 +626,18 @@ def _simulate_readonly(
         outcome="DONE",
         ok=True,
     )
-    verdict = "VERDICT READY (stock preflight)" if action == "preflight" else "VERDICT READY (simulated dump)"
+    if action == "preflight":
+        verdict = "VERDICT READY (stock preflight)"
+        state = "stock"
+        ready = True
+    elif action == "cineprobe":
+        verdict = "VERDICT NOT READY (simulated cineprobe)"
+        state = "cineprobe_ok"
+        ready = False
+    else:
+        verdict = "VERDICT READY (simulated dump)"
+        state = "stock"
+        ready = True
     sid = f"simulated_{action}_{body_id}"
     ctx.emit(
         "complete",
@@ -635,8 +646,8 @@ def _simulate_readonly(
         body_id=body_id,
         session_id=sid,
         verdict=verdict,
-        state="stock",
-        ready=True,
+        state=state,
+        ready=ready,
         steps_run=[which],
         active_packs=[],
     )
@@ -656,9 +667,12 @@ def run_readonly(
 ) -> int:
     active_ctx = _active_ctx(ctx)
     try:
-        which = "check" if action == "preflight" else "dump"
+        which = "check" if action == "preflight" else action
         fw = str(man["firmware"])
-        entry = man["readonly"][which]
+        readonly_map = man.get("readonly") or {}
+        if which not in readonly_map:
+            return _fail(active_ctx, f"Read-only step {which!r} is not supported for {body_id}.")
+        entry = readonly_map[which]
         summary = str(entry.get("summary") or f"Read-only {action} ({which})")
         say(f"{man['camera']} ({body_id}) firmware {fw} — read-only {action} ({which}: {entry['file']}, sha256 {entry['sha256'][:16]}...)")
 
@@ -721,8 +735,9 @@ def run_readonly(
             and isinstance(res_sha, str)
             and _HEX64_RE.fullmatch(res_sha)
         ):
-            ready = bool(facts.get("ready", False))
-            state = str(facts.get("state") or "not_ready")
+            probe_ok = bool(facts.get("probe_ok", False))
+            ready = False if action == "cineprobe" else bool(facts.get("ready", False))
+            state = str(facts.get("state") or ("cineprobe_ok" if (action == "cineprobe" and probe_ok) else "not_ready"))
             verdict = str(facts.get("verdict") or "VERDICT NOT READY")
             res_block = ct6_man.get("results") or {}
             usb_id = res_block.get("camera_usb_identity") or {}
@@ -737,6 +752,31 @@ def run_readonly(
                 "kernel_version": facts.get("kernel_version"),
                 "kernel_command_line": facts.get("kernel_command_line"),
             }
+            if action == "cineprobe" and not probe_ok:
+                studio_cli._write_session(session_dir, {
+                    "kind": action,
+                    "body_id": body_id,
+                    "mode": "live_usb",
+                    "ready": False,
+                    "verified": False,
+                    "state": state,
+                    "verdict": verdict,
+                    "manifest_sha256": manifest_sha,
+                    "preflight_result_sha256": res_sha,
+                    "ct6_session": ct6_folder.name,
+                    "camera_identity": camera_identity,
+                    "pins_ok": True,
+                    "steps_run": [which],
+                    "active_packs": [],
+                })
+                return _fail(
+                    active_ctx,
+                    f"Read-only {action} ({which}) did not pass cleanly ({verdict}).",
+                    step_index=1,
+                    step_id=which,
+                    left_behind_flag=left_behind(before_ct6),
+                    exit_code=rc or 1,
+                )
             now_ts = time.time()
             expires_at = now_ts + studio_cli.preflight_ttl_seconds()
             boot_nonce = secrets.token_hex(16)
@@ -768,6 +808,8 @@ def run_readonly(
             })
             say()
             say(f"Recorded {action} session {sid} in {session_dir}: {verdict} (state={state}, ready={ready})")
+            if action == "cineprobe":
+                say(f"Probe capture file: {ct6_folder / 'readcheck_result.txt'}")
             active_ctx.emit(
                 "complete",
                 ok=True,
@@ -1933,7 +1975,7 @@ def _run_express_flow_impl(
 def main(argv: list[str] | None = None) -> int:
     global _CTX
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("action", choices=("preflight", "dump", "apply", "putback", "express-apply", "express-putback"))
+    ap.add_argument("action", choices=("preflight", "dump", "cineprobe", "apply", "putback", "express-apply", "express-putback"))
     ap.add_argument("--body", required=True, choices=tuple(ssr.BODY_CONFIG))
     ap.add_argument("--packs", default=None, help="Comma-separated packs for apply/putback")
     ap.add_argument("--session-dir", type=Path, default=studio_cli.DEFAULT_SESSION_DIR)
@@ -2009,7 +2051,7 @@ def main(argv: list[str] | None = None) -> int:
                     f"Refusing {args.action}: --firmware-confirmed requires --confirm-volatile-ram. Nothing was sent.",
                 )
 
-        if args.action in ("preflight", "dump"):
+        if args.action in ("preflight", "dump", "cineprobe"):
             return run_readonly(args.action, args.body, man, args.session_dir, args.dry_run, ctx=ctx)
         if args.action in ("express-apply", "express-putback"):
             return run_express_flow(

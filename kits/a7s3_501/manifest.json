@@ -25,6 +25,13 @@
       "size": 56216,
       "level": 102,
       "summary": "Coherent read-only diagnostic dump + coprocessor pages (s3read_v9)"
+    },
+    "cineprobe": {
+      "file": "libJit_s3_cineprobe.so",
+      "sha256": "0647b94e4320ee1536b8b4ae54cd880870b27be5e3250693fe4c668284c308a1",
+      "size": 41168,
+      "level": 103,
+      "summary": "Read-only Cinema Line unlock probe (appFw .dynsym/xrefs/.bss + cpapp state)"
     }
   },
   "packs": {

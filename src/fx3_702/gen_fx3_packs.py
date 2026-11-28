@@ -916,6 +916,17 @@ def emit_fx3_manifest() -> None:
             "summary": summary,
         }
 
+    probe_fn = "libJit_fx3_cineprobe.so"
+    probe_sha, probe_sz = meta(probe_fn)
+    assert probe_sz <= 65520, f"{probe_fn} exceeds 65520B limit ({probe_sz})"
+    man["readonly"]["cineprobe"] = {
+        "file": probe_fn,
+        "sha256": probe_sha,
+        "size": probe_sz,
+        "level": 103,
+        "summary": "Read-only Cinema Line unlock probe (appFw .dynsym/xrefs/.bss + cpapp state)",
+    }
+
     man["fused_presets"] = {
         "safe_daily": {
             "packs": ["core_open_gate", "mp4_3x2", "screen_3x2"],

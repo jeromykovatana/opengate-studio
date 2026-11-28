@@ -58,6 +58,7 @@ def main() -> None:
     ro_specs = [
         ("check", 101, "Coherent read-only preflight check (zvread_v4: 31 cp + 12 lm + 101 av sites)"),
         ("dump", 102, "Coherent read-only diagnostic dump + coprocessor pages (zvread_v4)"),
+        ("cineprobe", 103, "Read-only Cinema Line unlock probe (appFw .dynsym/xrefs/.bss + cpapp state)"),
     ]
     readonly = {}
     for code, level, summary in ro_specs:

@@ -27,6 +27,7 @@ DETERMINISTIC_ZIP_DT = (2026, 1, 1, 0, 0, 0)
 BODY_IDS = ("zve1_202", "a7s3_501", "fx3_702", "a7c_203", "zve10_203")
 CLI_FILES = (
     "studio_cli.py",
+    "studio_cineprobe.py",
     "studio_live_apply.py",
     "studio_step_run.py",
     "studio_report.py",

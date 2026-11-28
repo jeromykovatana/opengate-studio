@@ -26,21 +26,21 @@
       "model_id": "ZV-E1",
       "firmware": "2.02",
       "version_txt": "32000_08.2025101101",
-      "helper_count": 26
+      "helper_count": 27
     },
     "a7s3_501": {
       "camera": "Sony a7S III",
       "model_id": "ILCE-7SM3",
       "firmware": "5.01",
       "version_txt": "39183_16.2026041504",
-      "helper_count": 24
+      "helper_count": 25
     },
     "fx3_702": {
       "camera": "Sony FX3",
       "model_id": "ILME-FX3 (not FX3A)",
       "firmware": "7.02",
       "version_txt": "39180_21.2025122503",
-      "helper_count": 24
+      "helper_count": 25
     },
     "a7c_203": {
       "camera": "Sony a7C",

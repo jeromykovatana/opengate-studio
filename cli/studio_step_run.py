@@ -23,13 +23,14 @@ SRC_DIR = REPO_ROOT / "src"
 CT1_DIR = REPO_ROOT / "transport" / "camera_tests" / "CT1_usb_first_contact"
 CT6_DIR = REPO_ROOT / "transport" / "camera_tests" / "CT6_memory_read_check"
 
-for _p in (CT1_DIR, CT6_DIR):
+for _p in (HERE, CT1_DIR, CT6_DIR):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
 import ct1_common as c  # noqa: E402
 import ct1_sim  # noqa: E402
 import ct6_level1_run as R  # noqa: E402
+import studio_cineprobe  # noqa: E402
 
 BODY_CONFIG: dict[str, dict[str, str]] = {
     "zve1_202": {
@@ -232,6 +233,8 @@ def step_level(which: str) -> int:
         return 101
     if which == "dump":
         return 102
+    if which == "cineprobe":
+        return 103
     if len(which) < 2 or which[0] not in STEP_LEVEL_BASE or not which[1:].isdigit():
         raise ValueError(f"Unsupported step name: {which!r}")
     return STEP_LEVEL_BASE[which[0]] + int(which[1:])
@@ -239,7 +242,7 @@ def step_level(which: str) -> int:
 
 def step_pins(manifest: dict[str, Any]) -> tuple[dict[str, tuple[str, str]], dict[str, tuple[str, str, str]]]:
     pins: dict[str, tuple[str, str]] = {}
-    for k in ("check", "dump"):
+    for k in ("check", "dump", "cineprobe"):
         entry = manifest.get("readonly", {}).get(k)
         if isinstance(entry, dict):
             pins[k] = (entry["file"], entry["sha256"])
@@ -345,6 +348,8 @@ def parse_readonly_result(
     data: bytes,
     spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if which == "cineprobe":
+        return studio_cineprobe.parse_cineprobe_report(body_id, data, spec)
     cfg = BODY_CONFIG[body_id]
     if spec is None:
         spec = load_body_expected(body_id)
@@ -526,6 +531,17 @@ def run_helper(data: bytes) -> tuple[bytes, str]:
         )
         return text.encode("utf8"), "canned"
     cfg = BODY_CONFIG[CURRENT_BODY]
+    if CURRENT_WHICH == "cineprobe":
+        text = (
+            f"{cfg['reader']} cineprobe_v1 cineprobe for {cfg['header_model']} {cfg['firmware']}; read-only\n"
+            "== file /proc/version\n"
+            "Linux (simulated)\n\n"
+            "== end 18 bytes\n"
+            "== summary\n"
+            "VERDICT NOT READY (simulated transport only)\n"
+            "== done\n"
+        )
+        return text.encode("utf8"), "canned"
     label = CURRENT_EXPECTED["label"]
     text = (
         f"{cfg['reader']} {label} {CURRENT_WHICH} for {cfg['header_model']} {cfg['firmware']}; read-only\n"
@@ -1190,6 +1206,7 @@ def run_batch_single_session(
                     batch_out["result"] = facts
 
                     pages = facts.pop("_pages", {})
+                    facts.pop("_cineprobe_data", None)
                     for addr, (pname, blob) in sorted(pages.items()):
                         prefix = f"{idx:02d}_" if total > 1 else ""
                         session.save_bytes(f"{prefix}cp_{pname}_{addr:08x}.bin", blob)
@@ -1283,6 +1300,22 @@ def report(session: Any, facts: dict[str, Any], which: str) -> None:
             f"OUTCOME: {f['outcome']}",
             str(f["outcome_line"]),
             *["  " + ln for ln in f["problem_lines"]],
+        ]
+    elif which == "cineprobe":
+        cp = f.get("cineprobe") or {}
+        lines = [
+            f"{cfg['model']} {cfg['firmware']} cineprobe, {time.strftime('%Y-%m-%d %H:%M:%S')}",
+            f["header"],
+            f["verdict"],
+            f"identity: {f['identity_same']} same, {f['identity_differs']} differ",
+            (
+                f"cineprobe: {cp.get('dynsym_matches', 0)} syms, "
+                f"{cp.get('ro_strings', 0)} strings, "
+                f"{cp.get('xrefs', 0)} xrefs, "
+                f"{cp.get('xref_ram_blocks', 0)} ram_blocks, "
+                f"{cp.get('rw_nonzero_pages', 0)} rw_pages"
+            ),
+            *(["problem lines:", *["  " + ln for ln in f["problem_lines"]]] if f["problem_lines"] else ["no problem lines"]),
         ]
     else:
         lines = [
@@ -1444,6 +1477,7 @@ def main(argv: list[str] | None = None) -> int:
             facts = session.results.get("ct6", {}).get("result")
             if facts and not args.remove_only:
                 pages = facts.pop("_pages", {})
+                facts.pop("_cineprobe_data", None)
                 for addr, (name, blob) in sorted(pages.items()):
                     session.save_bytes(f"cp_{name}_{addr:08x}.bin", blob)
                 report(session, facts, args.which)
